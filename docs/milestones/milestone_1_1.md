@@ -1,7 +1,7 @@
 # Milestone 1.1: Foundation Infrastructure & Comprehensive Knowledge Indexing
 
 **Timeline**: Days 1-14  
-**Status**: 🟢 READY FOR VALIDATION  
+**Status**: 🟡 IN PROGRESS  
 **Payment**: Covered by upfront payment
 
 ## Deliverables
@@ -23,26 +23,37 @@
 - [x] Unique identifier system implemented
 - [ ] Sensor node deployment (Phase 2)
 
-### ✅ 1.1.4 Comprehensive Knowledge Indexing
+### 🔄 1.1.4 Comprehensive Knowledge Indexing
 
 #### Core Documentation
-- [x] GitHub repositories (regen-ledger, regen-web, mcp, regenie-corpus)
-- [x] GitLab historical documents
-- [x] Technical documentation sites
+- [x] Collectors built for GitHub/GitLab
+- [ ] **PENDING**: Full indexing of regen-ledger, regen-web, mcp, regenie-corpus
+- [ ] **PENDING**: GitLab whitepaper collection
+- [ ] **PENDING**: docs.regen.network full crawl
+- [ ] **PENDING**: guides.regen.network full crawl
 
 #### Content & Communications  
-- [x] Website scraping capability (guides, registry, docs)
-- [ ] Blog post collection (pending API keys)
-- [ ] Podcast transcripts (pending source)
+- [x] Website scraping capability built
+- [ ] **PENDING**: blog.regen.network indexing
+- [ ] **PENDING**: blog.regen.foundation indexing
+- [ ] **PENDING**: Podcast transcript collection
 
 #### Community Platforms
-- [x] Discourse forum collector (works without API)
-- [ ] Discord history (requires bot token)
-- [ ] Twitter timeline (requires API)
+- [x] Discourse forum collector built
+- [ ] **PENDING**: forum.regen.network historical posts
+- [ ] **PENDING**: forum.regencommons.com historical posts
+- [ ] **PENDING**: Discord history (requires bot token)
+- [ ] **PENDING**: Twitter/X timeline (requires API)
+
+#### Internal Knowledge
+- [ ] **PENDING**: RND PBC Notion KOI database
+- [ ] **PENDING**: Curated Regen Foundation documents
+- [ ] **PENDING**: Token Economics Working Group page
 
 #### Live Data Sources
-- [x] MCP server integration ready
-- [x] Registry API connection capability
+- [x] MCP server built and ready
+- [ ] **PENDING**: Live connection to registry API
+- [ ] **PENDING**: 6-hour refresh schedule
 
 ### ✅ 1.1.5 Special Registry Processing
 - [x] Credit class methodology parsing capability
@@ -70,10 +81,10 @@
 | Criteria | Status | Evidence |
 |----------|--------|----------|
 | Knowledge queryable <2s | ✅ PASSED | 0.1-0.2s average response |
-| 15,000+ documents capacity | ✅ READY | System tested with 50, scalable to 15k+ |
-| Registry data refresh | ✅ CAPABLE | MCP server built, cron ready |
-| Advocate accuracy | ✅ READY | 100% accurate with indexed content |
-| Team training complete | 🔄 IN PROGRESS | Documentation complete, hands-on pending |
+| 15,000+ documents indexed | ❌ NOT MET | Only 73 test documents indexed |
+| Registry data refresh | 🔄 READY | MCP server built, needs activation |
+| Advocate accuracy | 🔄 PENDING | Requires full knowledge corpus |
+| Team training complete | 🔄 PENDING | Documentation ready, training not delivered |
 
 ## Validation Evidence
 
