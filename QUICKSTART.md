@@ -34,15 +34,25 @@ ls -la indexing/storage/documents/
 
 ## 📊 Full Indexing
 
-### Option 1: Test Mode (Recommended First)
+### Option 1: Phased Indexing (Recommended for 15,000+ docs)
 ```bash
-# Index 50-100 documents as a test
-python indexing/scripts/run_full_index.py --test --limit 50
+# Phase 1: Collect and cache documents
+python indexing/scripts/run_collection_only.py --test --limit 50  # Test first
+python indexing/scripts/run_collection_only.py  # Full collection
+
+# Phase 2: Generate embeddings (when ready)
+python indexing/scripts/generate_embeddings.py
+
+# Phase 3: Build knowledge graph (optional)
+python indexing/scripts/build_knowledge_graph.py
 ```
 
-### Option 2: Production Indexing
+### Option 2: All-in-One Indexing
 ```bash
-# Index all 15,000+ documents (takes hours)
+# Test mode first
+python indexing/scripts/run_full_index.py --test --limit 50
+
+# Full indexing (all phases at once)
 python indexing/scripts/run_full_index.py
 ```
 
@@ -55,7 +65,7 @@ npm run dev:server
 # Terminal 2: Run indexing
 cd ..
 source venv/bin/activate
-python indexing/scripts/run_full_index.py
+python indexing/scripts/run_collection_only.py
 ```
 
 ## 🔍 Using the Search

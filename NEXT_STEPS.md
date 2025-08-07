@@ -9,11 +9,16 @@
 # Activate environment
 source venv/bin/activate
 
-# Run full indexing without limits
+# Option 1: Phased indexing (recommended for 15,000+ docs)
+python indexing/scripts/run_collection_only.py  # Phase 1: Collection
+python indexing/scripts/generate_embeddings.py   # Phase 2: Embeddings
+python indexing/scripts/build_knowledge_graph.py # Phase 3: Knowledge Graph
+
+# Option 2: All phases at once
 python indexing/scripts/run_full_index.py
 
 # Expected: 15,000+ documents
-# Estimated time: 2-4 hours
+# Estimated time: 2-4 hours (collection) + 1-2 hours (embeddings)
 ```
 
 #### 2. Registry Integration (Priority 1)
@@ -74,9 +79,11 @@ Before marking Milestone 1.1 complete:
 cd mcp-server
 npm run dev:server
 
-# 2. Run full indexing (Terminal 2)
+# 2. Run phased indexing (Terminal 2)
 source venv/bin/activate
-python indexing/scripts/run_full_index.py
+python indexing/scripts/run_collection_only.py  # Phase 1
+python indexing/scripts/generate_embeddings.py   # Phase 2
+python indexing/scripts/build_knowledge_graph.py # Phase 3
 
 # 3. Verify completion
 python indexing/scripts/verify_requirements.py

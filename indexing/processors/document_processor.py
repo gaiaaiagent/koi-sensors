@@ -22,6 +22,9 @@ class DocumentChunk:
     metadata: Dict[str, Any] = field(default_factory=dict)
     position: int = 0  # Position in original document
     token_count: int = 0  # Estimated token count
+    chunk_index: int = 0  # Index of this chunk within the document
+    total_chunks: int = 1  # Total number of chunks in the document
+    koi_rid: Optional[str] = None  # KOI RID if available
     
     def to_json(self) -> str:
         """Convert to JSON string"""
@@ -86,7 +89,10 @@ class DocumentProcessor:
         # Split into chunks
         chunks = self.create_chunks(content, doc_id)
         
-        # Add metadata to each chunk
+        # Get KOI RID from document
+        koi_rid = document.get('koi_rid', document.get('id', ''))
+        
+        # Add metadata to each chunk and set attributes
         for i, chunk in enumerate(chunks):
             chunk.metadata.update({
                 'document_title': title,
@@ -95,6 +101,10 @@ class DocumentProcessor:
                 'chunk_index': i,
                 'total_chunks': len(chunks)
             })
+            # Set chunk attributes
+            chunk.chunk_index = i
+            chunk.total_chunks = len(chunks)
+            chunk.koi_rid = koi_rid
         
         logger.debug(f"Processed document {doc_id} into {len(chunks)} chunks")
         return chunks

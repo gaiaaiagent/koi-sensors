@@ -59,7 +59,19 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
    python indexing/scripts/test_collection.py --limit 5
    ```
 
-2. **Run full indexing**:
+2. **Run phased indexing** (recommended for 15,000+ documents):
+   ```bash
+   # Phase 1: Collect and cache documents
+   python indexing/scripts/run_collection_only.py
+   
+   # Phase 2: Generate embeddings
+   python indexing/scripts/generate_embeddings.py
+   
+   # Phase 3: Build knowledge graph
+   python indexing/scripts/build_knowledge_graph.py
+   ```
+
+3. **Alternative: Run all phases at once**:
    ```bash
    python indexing/scripts/run_full_index.py
    ```
@@ -94,7 +106,10 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
 │   │   ├── chromadb/            # Vector database
 │   │   └── metadata/            # Document metadata
 │   ├── scripts/                 # Execution scripts
-│   │   ├── run_full_index.py    # Main indexing pipeline
+│   │   ├── run_collection_only.py # Phase 1: Collection & caching
+│   │   ├── generate_embeddings.py # Phase 2: Embedding generation
+│   │   ├── build_knowledge_graph.py # Phase 3: Knowledge graph
+│   │   ├── run_full_index.py    # All phases at once
 │   │   ├── test_collection.py   # Test collectors
 │   │   └── verify_requirements.py # Verify system requirements
 │   ├── config/

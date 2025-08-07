@@ -73,9 +73,10 @@ The system uses a secure credential management approach:
 
 ## Implementation Approach
 
-This project uses a two-phase approach:
-1. **Phase 1 (Collection)**: Gather and cache all content
-2. **Phase 2 (Processing)**: Generate embeddings and knowledge graph
+This project uses a three-phase approach:
+1. **Phase 1 (Collection)**: Gather and cache all content with metadata
+2. **Phase 2 (Embeddings)**: Generate embeddings for cached documents
+3. **Phase 3 (Knowledge Graph)**: Build knowledge graph from documents
 
 Start with test mode (10 documents) before full indexing to catch issues early.
 The system discovers entity ontology from actual data rather than making assumptions.
@@ -162,11 +163,19 @@ python indexing/scripts/test_all_collectors.py
 # Test processing pipeline
 python indexing/scripts/test_processor.py
 
-# Run test indexing (50-100 documents)
-python indexing/scripts/run_full_index.py --test --limit 50
+# Phase 1: Collection only (caches documents and metadata)
+python indexing/scripts/run_collection_only.py --test --limit 50  # Test mode
+python indexing/scripts/run_collection_only.py  # Full collection (15,000+ docs)
 
-# Run full indexing (15,000+ documents)
-python indexing/scripts/run_full_index.py
+# Phase 2: Generate embeddings for cached documents
+python indexing/scripts/generate_embeddings.py
+
+# Phase 3: Build knowledge graph from documents
+python indexing/scripts/build_knowledge_graph.py
+
+# Alternative: Run all phases at once (old method)
+python indexing/scripts/run_full_index.py --test --limit 50  # Test mode
+python indexing/scripts/run_full_index.py  # Full indexing
 
 # Verify indexing meets requirements
 python indexing/scripts/verify_requirements.py
