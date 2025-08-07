@@ -25,6 +25,18 @@ langdetect>=1.0.9
 # Discord
 discord.py>=2.3.0
 
+# Audio transcription and processing
+openai-whisper>=20230918
+pydub>=0.25.0
+ffmpeg-python>=0.2.0
+yt-dlp>=2024.1.0  # For downloading audio from SoundCloud
+SpeechRecognition>=3.10.0  # Alternative transcription option
+
+# Web scraping with JavaScript support
+playwright>=1.40.0  # Headless browser automation
+selenium>=4.15.0  # Alternative browser automation
+beautifulsoup4>=4.12.0  # HTML parsing (already listed above)
+
 # Utilities
 tqdm>=4.66.0
 loguru>=0.7.0

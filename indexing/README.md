@@ -2,6 +2,15 @@
 
 The knowledge infrastructure component of the Regen Network AI Agent System. This subsystem handles comprehensive document indexing and retrieval, designed to collect, process, and make searchable over 15,000 documents from various sources across the Regen ecosystem. It provides the knowledge foundation that powers all AI agents with accurate, up-to-date information.
 
+## 📊 Current Status
+
+**Phase 1 Complete** ✅ - Collection and processing pipeline fully implemented and tested
+- All collectors operational (GitHub, GitLab, Discourse, Web)
+- Document processing with smart chunking
+- Embedding generation with sentence-transformers
+- ChromaDB vector storage integrated
+- **NEW**: Podcast indexing module added (67 episodes collected, 5 transcripts fetched)
+
 ## 🌟 Features
 
 - **Multi-Source Collection**: Automated collection from GitHub, GitLab, Discourse forums, websites, and more
@@ -158,9 +167,9 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
       - Protocols.tex - Ecological State Protocols
 
 #### Content & Communications
-- [x] **Medium Blog** - Historical posts
-  - Status: ✅ Indexed (10 documents, 36 chunks)  
-  - [x] Collected | [x] Embedded | [ ] Knowledge Graph
+- [ ] **Medium Blog** - Historical posts
+  - Status: ✅ Indexed (10 documents, 36 chunks, need to do all articles)  
+  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
   - Source: https://regen-network.medium.com/
   
 - [x] **Regen Foundation** - Foundation updates
@@ -168,12 +177,16 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
   - [x] Collected | [x] Embedded | [x] Knowledge Graph
   - Sources:
     - https://www.regen.foundation/publications ✅
+
+- [x] **Planetary Regeneration Podcast** - 70 episodes with transcripts
+  - Status: 🚧 In Progress (67 episodes collected, 5 transcripts fetched)
+  - [x] Collected | [ ] Transcribed | [ ] Knowledge Graph
+  - Sources:
+    - SoundCloud: 67 episodes with metadata ✅
+    - Notion transcripts: 5/52 fetched (Cloudflare blocking)
+    - Audio transcription: Pipeline ready (Whisper AI)
     - https://www.regen.foundation/ (full site crawl) ✅
-    
-- [ ] **Planetary Regeneration Podcast** - Transcripts + metadata
-  - Status: ❌ Not indexed
-  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
-  - Source: https://soundcloud.com/planetaryregeneration
+  - See: `indexing/podcast/README.md` for detailed status
 
 #### Community Platforms
 - [ ] **forum.regen.network** - Full historical

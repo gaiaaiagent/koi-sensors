@@ -123,7 +123,7 @@ sources:
       url: https://soundcloud.com/planetaryregeneration
       strategy: metadata  # Would need transcription service
       notes: "Need to get transcripts - check with team"
-      test_limit: 2
+      # test_limit: 2  # Commented out for full indexing
 
   # Discord (requires bot)
   discord:
