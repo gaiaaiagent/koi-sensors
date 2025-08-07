@@ -162,7 +162,7 @@ Operating under a Joint Development Agreement with shared commitment to regenera
 - **[Quick Start](QUICKSTART.md)**: 5-minute setup guide
 - **[Implementation Plan](IMPLEMENTATION.md)**: Technical implementation details
 - **[Claude Guide](CLAUDE.md)**: AI assistant development guide
-- **[Credentials](CREDENTIAL_SETUP.md)**: API key and credential management
+- **[Authentication](auth/README.md)**: GitHub PAT and API credential setup
 
 ## 🌱 Regenerative Principles
 
