@@ -121,6 +121,138 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
 └── README.md                    # This file
 ```
 
+## 📋 Indexing Status
+
+### Content Sources & Progress
+
+#### Core Documentation
+- [x] **docs.regen.network** - Full technical documentation
+  - Status: ✅ Indexed (3 documents)
+  - [x] Collected | [x] Embedded | [x] Knowledge Graph
+  - Notes: Some content from GitHub, some dynamically generated - requires website scraping
+  
+- [x] **guides.regen.network** - User guides and tutorials  
+  - Status: ✅ Indexed (25 documents)
+  - [x] Collected | [x] Embedded | [x] Knowledge Graph
+  - Source: https://guides.regen.network/ (website scraping)
+  
+- [x] **registry.regen.network** - ALL credit classes, methodologies, projects
+  - Status: ✅ Indexed (20 documents)
+  - [x] Collected | [x] Embedded | [x] Knowledge Graph
+  - Notes: Combine website scraping + MCP server for live data
+  
+- [x] **Regen Ledger GitHub** - Code + documentation
+  - Status: ✅ Indexed (57 documents)
+  - [x] Collected | [x] Embedded | [x] Knowledge Graph
+  - Source: https://github.com/regen-network/regen-ledger
+  - Notes: Some overlap with docs.regen.network
+  
+- [x] **Core Whitepapers** - Technical papers
+  - Status: ✅ Indexed (7 documents total)
+  - [x] Collected | [x] Embedded | [x] Knowledge Graph
+  - Sources: 
+    - GitHub regen-web: 4 documents ✅
+    - GitLab whitepapers: 3 documents (49 chunks) ✅
+      - WhitePaper.tex - Main whitepaper
+      - Architecture.tex - System architecture
+      - Protocols.tex - Ecological State Protocols
+
+#### Content & Communications
+- [x] **Medium Blog** - Historical posts
+  - Status: ✅ Indexed (10 documents, 36 chunks)  
+  - [x] Collected | [x] Embedded | [ ] Knowledge Graph
+  - Source: https://regen-network.medium.com/
+  
+- [x] **Regen Foundation** - Foundation updates
+  - Status: ✅ Indexed (7 documents)
+  - [x] Collected | [x] Embedded | [x] Knowledge Graph
+  - Sources:
+    - https://www.regen.foundation/publications ✅
+    - https://www.regen.foundation/ (full site crawl) ✅
+    
+- [ ] **Planetary Regeneration Podcast** - Transcripts + metadata
+  - Status: ❌ Not indexed
+  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Source: https://soundcloud.com/planetaryregeneration
+
+#### Community Platforms
+- [ ] **forum.regen.network** - Full historical
+  - Status: ❌ Not indexed
+  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Type: Discourse forum (API key optional for better rate limits)
+  
+- [ ] **forum.regencommons.com** - Full historical
+  - Status: ❌ Not indexed
+  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Type: Discourse forum (API key optional)
+  
+- [ ] **Discord History** - With permissions
+  - Status: ❌ Not indexed
+  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Notes: Requires bot with read access
+  
+- [ ] **Twitter/X @regennetwork** - Timeline
+  - Status: ❌ Not indexed
+  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Strategy: Historical scrape + Basic API for ongoing
+
+#### Internal Knowledge
+- [ ] **RND PBC Notion KOI Database**
+  - Status: ❌ Not indexed
+  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Notes: Uses naming convention, not actual KOI node
+  
+- [ ] **Curated Foundation Documents**
+  - Status: ❌ Not indexed
+  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Sources: https://www.regen.foundation/publications
+  
+- [x] **Regenie Corpus** - AI training data
+  - Status: ✅ Indexed (3 documents)
+  - [x] Collected | [x] Embedded | [x] Knowledge Graph
+  - Source: https://github.com/regen-network/regenie-corpus
+  
+- [ ] **Token Economics WG Page**
+  - Status: ❌ Not indexed
+  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Source: https://forum.regen.network/t/regen-tokenomics-wg/19
+  - Notes: Overlaps with forum.regen.network
+
+#### Live Data Sources
+- [x] **MCP Server** - Jean Carlo's API
+  - Status: ✅ Built and ready (2 documents)
+  - [x] Collected | [x] Embedded | [x] Knowledge Graph
+  - Source: https://github.com/regen-network/mcp
+  
+- [ ] **Registry API** - Real-time credit availability
+  - Status: ❌ Not configured
+  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Endpoints:
+    - /regen/ecocredit/v1/classes (all credit classes)
+    - /regen/ecocredit/v1/batches (credit issuances)
+    - /regen/ecocredit/marketplace/v1/sell-orders (marketplace)
+    - /regen/ecocredit/v1/projects (project metadata)
+  - Notes: 6-hour refresh cycle, <2 second response required
+
+### Summary Statistics
+- **Total Documents Indexed**: 134 documents
+- **Total Chunks Generated**: 266 chunks  
+- **Total Embeddings**: 436 embeddings
+- **Sources Active**: 10/20 sources
+- **Target**: 15,000+ documents
+- **Knowledge Graph**: 96 entities, 290 unique relationships
+
+### Next Steps
+1. ✅ Phase 1: Document Collection - Complete (134 docs)
+2. ✅ Phase 2: Embedding Generation - Complete (436 embeddings) 
+3. ✅ Phase 3: Knowledge Graph - Complete (96 entities)
+4. Configure and index Discourse forums (need API keys)
+5. ✅ GitLab whitepapers collection - Complete
+6. Implement Registry API integration for live data
+7. Configure social media collectors (Discord bot, Twitter API)
+8. Scrape more Medium articles (currently 10/100+ available)
+9. Deep crawl foundation and registry websites
+
 ## 🔧 Configuration
 
 ### Data Sources (`indexing/config/sources.yaml`)
