@@ -70,7 +70,7 @@ sources:
           importance: high  # Token Economics Working Group
     
     - name: regencommons-forum
-      url: https://forum.regencommons.com
+      url: https://regencommons.discourse.group
       api_key: ${DISCOURSE_API_KEY_COMMONS}  # Optional
       test_limit: 5
       categories: all

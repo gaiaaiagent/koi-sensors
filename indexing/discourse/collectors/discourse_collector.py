@@ -9,15 +9,15 @@ from datetime import datetime
 from loguru import logger
 import json
 
-from .base_collector import BaseCollector, Document
+from ...collectors.base_collector import BaseCollector, Document
 
 # Handle both relative and absolute imports
 try:
-    from ..utils.credential_manager import get_credential_manager
+    from ...utils.credential_manager import get_credential_manager
 except ImportError:
     import sys
     from pathlib import Path
-    sys.path.append(str(Path(__file__).parent.parent))
+    sys.path.append(str(Path(__file__).parent.parent.parent))
     from utils.credential_manager import get_credential_manager
 
 
@@ -206,11 +206,12 @@ class DiscourseCollector(BaseCollector):
         try:
             headers = self._get_headers(api_key)
             
-            # Determine endpoint
+            # Determine endpoint - use working format
             if category == 'all' or not category:
                 endpoint = f"{forum_url}/latest.json"
             else:
-                endpoint = f"{forum_url}/c/{category}.json"
+                # Try simplified category slug format that works
+                endpoint = f"{forum_url}/c/{category.lower().replace(' ', '-')}.json"
             
             response = await self.client.get(endpoint, headers=headers)
             
@@ -247,6 +248,7 @@ class DiscourseCollector(BaseCollector):
             topic_title = topic.get('title', 'Untitled')
             
             headers = self._get_headers(api_key)
+            # Use simplified endpoint that works without authentication
             response = await self.client.get(f"{forum_url}/t/{topic_id}.json", headers=headers)
             
             if response.status_code != 200:

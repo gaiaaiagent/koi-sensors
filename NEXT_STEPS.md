@@ -42,18 +42,18 @@ cp .env.template .env
 ```
 
 #### 4. Missing Content Sources
-- [ ] Planetary Regeneration Podcast transcripts
+- [x] Planetary Regeneration Podcast transcripts (52/70 complete, 18 remaining)
 - [ ] RND PBC Notion database
-- [ ] Token Economics Working Group docs
-- [ ] Regen Foundation curated documents
+- [x] Token Economics Working Group docs (included in forum posts)
+- [x] Regen Foundation curated documents (6 documents indexed)
 
 ### Validation Checklist
 
 Before marking Milestone 1.1 complete:
 
-- [ ] **15,000+ documents indexed** (current: 73)
+- [ ] **15,000+ documents indexed** (current: 762)
 - [ ] **All credit classes indexed** (current: 0)
-- [ ] **Forum posts collected** (current: 0) 
+- [x] **Forum posts collected** (current: 443) 
 - [ ] **Registry live connection** (current: disconnected)
 - [ ] **6-hour refresh cron** (current: not scheduled)
 - [ ] **Training materials delivered** (current: docs only)

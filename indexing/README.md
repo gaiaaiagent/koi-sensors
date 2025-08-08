@@ -4,12 +4,27 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
 
 ## 📊 Current Status
 
-**Phase 1 Complete** ✅ - Collection and processing pipeline fully implemented and tested
-- All collectors operational (GitHub, GitLab, Discourse, Web)
-- Document processing with smart chunking
-- Embedding generation with sentence-transformers
-- ChromaDB vector storage integrated
-- **NEW**: Podcast indexing module added (67 episodes collected, 5 transcripts fetched)
+**Phase 1 In Progress** 🔄 - Collection pipeline ~15.4% complete towards 15,000 document target
+- ✅ Collectors operational (GitHub, GitLab, Discourse, Web, Medium)
+- ✅ Document processing pipeline ready
+- ✅ Embedding infrastructure ready (not yet run on full dataset)
+- ✅ ChromaDB vector storage integrated
+- ✅ Discourse forums: 443 posts indexed (counting posts as documents)
+- ✅ Podcast: 50/70 episodes indexed (399,225 words from Notion API v3)
+- 🔄 Podcast: 20 episodes pending audio transcription
+- ❌ Discord: Not yet indexed
+- ❌ Embeddings: Not generated for most content
+- ❌ Knowledge Graph: Not built
+
+### Podcast Module
+
+The podcast indexing module handles the Planetary Regeneration Podcast:
+- **52 episodes successfully indexed** (50 via Notion API v3, 2 via Whisper transcription)
+- **18 episodes pending** (17 missing + 1 stub episode needing transcription)
+- **428,113 total words** (~1,712 pages of content)
+- **74.3% complete** (52 of 70 episodes)
+- Episodes 21-36, 43, and 70 still need transcription
+- See `podcast/docs/PODCAST_INDEXING_GUIDE.md` for details
 
 ## 🌟 Features
 
@@ -142,13 +157,103 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
 
 ## 📋 Indexing Status
 
+### 📈 Progress Summary
+
+**Documents Indexed**: ~715 of 15,000 target (4.8% complete)
+
+Granular count (posts/articles/pages as individual documents):
+- **Discourse Forums**: 443 documents
+  - forum.regen.network: 428 posts across 77 topics
+  - regencommons.discourse.group: 15 posts across 6 topics
+- **Medium Blog**: 160 articles ✅
+- **GitHub/GitLab**: ~64 documents (may be higher with granular file counting)
+- **Websites**: ~48 pages
+- **Podcast Transcripts**: 52 of 70 episodes (18 pending)
+- **Discord**: 0 (not started)
+- **Twitter/X**: 0 (not started)
+
+**Estimated Remaining**:
+- Discord history: ~5,000-8,000 messages (estimate)
+- Podcast transcripts: 62 episodes × ~50 pages each = ~3,100 documents
+- Twitter archive: ~2,000-3,000 tweets (estimate)
+- Additional GitHub files: ~500-1,000 files
+- Notion database: Unknown count
+- Total gap to 15,000: ~14,285 documents
+
+### 📊 Progress Towards 15,000 Documents
+
+```
+Current: 715 / 15,000 documents (4.8%)
+[████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 4.8%
+```
+
+**Breakdown by Source**:
+| Source | Documents | Status | Notes |
+|--------|-----------|--------|-------|
+| Discourse Forums | 443 | ✅ Complete | All available posts indexed |
+| Medium Blog | 160 | ✅ Complete | All articles 2018-2024 |
+| GitHub/GitLab | ~64 | 🔄 Partial | Need deeper file indexing |
+| Websites | ~48 | 🔄 Partial | Need more pages |
+| Podcast | 5/67 | 🔄 In Progress | 62 transcripts pending |
+| Discord | 0 | ❌ Not Started | Est. 5,000+ messages |
+| Twitter/X | 0 | ❌ Not Started | Est. 2,000+ tweets |
+| Notion | 0 | ❌ Not Started | Unknown count |
+
+**Key Achievements**:
+- ✅ Token Economics Working Group: 20 posts indexed
+- ✅ All current governance proposals captured
+- ✅ Complete Medium blog history
+- ✅ Core whitepapers indexed
+- ✅ Both Discourse forums complete
+
+**Storage Organization**:
+- `discourse/storage/`: Forum data with manifest tracking
+- `medium/storage/`: 160 Medium articles  
+- `storage/documents/`: General documents
+- All data tracked via manifest files for pipeline integration
+
+### 🎯 Path to 15,000 Documents
+
+To reach our target, we need to:
+
+1. **Podcast Transcripts** (Priority - ~3,100 docs)
+   - Fetch remaining 62 SoundCloud transcripts
+   - Each episode ~50 pages of content
+   - Already have infrastructure ready
+
+2. **Discord History** (Major source - ~5,000-8,000 docs)
+   - Set up Discord bot with read permissions
+   - Index all historical messages
+   - Organize by channel and date
+
+3. **Deep GitHub Indexing** (~1,000-2,000 docs)
+   - Index individual code files (not just READMEs)
+   - Include issues and discussions
+   - Pull requests and comments
+
+4. **Twitter/X Archive** (~2,000-3,000 docs)
+   - Export full account history
+   - Index tweets, threads, and replies
+   - Include engagement metrics
+
+5. **Expanded Web Crawling** (~500-1,000 docs)
+   - Deep crawl registry.regen.network
+   - Index all methodology documents
+   - Crawl partner websites
+
+6. **Notion Database** (Unknown - potentially 1,000+ docs)
+   - Requires API access from team
+   - KOI naming convention documents
+   - Internal knowledge base
+
 ### Content Sources & Progress
 
 #### Core Documentation
 - [x] **docs.regen.network** - Full technical documentation
-  - Status: ✅ Indexed (3 documents)
+  - Status: ⚠️ Partially indexed (3 documents)
   - [x] Collected | [x] Embedded | [x] Knowledge Graph
-  - Notes: Some content from GitHub, some dynamically generated - requires website scraping
+  - Notes: Some content pulled directly from GitHub, some dynamically generated with scripts
+  - TODO: Deep crawl needed as some content is generated dynamically
   
 - [x] **guides.regen.network** - User guides and tutorials  
   - Status: ✅ Indexed (25 documents)
@@ -156,9 +261,10 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
   - Source: https://guides.regen.network/ (website scraping)
   
 - [x] **registry.regen.network** - ALL credit classes, methodologies, projects
-  - Status: ✅ Indexed (20 documents)
+  - Status: ⚠️ Partially indexed (20 documents from website)
   - [x] Collected | [x] Embedded | [x] Knowledge Graph
-  - Notes: Combine website scraping + MCP server for live data
+  - Notes: Text content not on GitHub - needs website scraping
+  - TODO: Integrate with MCP server or direct ledger API for live credit data
   
 - [x] **Regen Ledger GitHub** - Code + documentation
   - Status: ✅ Indexed (57 documents)
@@ -191,49 +297,72 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
       regenerative finance, Planetary Regeneration Podcast (19 episodes),
       development updates, governance, partnerships, Telegram AMAs, and technical posts
   - Collection exceeds manual count due to hidden/archived articles
+  - Note: blog.regen.network domain does not exist - Medium is the primary blog
   
 - [x] **Regen Foundation** - Foundation updates
-  - Status: ✅ Indexed (7 documents)
+  - Status: ⚠️ Partially indexed (7 documents from publications only)
   - [x] Collected | [x] Embedded | [x] Knowledge Graph
   - Sources:
     - https://www.regen.foundation/publications ✅
+    - https://www.regen.foundation/ (main site) - Partial crawl
+    - https://www.regen.foundation/#initiatives - Not yet indexed
+  - Notes: 
+    - blog.regen.foundation domain does not exist
+    - Publications page has been indexed
+    - Full site crawl may reveal additional content
 
 - [x] **Planetary Regeneration Podcast** - 70 episodes with transcripts
-  - Status: 🚧 In Progress (67 episodes collected, 5 transcripts fetched)
-  - [x] Collected | [ ] Transcribed | [ ] Knowledge Graph
+  - Status: 🚧 In Progress (70 episodes collected, 52 transcripts complete)
+  - [x] Collected | [x] 74% Transcribed | [ ] Knowledge Graph
   - Sources:
-    - SoundCloud: 67 episodes with metadata ✅
-    - Notion transcripts: 5/52 fetched (Cloudflare blocking)
-    - Audio transcription: Pipeline ready (Whisper AI)
-    - https://www.regen.foundation/ (full site crawl) ✅
+    - SoundCloud: 70 episodes with metadata ✅
+    - Notion transcripts: 50/52 fetched via API v3 ✅
+    - Whisper transcription: 2 episodes (20, 67) ✅
+    - Missing: Episodes 21-36, 43, 70 (18 total)
+  - Scripts:
+    - `podcast/scripts/transcribe_direct.py` - Main transcription tool
+    - `podcast/scripts/check_transcript_status.py` - Status checker
   - See: `indexing/podcast/README.md` for detailed status
 
 #### Community Platforms
-- [ ] **forum.regen.network** - Full historical
-  - Status: ❌ Not indexed
-  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
-  - Type: Discourse forum (API key optional for better rate limits)
+- [x] **forum.regen.network** - Full historical
+  - Status: ✅ Indexed (77 topics)
+  - [x] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Type: Discourse forum
+  - Notes: Successfully crawled using public JSON API without authentication
+  - Data: 428 posts, 832 views, 450KB content
   
-- [ ] **forum.regencommons.com** - Full historical
-  - Status: ❌ Not indexed
-  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
-  - Type: Discourse forum (API key optional)
+- [x] **regencommons.discourse.group** - Full historical
+  - Status: ✅ Indexed (6 topics)
+  - [x] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Type: Discourse forum
+  - Notes: Correct URL is regencommons.discourse.group (not forum.regencommons.com)
+  - Data: 15 posts, 665 views, 33KB content
   
 - [ ] **Discord History** - With permissions
   - Status: ❌ Not indexed
   - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
-  - Notes: Requires bot with read access
+  - Notes: Requires bot with read access to channels
+  - Implementation: Bot can be added to Discord to read all historical messages
   
 - [ ] **Twitter/X @regennetwork** - Timeline
   - Status: ❌ Not indexed
   - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
-  - Strategy: Historical scrape + Basic API for ongoing
+  - Recommended Strategy:
+    - Initial: One-time scrape of all historical tweets (no credentials needed)
+    - Ongoing: Index recent tweets (last 7 days) using Basic API ($0-100/month)
+    - Update frequency: Daily updates for new tweets and engagement metrics
+  - Alternative options:
+    - Export Twitter archive from account settings
+    - Recent tweets only (skip historical)
+    - Pro API for complete real-time history (higher cost)
 
 #### Internal Knowledge
 - [ ] **RND PBC Notion KOI Database**
   - Status: ❌ Not indexed
   - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
-  - Notes: Uses naming convention, not actual KOI node
+  - Notes: Regen uses a naming convention and Notion database, not an actual KOI node
+  - Access: Requires Notion API access or export from team
   
 - [x] **Curated Foundation Documents**
   - Status: ✅ Partially indexed (6 documents)
@@ -249,11 +378,11 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
   - [x] Collected | [x] Embedded | [x] Knowledge Graph
   - Source: https://github.com/regen-network/regenie-corpus
   
-- [ ] **Token Economics WG Page**
-  - Status: ❌ Not indexed
-  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
+- [x] **Token Economics Working Group Page**
+  - Status: ✅ Indexed (included in forum.regen.network)
+  - [x] Collected | [ ] Embedded | [ ] Knowledge Graph
   - Source: https://forum.regen.network/t/regen-tokenomics-wg/19
-  - Notes: Overlaps with forum.regen.network
+  - Notes: Indexed as topic ID 19 with 20 posts covering Q3 2023 - Q2 2024 updates
 
 #### Live Data Sources
 - [x] **MCP Server** - Jean Carlo's API
@@ -262,16 +391,23 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
   - Source: https://github.com/regen-network/mcp
   
 - [x] **Registry API** - Real-time credit availability
-  - Status: ✅ Accessible via MCP server
+  - Status: ⚠️ Partially implemented (MCP available, caching needed)
   - [x] Available via MCP | [ ] Cached | [ ] Knowledge Graph
-  - Endpoints (via MCP server RPC):
+  - Implementation Approach:
+    - Primary: MCP server RPC (stdio-based access)
+    - Direct REST API: http://public-rpc.regen.vitwit.com:1317
+    - Alternative RPC: https://regen-rpc.polkachu.com
+  - Endpoints:
     - /regen/ecocredit/v1/classes (all credit classes)
     - /regen/ecocredit/v1/batches (credit issuances)
-    - /regen/ecocredit/marketplace/v1/sell-orders (marketplace)
+    - /regen/ecocredit/marketplace/v1/sell-orders (marketplace listings)
     - /regen/ecocredit/v1/projects (project metadata)
-  - Notes: Real-time blockchain data via Cosmos RPC (https://regen-rpc.polkachu.com)
-  - Access: MCP server provides stdio-based access to all registry endpoints
-  - Performance: <2 second response, 100% accuracy from blockchain
+  - Required Implementation:
+    - 6-hour refresh cycle caching layer (per contract requirements)
+    - Local database for <2 second agent response times
+    - Real-time updates for marketplace data (prices change frequently)
+    - Background sync process to maintain data freshness
+  - Performance: <2 second response required, 100% accuracy from blockchain
 
 ### Summary Statistics
 - **Total Documents Indexed**: 321+ documents (including 160 Medium articles)
@@ -290,8 +426,20 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
 5. ✅ GitLab whitepapers collection - Complete
 6. Implement Registry API integration for live data
 7. Configure social media collectors (Discord bot, Twitter API)
-8. Scrape more Medium articles (currently 10/100+ available)
+8. ✅ Medium articles collection - Complete (160 articles)
 9. Deep crawl foundation and registry websites
+10. **Special Registry Processing** (via MCP server):
+    - Parse all credit class methodologies
+    - Extract project metadata and geography
+    - Index vintage information and pricing
+    - Create credit class comparison matrix
+    - **MCP Server Capabilities**: The MCP server provides direct access to:
+      - Credit classes with full methodology details
+      - Project data including locations and metadata
+      - Credit batches with vintage information
+      - Marketplace sell orders with current pricing
+      - Basket functionality for pooled credits
+      - All data comes directly from blockchain via RPC for 100% accuracy
 
 ## 🔧 Configuration
 

@@ -27,7 +27,26 @@
       "Bash(git add:*)",
       "Bash(git rm:*)",
       "Bash(git commit:*)",
-      "Bash(git remote add:*)"
+      "Bash(git remote add:*)",
+      "Bash(grep:*)",
+      "WebFetch(domain:regennetwork.notion.site)",
+      "Bash(playwright install:*)",
+      "Bash(# Move podcast-specific collectors\nmv indexing/collectors/soundcloud_collector.py indexing/podcast/collectors/ 2>/dev/null || true\n\n# Move podcast-specific scripts\nmv indexing/scripts/*podcast*.py indexing/podcast/scripts/ 2>/dev/null || true\nmv indexing/scripts/*notion_transcript*.py indexing/podcast/scripts/ 2>/dev/null || true\nmv indexing/scripts/combine_transcripts.py indexing/podcast/scripts/ 2>/dev/null || true\nmv indexing/scripts/fetch_notion*.py indexing/podcast/scripts/ 2>/dev/null || true\n\n# Move podcast storage\nmv indexing/storage/notion_transcripts indexing/podcast/storage/ 2>/dev/null || true\nmv indexing/storage/podcast_* indexing/podcast/storage/ 2>/dev/null || true\n\n# Move audio processor\nmv indexing/processors/audio_transcriber.py indexing/podcast/ 2>/dev/null || true\n\n# Move TODO file\nmv indexing/TODO_NOTION_API.md indexing/podcast/docs/ 2>/dev/null || true\n\necho \"\"Files moved successfully\"\")",
+      "Bash(git reset:*)",
+      "Bash(git push:*)",
+      "Bash(for f in website_*.json)",
+      "Bash(do grep -l \"regen.foundation\" \"$f\")",
+      "Bash(done)",
+      "Bash(timeout 120 python:*)",
+      "Bash(timeout 300 python indexing/scripts/collect_medium_aggressive.py)",
+      "Bash(for f in medium_*.json)",
+      "Bash(do grep -l \"regen-network.medium.com\" \"$f\")",
+      "Bash(timeout 300 python indexing/scripts/collect_missing_medium.py)",
+      "Bash(true)",
+      "Bash(jq:*)",
+      "Bash(yt-dlp:*)",
+      "Bash(timeout 30 yt-dlp:*)",
+      "Bash(timeout:*)"
     ],
     "deny": []
   }

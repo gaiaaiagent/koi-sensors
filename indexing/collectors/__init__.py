@@ -4,7 +4,7 @@ Document collectors for various data sources
 
 from .base_collector import BaseCollector, Document, BatchCollector
 from .git_collector import GitCollector
-from .discourse_collector import DiscourseCollector
+# from .discourse_collector import DiscourseCollector  # Moved to discourse/collectors/
 from .web_scraper import WebScraper
 
 __all__ = [
@@ -12,6 +12,6 @@ __all__ = [
     'Document', 
     'BatchCollector',
     'GitCollector',
-    'DiscourseCollector',
+    # 'DiscourseCollector',  # Moved to discourse/collectors/
     'WebScraper'
 ]

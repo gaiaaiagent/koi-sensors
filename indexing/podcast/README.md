@@ -13,22 +13,24 @@ The podcast indexing system collects and processes ~70 episodes of the Planetary
 
 ### ✅ Completed
 - SoundCloud collector implemented and tested
-- Successfully collected 67 episodes from SoundCloud
+- Successfully collected 70 episodes from SoundCloud
 - Discovered 52 transcript URLs on Notion
-- Successfully fetched 5 Notion transcripts (episodes 1-5)
+- Successfully fetched 50 Notion transcripts via API v3
 - Audio transcription pipeline ready with Whisper
-- Batch fetching scripts with rate limiting
+- Transcribed 2 episodes using Whisper (episodes 20, 67)
+- **74.3% complete**: 52 of 70 episodes have transcripts
 
 ### 🚧 In Progress
-- Remaining 47 episodes blocked by Cloudflare
-- Need Notion API access for reliable transcript fetching
+- 18 episodes still need transcription (episodes 21-36, 43, 70)
+- Episode 70 is a stub that needs real transcript
 
 ### 📊 Statistics
-- **Total Episodes**: 67 (on SoundCloud)
-- **Notion Transcripts Available**: 52
-- **Successfully Fetched**: 5
-- **Blocked by Cloudflare**: 47
-- **Ready for Audio Transcription**: All episodes
+- **Total Episodes**: 70 (on SoundCloud)
+- **Transcripts Complete**: 52 episodes (428,113 words)
+- **Notion API v3**: 50 episodes fetched
+- **Whisper Transcribed**: 2 episodes
+- **Missing**: 17 episodes
+- **Stub**: 1 episode (needs replacement)
 
 ## Directory Structure
 
@@ -42,6 +44,8 @@ podcast/
 │   ├── fetch_notion_transcripts_batch.py # Batch fetch with delays
 │   ├── fetch_notion_playwright_batch.py # Browser-based fetching
 │   ├── transcribe_podcast_audio.py # Audio transcription pipeline
+│   ├── transcribe_direct.py       # Main transcription tool for missing episodes
+│   ├── check_transcript_status.py # Check which episodes are missing
 │   └── combine_transcripts.py     # Merge all sources
 ├── storage/
 │   ├── notion_transcripts/        # Notion transcript links
@@ -83,7 +87,19 @@ python indexing/podcast/scripts/fetch_notion_transcripts_batch.py --aggressive
 python indexing/podcast/scripts/fetch_notion_playwright_batch.py --test
 ```
 
-### 3. Transcribe from Audio
+### 3. Transcribe Missing Episodes
+
+#### Main Tool (Recommended)
+```bash
+# Check which episodes are missing
+python indexing/podcast/scripts/check_transcript_status.py
+
+# Transcribe all missing episodes automatically
+source venv/bin/activate
+python indexing/podcast/scripts/transcribe_direct.py
+```
+
+#### Alternative: Manual Transcription
 ```bash
 # Test with first 3 episodes
 python indexing/podcast/scripts/transcribe_podcast_audio.py --test

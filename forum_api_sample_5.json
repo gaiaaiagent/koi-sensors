@@ -1,0 +1,673 @@
+{
+  "post_stream": {
+    "posts": [
+      {
+        "id": 6,
+        "name": "system",
+        "username": "system",
+        "avatar_template": "https://canada1.discourse-cdn.com/flex004/uploads/regen/original/1X/ff0a42fed764a97347d42653567d18b7938ac7ce.png",
+        "created_at": "2025-06-05T14:24:52.420Z",
+        "cooked": "<p>We are so glad you joined us.</p>\n<blockquote>\n<h2>Regen</h2>\n<p>Regen is a sovereign, proof-of-stake blockchain built to ensure utility for ecological data and climate markets.</p>\n</blockquote>\n<p>Here are some things you can do to get started:</p>\n<p><img src=\"https://emoji.discourse-cdn.com/twitter/speaking_head.png?v=14\" title=\":speaking_head:\" class=\"emoji\" alt=\":speaking_head:\" loading=\"lazy\" width=\"20\" height=\"20\"> <strong>Introduce yourself</strong> by adding your picture and information about yourself and your interests to <a href=\"/my/preferences/account\">your profile</a>. What is one thing you\u2019d like to be asked about?</p>\n<p><img src=\"https://emoji.discourse-cdn.com/twitter/open_book.png?v=14\" title=\":open_book:\" class=\"emoji\" alt=\":open_book:\" loading=\"lazy\" width=\"20\" height=\"20\"> <strong>Get to know the community</strong> by <a href=\"/latest\">browsing discussions</a> that are already happening here. When you find a post interesting, informative, or entertaining, use the <img src=\"https://emoji.discourse-cdn.com/twitter/heart.png?v=14\" title=\":heart:\" class=\"emoji\" alt=\":heart:\" loading=\"lazy\" width=\"20\" height=\"20\"> to show your appreciation or support!</p>\n<p><img src=\"https://emoji.discourse-cdn.com/twitter/handshake.png?v=14\" title=\":handshake:\" class=\"emoji\" alt=\":handshake:\" loading=\"lazy\" width=\"20\" height=\"20\"> <strong>Contribute</strong> by commenting, sharing your own perspective, asking questions, or offering feedback in the discussion. Before replying or starting new topics, please review the <a href=\"/faq\">Community Guidelines</a>.</p>\n<p><img src=\"https://emoji.discourse-cdn.com/twitter/envelope_with_arrow.png?v=14\" title=\":envelope_with_arrow:\" class=\"emoji\" alt=\":envelope_with_arrow:\" loading=\"lazy\" width=\"20\" height=\"20\"> <strong>Configure email &amp; notifications</strong> to make sure you stay in the loop! Discourse has a robust system for configuring emails, notifications and tracked topics. See <a href=\"https://forum.regen.network/t/configuring-email-notifications/448/1\" class=\"inline-onebox\">Configuring Email &amp; Notifications</a></p>\n<blockquote>\n<p>If you need help or have a suggestion, feel free to ask in <a class=\"hashtag-cooked\" href=\"/c/site-feedback/2\" data-type=\"category\" data-slug=\"site-feedback\" data-id=\"2\" data-style-type=\"square\"><span class=\"hashtag-icon-placeholder\"><svg class=\"fa d-icon d-icon-square-full svg-icon svg-node\"><use href=\"#square-full\"></use></svg></span><span>Site Feedback</span></a> or <a href=\"/about\">contact the admins</a>.</p>\n</blockquote>",
+        "post_number": 1,
+        "post_type": 1,
+        "posts_count": 2,
+        "updated_at": "2025-07-03T15:31:11.509Z",
+        "reply_count": 0,
+        "reply_to_post_number": null,
+        "quote_count": 0,
+        "incoming_link_count": 3,
+        "reads": 9,
+        "readers_count": 8,
+        "score": 31.8,
+        "yours": false,
+        "topic_id": 5,
+        "topic_slug": "welcome-to-regen-network",
+        "display_username": "system",
+        "primary_group_name": null,
+        "flair_name": null,
+        "flair_url": null,
+        "flair_bg_color": null,
+        "flair_color": null,
+        "flair_group_id": null,
+        "badges_granted": [],
+        "version": 4,
+        "can_edit": false,
+        "can_delete": false,
+        "can_recover": false,
+        "can_see_hidden_post": false,
+        "can_wiki": false,
+        "link_counts": [
+          {
+            "url": "/faq",
+            "internal": true,
+            "reflection": false,
+            "clicks": 1
+          },
+          {
+            "url": "/latest",
+            "internal": true,
+            "reflection": false,
+            "clicks": 1
+          },
+          {
+            "url": "/about",
+            "internal": true,
+            "reflection": false,
+            "clicks": 1
+          },
+          {
+            "url": "/c/site-feedback/2",
+            "internal": true,
+            "reflection": false,
+            "clicks": 0
+          },
+          {
+            "url": "https://forum.regen.network/t/configuring-email-notifications/448",
+            "internal": true,
+            "reflection": false,
+            "title": "Configuring Email & Notifications",
+            "clicks": 0
+          }
+        ],
+        "read": true,
+        "user_title": null,
+        "bookmarked": false,
+        "actions_summary": [
+          {
+            "id": 2,
+            "count": 1
+          }
+        ],
+        "moderator": true,
+        "admin": true,
+        "staff": true,
+        "user_id": -1,
+        "hidden": false,
+        "trust_level": 4,
+        "deleted_at": null,
+        "user_deleted": false,
+        "edit_reason": null,
+        "can_view_edit_history": true,
+        "wiki": false,
+        "mentioned_users": [],
+        "post_url": "/t/welcome-to-regen-network/5/1"
+      },
+      {
+        "id": 954,
+        "name": "Monty Merlin Bryant",
+        "username": "montymerlin",
+        "avatar_template": "/user_avatar/forum.regen.network/montymerlin/{size}/72_2.png",
+        "created_at": "2025-06-26T17:11:26.091Z",
+        "cooked": "<p>Hello Regen Network <img src=\"https://emoji.discourse-cdn.com/twitter/waving_hand.png?v=14\" title=\":waving_hand:\" class=\"emoji\" alt=\":waving_hand:\" loading=\"lazy\" width=\"20\" height=\"20\"><img src=\"https://emoji.discourse-cdn.com/twitter/waving_hand.png?v=14\" title=\":waving_hand:\" class=\"emoji\" alt=\":waving_hand:\" loading=\"lazy\" width=\"20\" height=\"20\"> <img src=\"https://emoji.discourse-cdn.com/twitter/tada.png?v=14\" title=\":tada:\" class=\"emoji\" alt=\":tada:\" loading=\"lazy\" width=\"20\" height=\"20\"><img src=\"https://emoji.discourse-cdn.com/twitter/tada.png?v=14\" title=\":tada:\" class=\"emoji\" alt=\":tada:\" loading=\"lazy\" width=\"20\" height=\"20\"></p>",
+        "post_number": 2,
+        "post_type": 1,
+        "posts_count": 2,
+        "updated_at": "2025-06-26T17:11:26.091Z",
+        "reply_count": 0,
+        "reply_to_post_number": null,
+        "quote_count": 0,
+        "incoming_link_count": 0,
+        "reads": 5,
+        "readers_count": 4,
+        "score": 106.0,
+        "yours": false,
+        "topic_id": 5,
+        "topic_slug": "welcome-to-regen-network",
+        "display_username": "Monty Merlin Bryant",
+        "primary_group_name": null,
+        "flair_name": null,
+        "flair_url": null,
+        "flair_bg_color": null,
+        "flair_color": null,
+        "flair_group_id": null,
+        "badges_granted": [],
+        "version": 1,
+        "can_edit": false,
+        "can_delete": false,
+        "can_recover": false,
+        "can_see_hidden_post": false,
+        "can_wiki": false,
+        "read": true,
+        "user_title": "",
+        "bookmarked": false,
+        "actions_summary": [
+          {
+            "id": 2,
+            "count": 3
+          }
+        ],
+        "moderator": false,
+        "admin": false,
+        "staff": false,
+        "user_id": 187,
+        "hidden": false,
+        "trust_level": 0,
+        "deleted_at": null,
+        "user_deleted": false,
+        "edit_reason": null,
+        "can_view_edit_history": true,
+        "wiki": false,
+        "mentioned_users": [],
+        "post_url": "/t/welcome-to-regen-network/5/2"
+      }
+    ],
+    "stream": [
+      6,
+      954
+    ]
+  },
+  "timeline_lookup": [
+    [
+      1,
+      64
+    ],
+    [
+      2,
+      42
+    ]
+  ],
+  "suggested_topics": [],
+  "tags": [],
+  "tags_descriptions": {},
+  "fancy_title": "Welcome to Regen Network! :wave:",
+  "id": 5,
+  "title": "Welcome to Regen Network! :wave:",
+  "posts_count": 2,
+  "created_at": "2025-06-05T14:24:52.369Z",
+  "views": 37,
+  "reply_count": 0,
+  "like_count": 4,
+  "last_posted_at": "2025-06-26T17:11:26.091Z",
+  "visible": true,
+  "closed": false,
+  "archived": false,
+  "has_summary": false,
+  "archetype": "regular",
+  "slug": "welcome-to-regen-network",
+  "category_id": 4,
+  "word_count": 186,
+  "deleted_at": null,
+  "user_id": -1,
+  "featured_link": null,
+  "pinned_globally": true,
+  "pinned_at": "2025-06-05T14:24:52.479Z",
+  "pinned_until": null,
+  "image_url": null,
+  "slow_mode_seconds": 0,
+  "draft": null,
+  "draft_key": "topic_5",
+  "draft_sequence": null,
+  "unpinned": null,
+  "pinned": true,
+  "current_post_number": 1,
+  "highest_post_number": 2,
+  "deleted_by": null,
+  "actions_summary": [
+    {
+      "id": 4,
+      "count": 0,
+      "hidden": false,
+      "can_act": false
+    },
+    {
+      "id": 8,
+      "count": 0,
+      "hidden": false,
+      "can_act": false
+    },
+    {
+      "id": 10,
+      "count": 0,
+      "hidden": false,
+      "can_act": false
+    },
+    {
+      "id": 7,
+      "count": 0,
+      "hidden": false,
+      "can_act": false
+    }
+  ],
+  "chunk_size": 20,
+  "bookmarked": false,
+  "topic_timer": null,
+  "unicode_title": "Welcome to Regen Network! \ud83d\udc4b",
+  "message_bus_last_id": 0,
+  "participant_count": 2,
+  "show_read_indicator": false,
+  "thumbnails": null,
+  "slow_mode_enabled_until": null,
+  "related_topics": [
+    {
+      "fancy_title": "Introduce yourself!",
+      "id": 377,
+      "title": "Introduce yourself!",
+      "slug": "introduce-yourself",
+      "posts_count": 8,
+      "reply_count": 0,
+      "highest_post_number": 8,
+      "image_url": null,
+      "created_at": "2021-03-29T01:09:33.000Z",
+      "last_posted_at": "2021-08-02T21:36:36.000Z",
+      "bumped": true,
+      "bumped_at": "2021-08-02T21:36:36.000Z",
+      "archetype": "regular",
+      "unseen": false,
+      "pinned": false,
+      "unpinned": null,
+      "visible": true,
+      "closed": false,
+      "archived": false,
+      "bookmarked": null,
+      "liked": null,
+      "tags": [],
+      "tags_descriptions": {},
+      "like_count": 0,
+      "views": 4,
+      "category_id": 4,
+      "featured_link": null,
+      "posters": [
+        {
+          "extras": null,
+          "description": "Original Poster",
+          "user": {
+            "id": 142,
+            "username": "regen.admin",
+            "name": "regen.admin",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/r/54ee81/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": null,
+          "description": "Frequent Poster",
+          "user": {
+            "id": 163,
+            "username": "Christian_Shearer",
+            "name": "Christian Shearer",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/c/b5e925/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": null,
+          "description": "Frequent Poster",
+          "user": {
+            "id": 146,
+            "username": "Zdeadex",
+            "name": "Zdeadex",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/z/85e7bf/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": null,
+          "description": "Frequent Poster",
+          "user": {
+            "id": 149,
+            "username": "Kamuel_Bob-Bliss_Dynamics",
+            "name": "Kamuel Bob-Bliss Dynamics",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/k/e9bcb4/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": "latest",
+          "description": "Most Recent Poster",
+          "user": {
+            "id": 172,
+            "username": "Arda_Doguer",
+            "name": "Arda Doguer",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/a/3da27b/{size}.png",
+            "trust_level": 1
+          }
+        }
+      ]
+    },
+    {
+      "fancy_title": "Proposal: Regen Network Ecosystem Narrative &amp; Fundraising Alignment Facilitation Work",
+      "id": 424,
+      "title": "Proposal: Regen Network Ecosystem Narrative & Fundraising Alignment Facilitation Work",
+      "slug": "proposal-regen-network-ecosystem-narrative-fundraising-alignment-facilitation-work",
+      "posts_count": 9,
+      "reply_count": 3,
+      "highest_post_number": 9,
+      "image_url": null,
+      "created_at": "2025-06-23T09:52:20.798Z",
+      "last_posted_at": "2025-07-08T16:14:54.072Z",
+      "bumped": true,
+      "bumped_at": "2025-07-08T16:14:54.072Z",
+      "archetype": "regular",
+      "unseen": false,
+      "pinned": false,
+      "unpinned": null,
+      "visible": true,
+      "closed": false,
+      "archived": false,
+      "bookmarked": null,
+      "liked": null,
+      "tags": [
+        "community-spend-pool"
+      ],
+      "tags_descriptions": {},
+      "like_count": 3,
+      "views": 88,
+      "category_id": 6,
+      "featured_link": null,
+      "posters": [
+        {
+          "extras": null,
+          "description": "Original Poster",
+          "user": {
+            "id": 20,
+            "username": "giulioquarta",
+            "name": "giulioquarta",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/g/ba8739/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": null,
+          "description": "Frequent Poster",
+          "user": {
+            "id": 179,
+            "username": "RegenChristian",
+            "name": null,
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/r/b782af/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": null,
+          "description": "Frequent Poster",
+          "user": {
+            "id": 174,
+            "username": "James",
+            "name": null,
+            "avatar_template": "/user_avatar/forum.regen.network/james/{size}/53_2.png",
+            "trust_level": 0
+          }
+        },
+        {
+          "extras": "latest",
+          "description": "Most Recent Poster",
+          "user": {
+            "id": 12,
+            "username": "brawlaphant",
+            "name": "brawlaphant",
+            "avatar_template": "/user_avatar/forum.regen.network/brawlaphant/{size}/71_2.png",
+            "trust_level": 1
+          }
+        }
+      ]
+    },
+    {
+      "fancy_title": "Useful Links and Social Media",
+      "id": 376,
+      "title": "Useful Links and Social Media",
+      "slug": "useful-links-and-social-media",
+      "posts_count": 1,
+      "reply_count": 0,
+      "highest_post_number": 1,
+      "image_url": null,
+      "created_at": "2021-03-29T01:15:25.000Z",
+      "last_posted_at": "2021-03-29T01:15:25.000Z",
+      "bumped": false,
+      "bumped_at": "2021-03-29T01:15:25.000Z",
+      "archetype": "regular",
+      "unseen": false,
+      "pinned": false,
+      "unpinned": null,
+      "visible": true,
+      "closed": false,
+      "archived": false,
+      "bookmarked": null,
+      "liked": null,
+      "tags": [],
+      "tags_descriptions": {},
+      "like_count": 0,
+      "views": 2,
+      "category_id": 4,
+      "featured_link": null,
+      "posters": [
+        {
+          "extras": "latest single",
+          "description": "Original Poster, Most Recent Poster",
+          "user": {
+            "id": 142,
+            "username": "regen.admin",
+            "name": "regen.admin",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/r/54ee81/{size}.png",
+            "trust_level": 1
+          }
+        }
+      ]
+    },
+    {
+      "fancy_title": "REGEN Network Summary of Insights and Key Recommendations (May 2024)",
+      "id": 78,
+      "title": "REGEN Network Summary of Insights and Key Recommendations (May 2024)",
+      "slug": "regen-network-summary-of-insights-and-key-recommendations-may-2024",
+      "posts_count": 5,
+      "reply_count": 0,
+      "highest_post_number": 5,
+      "image_url": null,
+      "created_at": "2024-05-31T00:28:24.020Z",
+      "last_posted_at": "2024-06-04T18:52:19.598Z",
+      "bumped": true,
+      "bumped_at": "2024-06-04T18:52:19.598Z",
+      "archetype": "regular",
+      "unseen": false,
+      "pinned": false,
+      "unpinned": null,
+      "visible": true,
+      "closed": false,
+      "archived": false,
+      "bookmarked": null,
+      "liked": null,
+      "tags": [],
+      "tags_descriptions": {},
+      "like_count": 0,
+      "views": 1,
+      "category_id": 6,
+      "featured_link": null,
+      "posters": [
+        {
+          "extras": null,
+          "description": "Original Poster",
+          "user": {
+            "id": 10,
+            "username": "Brian_Weinberg",
+            "name": "Brian Weinberg",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/b/ed655f/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": null,
+          "description": "Frequent Poster",
+          "user": {
+            "id": 37,
+            "username": "ecowealth.klima",
+            "name": "ecowealth.klima",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/e/ecccb3/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": null,
+          "description": "Frequent Poster",
+          "user": {
+            "id": 8,
+            "username": "Will-Regen_Foundation",
+            "name": "Will-Regen Foundation",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/w/e95f7d/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": "latest",
+          "description": "Most Recent Poster",
+          "user": {
+            "id": 15,
+            "username": "Gregory_RND",
+            "name": "Gregory_RND",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/g/c67d28/{size}.png",
+            "trust_level": 1
+          }
+        }
+      ]
+    },
+    {
+      "fancy_title": "Recruiting land stewards",
+      "id": 247,
+      "title": "Recruiting land stewards",
+      "slug": "recruiting-land-stewards",
+      "posts_count": 3,
+      "reply_count": 0,
+      "highest_post_number": 3,
+      "image_url": null,
+      "created_at": "2021-09-23T15:00:26.000Z",
+      "last_posted_at": "2021-11-22T15:00:13.000Z",
+      "bumped": true,
+      "bumped_at": "2021-11-22T15:00:13.000Z",
+      "archetype": "regular",
+      "unseen": false,
+      "pinned": false,
+      "unpinned": null,
+      "visible": true,
+      "closed": false,
+      "archived": false,
+      "bookmarked": null,
+      "liked": null,
+      "tags": [],
+      "tags_descriptions": {},
+      "like_count": 0,
+      "views": 4,
+      "category_id": 4,
+      "featured_link": null,
+      "posters": [
+        {
+          "extras": null,
+          "description": "Original Poster",
+          "user": {
+            "id": 141,
+            "username": "Mars",
+            "name": "Mars",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/m/e56c9b/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": null,
+          "description": "Frequent Poster",
+          "user": {
+            "id": 142,
+            "username": "regen.admin",
+            "name": "regen.admin",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/r/54ee81/{size}.png",
+            "trust_level": 1
+          }
+        },
+        {
+          "extras": "latest",
+          "description": "Most Recent Poster",
+          "user": {
+            "id": 143,
+            "username": "Ben_Whately",
+            "name": "Ben Whately",
+            "avatar_template": "https://avatars.discourse-cdn.com/v4/letter/b/e99b99/{size}.png",
+            "trust_level": 1
+          }
+        }
+      ]
+    }
+  ],
+  "summarizable": false,
+  "discourse_zendesk_plugin_zendesk_id": null,
+  "discourse_zendesk_plugin_zendesk_url": "https://your-url.zendesk.com/agent/tickets/",
+  "details": {
+    "can_edit": false,
+    "notification_level": 1,
+    "participants": [
+      {
+        "id": -1,
+        "username": "system",
+        "name": "system",
+        "avatar_template": "/user_avatar/forum.regen.network/system/{size}/1_2.png",
+        "post_count": 1,
+        "primary_group_name": null,
+        "flair_name": null,
+        "flair_url": null,
+        "flair_color": null,
+        "flair_bg_color": null,
+        "flair_group_id": null,
+        "admin": true,
+        "moderator": true,
+        "trust_level": 4
+      },
+      {
+        "id": 187,
+        "username": "montymerlin",
+        "name": "Monty Merlin Bryant",
+        "avatar_template": "/user_avatar/forum.regen.network/montymerlin/{size}/72_2.png",
+        "post_count": 1,
+        "primary_group_name": null,
+        "flair_name": null,
+        "flair_url": null,
+        "flair_color": null,
+        "flair_bg_color": null,
+        "flair_group_id": null,
+        "trust_level": 0
+      }
+    ],
+    "created_by": {
+      "id": -1,
+      "username": "system",
+      "name": "system",
+      "avatar_template": "https://canada1.discourse-cdn.com/flex004/uploads/regen/original/1X/ff0a42fed764a97347d42653567d18b7938ac7ce.png"
+    },
+    "last_poster": {
+      "id": 187,
+      "username": "montymerlin",
+      "name": "Monty Merlin Bryant",
+      "avatar_template": "/user_avatar/forum.regen.network/montymerlin/{size}/72_2.png"
+    },
+    "links": [
+      {
+        "url": "/about",
+        "title": null,
+        "internal": true,
+        "attachment": false,
+        "reflection": false,
+        "clicks": 1,
+        "user_id": -1,
+        "domain": "regen.discourse.group",
+        "root_domain": "regen.discourse.group"
+      },
+      {
+        "url": "/faq",
+        "title": null,
+        "internal": true,
+        "attachment": false,
+        "reflection": false,
+        "clicks": 1,
+        "user_id": -1,
+        "domain": "regen.discourse.group",
+        "root_domain": "regen.discourse.group"
+      },
+      {
+        "url": "/latest",
+        "title": null,
+        "internal": true,
+        "attachment": false,
+        "reflection": false,
+        "clicks": 1,
+        "user_id": -1,
+        "domain": "regen.discourse.group",
+        "root_domain": "regen.discourse.group"
+      }
+    ]
+  },
+  "bookmarks": []
+}

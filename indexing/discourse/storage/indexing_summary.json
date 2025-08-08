@@ -1,0 +1,82 @@
+{
+  "timestamp": "2025-08-08T05:02:46.080163",
+  "source": "forum.regen.network",
+  "total_topics": 77,
+  "total_posts": 428,
+  "total_views": 832,
+  "total_content_bytes": 397637,
+  "categories": {
+    "4": 4,
+    "6": 30,
+    "10": 21,
+    "12": 2,
+    "5": 14,
+    "8": 4,
+    "7": 2
+  },
+  "governance_topics": 19,
+  "token_topics": 11,
+  "registry_topics": 9,
+  "sample_topics": [
+    {
+      "title": "Welcome to Regen Network! :wave:",
+      "url": "https://forum.regen.network/t/welcome-to-regen-network/5",
+      "posts": 2,
+      "views": 37
+    },
+    {
+      "title": "Add Noble-issued USDC (`usdc.noble`) to the Regen Ledger currency allowlist",
+      "url": "https://forum.regen.network/t/add-noble-issued-usdc-usdc-noble-to-the-regen-ledger-currency-allowlist/464",
+      "posts": 8,
+      "views": 20
+    },
+    {
+      "title": "[Proposal] Authorize DAO DAO Deployment",
+      "url": "https://forum.regen.network/t/proposal-authorize-dao-dao-deployment/467",
+      "posts": 13,
+      "views": 60
+    },
+    {
+      "title": "Let\u2019s Launch a Regen Network Podcast\u2014Powered by AI, Driven by Community",
+      "url": "https://forum.regen.network/t/let-s-launch-a-regen-network-podcast-powered-by-ai-driven-by-community/470",
+      "posts": 6,
+      "views": 17
+    },
+    {
+      "title": "$REGEN Tokenomics WG",
+      "url": "https://forum.regen.network/t/regen-tokenomics-wg/19",
+      "posts": 32,
+      "views": 45
+    },
+    {
+      "title": "RegenCoopBank: A Cooperative Finance Pilot for Bioregional Regeneration",
+      "url": "https://forum.regen.network/t/regencoopbank-a-cooperative-finance-pilot-for-bioregional-regeneration/458",
+      "posts": 5,
+      "views": 64
+    },
+    {
+      "title": "Funding Application for the $REGEN tokenomics working group",
+      "url": "https://forum.regen.network/t/funding-application-for-the-regen-tokenomics-working-group/29",
+      "posts": 4,
+      "views": 16
+    },
+    {
+      "title": "Add Kava-issued USDT (`usdt.kava`) to the Regen Ledger currency allowlist",
+      "url": "https://forum.regen.network/t/add-kava-issued-usdt-usdt-kava-to-the-regen-ledger-currency-allowlist/465",
+      "posts": 5,
+      "views": 14
+    },
+    {
+      "title": "ERC-Compatible Wrapping & Fractionalization of Regen Credits for DeFi Integration",
+      "url": "https://forum.regen.network/t/erc-compatible-wrapping-fractionalization-of-regen-credits-for-defi-integration/463",
+      "posts": 2,
+      "views": 30
+    },
+    {
+      "title": "Fixed Cap, Dynamic Supply",
+      "url": "https://forum.regen.network/t/fixed-cap-dynamic-supply/34",
+      "posts": 7,
+      "views": 44
+    }
+  ]
+}
