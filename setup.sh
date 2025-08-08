@@ -42,6 +42,21 @@ if ! command -v git &> /dev/null; then
 fi
 echo "✅ Git is installed"
 
+# Check ffmpeg (for audio processing)
+if ! command -v ffmpeg &> /dev/null; then
+    echo "⚠️  ffmpeg is not installed (needed for audio transcription)"
+    echo "Installing ffmpeg..."
+    if command -v apt &> /dev/null; then
+        sudo apt update && sudo apt install -y ffmpeg
+    elif command -v brew &> /dev/null; then
+        brew install ffmpeg
+    else
+        echo "Please install ffmpeg manually for audio transcription support"
+    fi
+else
+    echo "✅ ffmpeg is installed (audio transcription ready)"
+fi
+
 echo ""
 echo "📁 Creating directory structure..."
 mkdir -p indexing/{collectors,processors,storage/{documents,embeddings,metadata},scripts,config,utils,cache}

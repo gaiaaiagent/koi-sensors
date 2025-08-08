@@ -37,6 +37,11 @@ playwright>=1.40.0  # Headless browser automation
 selenium>=4.15.0  # Alternative browser automation
 beautifulsoup4>=4.12.0  # HTML parsing (already listed above)
 
+# Twitter/X scraping
+twscrape>=1.14.0  # Primary Twitter scraper with auth support
+ntscraper>=0.3.0  # Fallback Twitter scraper
+pandas>=2.0.0  # Data processing for tweets
+
 # Utilities
 tqdm>=4.66.0
 loguru>=0.7.0

@@ -148,6 +148,17 @@ sources:
       2. Scrape public timeline (no credentials needed)
       3. Basic API for ongoing updates ($100/month)
 
+  # Twitter/X accounts
+  twitter:
+    enabled: true
+    config_file: ../twitter/config/twitter_sources.yaml
+    accounts:
+      - username: regen_network
+        include_replies: true
+        include_retweets: true
+    collector: twitter.collectors.twitter_collector.TwitterCollector
+    notes: "Twitter scraping configured - run twitter/scripts/setup_twitter_auth.py first"
+  
   # Internal Notion (needs special handling)
   notion:
     enabled: false  # Needs Notion API access

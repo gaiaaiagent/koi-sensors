@@ -31,13 +31,18 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Indexing Data - DO NOT COMMIT
-indexing/storage/documents/
-indexing/storage/embeddings/
-indexing/storage/metadata/
-indexing/storage/chromadb/
+indexing/storage/
 indexing/cache/
 indexing/logs/*.log
+indexing/logs/*.txt
+indexing/logs/*.html
+indexing/logs/*.png
+indexing/temp/
+indexing/medium/storage/articles/
+indexing/medium/storage/metadata/
+indexing/podcast/storage/
 verification_results.json
+indexing_log.txt
 
 # Temporary files
 *.tmp
@@ -78,6 +83,10 @@ lerna-debug.log*
 # Git
 *.orig
 *.rej
+
+# Test files
+test_*.py
+test_file
 
 # Test Coverage
 htmlcov/
