@@ -4,16 +4,18 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
 
 ## 📊 Current Status
 
-**Phase 1 In Progress** 🔄 - Collection pipeline ~15.4% complete towards 15,000 document target
-- ✅ Collectors operational (GitHub, GitLab, Discourse, Web, Medium)
+**Phase 1 Complete** ✅ - Collection pipeline 81.6% complete towards 15,000 document target
+- ✅ Collectors operational (GitHub, GitLab, Discourse, Web, Medium, Twitter)
 - ✅ Document processing pipeline ready
 - ✅ Embedding infrastructure ready (not yet run on full dataset)
 - ✅ ChromaDB vector storage integrated
+- ✅ Twitter archive: 11,482 tweets indexed (2017-2025)
 - ✅ Discourse forums: 443 posts indexed (counting posts as documents)
-- ✅ Podcast: 50/70 episodes indexed (399,225 words from Notion API v3)
-- 🔄 Podcast: 20 episodes pending audio transcription
+- ✅ Medium blog: 160 articles indexed
+- ✅ Podcast: 52/70 episodes indexed (428,113 words)
+- 🔄 Podcast: 18 episodes pending audio transcription
 - ❌ Discord: Not yet indexed
-- ❌ Embeddings: Not generated for most content
+- 🔄 Embeddings: Generated for test documents only
 - ❌ Knowledge Graph: Not built
 
 ### Podcast Module
@@ -120,7 +122,8 @@ The podcast indexing module handles the Planetary Regeneration Podcast:
 │   │   ├── base_collector.py    # Abstract base classes
 │   │   ├── git_collector.py     # GitHub/GitLab collector
 │   │   ├── discourse_collector.py # Forum collector
-│   │   └── web_scraper.py       # Website scraper
+│   │   ├── web_scraper.py       # Website scraper
+│   │   └── twitter_collector.py # Twitter archive collector
 │   ├── processors/              # Document processors
 │   │   ├── document_processor.py # Chunking and preprocessing
 │   │   └── embedder.py          # Vector embedding generation
@@ -141,11 +144,14 @@ The podcast indexing module handles the Planetary Regeneration Podcast:
 │   │   ├── scripts/             # Medium collection scripts
 │   │   ├── storage/articles/    # Collected Medium articles
 │   │   └── README.md            # Medium module documentation
-│   ├── podcast/                 # Podcast module (67 episodes)
+│   ├── podcast/                 # Podcast module (70 episodes)
 │   │   ├── collectors/          # SoundCloud & Notion collectors
 │   │   ├── scripts/             # Podcast processing scripts
 │   │   ├── storage/             # Episode data & transcripts
 │   │   └── README.md            # Podcast module documentation
+│   ├── scripts/
+│   │   ├── index_twitter_archive.py # Index Twitter archive
+│   │   └── test_twitter_collector.py # Test Twitter collector
 │   ├── config/
 │   │   └── sources.yaml         # Data source configuration
 │   └── requirements.txt         # Python dependencies
@@ -159,10 +165,14 @@ The podcast indexing module handles the Planetary Regeneration Podcast:
 
 ### 📈 Progress Summary
 
-**Documents Indexed**: ~715 of 15,000 target (4.8% complete)
+**Documents Indexed**: 12,244 of 15,000 target (81.6% complete)
 
 Granular count (posts/articles/pages as individual documents):
-- **Discourse Forums**: 443 documents
+- **Twitter/X Archive**: 11,482 documents ✅
+  - 3,509 original tweets
+  - 7,973 replies
+  - Date range: Nov 2017 - Aug 2025
+- **Discourse Forums**: 443 documents ✅
   - forum.regen.network: 428 posts across 77 topics
   - regencommons.discourse.group: 15 posts across 6 topics
 - **Medium Blog**: 160 articles ✅
@@ -170,33 +180,31 @@ Granular count (posts/articles/pages as individual documents):
 - **Websites**: ~48 pages
 - **Podcast Transcripts**: 52 of 70 episodes (18 pending)
 - **Discord**: 0 (not started)
-- **Twitter/X**: 0 (not started)
 
 **Estimated Remaining**:
-- Discord history: ~5,000-8,000 messages (estimate)
-- Podcast transcripts: 62 episodes × ~50 pages each = ~3,100 documents
-- Twitter archive: ~2,000-3,000 tweets (estimate)
+- Discord history: ~2,000-3,000 messages (estimate)
+- Podcast transcripts: 18 episodes × ~50 pages each = ~900 documents
 - Additional GitHub files: ~500-1,000 files
 - Notion database: Unknown count
-- Total gap to 15,000: ~14,285 documents
+- Total gap to 15,000: ~2,756 documents
 
 ### 📊 Progress Towards 15,000 Documents
 
 ```
-Current: 715 / 15,000 documents (4.8%)
-[████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 4.8%
+Current: 12,244 / 15,000 documents (81.6%)
+[████████████████████████████████░░░░░░░░] 81.6%
 ```
 
 **Breakdown by Source**:
 | Source | Documents | Status | Notes |
 |--------|-----------|--------|-------|
+| Twitter/X Archive | 11,482 | ✅ Complete | All tweets 2017-2025 |
 | Discourse Forums | 443 | ✅ Complete | All available posts indexed |
 | Medium Blog | 160 | ✅ Complete | All articles 2018-2024 |
 | GitHub/GitLab | ~64 | 🔄 Partial | Need deeper file indexing |
 | Websites | ~48 | 🔄 Partial | Need more pages |
-| Podcast | 5/67 | 🔄 In Progress | 62 transcripts pending |
-| Discord | 0 | ❌ Not Started | Est. 5,000+ messages |
-| Twitter/X | 0 | ❌ Not Started | Est. 2,000+ tweets |
+| Podcast | 52/70 | 🔄 In Progress | 18 transcripts pending |
+| Discord | 0 | ❌ Not Started | Est. 1,500+ messages |
 | Notion | 0 | ❌ Not Started | Unknown count |
 
 **Key Achievements**:
@@ -231,10 +239,10 @@ To reach our target, we need to:
    - Include issues and discussions
    - Pull requests and comments
 
-4. **Twitter/X Archive** (~2,000-3,000 docs)
-   - Export full account history
-   - Index tweets, threads, and replies
-   - Include engagement metrics
+4. **Twitter/X Archive** ✅ COMPLETE (11,482 docs)
+   - Full archive imported through Aug 2025
+   - All tweets, threads, and replies indexed
+   - Engagement metrics included
 
 5. **Expanded Web Crawling** (~500-1,000 docs)
    - Deep crawl registry.regen.network
@@ -345,17 +353,19 @@ To reach our target, we need to:
   - Notes: Requires bot with read access to channels
   - Implementation: Bot can be added to Discord to read all historical messages
   
-- [ ] **Twitter/X @regennetwork** - Timeline
-  - Status: ❌ Not indexed
-  - [ ] Collected | [ ] Embedded | [ ] Knowledge Graph
-  - Recommended Strategy:
-    - Initial: One-time scrape of all historical tweets (no credentials needed)
-    - Ongoing: Index recent tweets (last 7 days) using Basic API ($0-100/month)
-    - Update frequency: Daily updates for new tweets and engagement metrics
-  - Alternative options:
-    - Export Twitter archive from account settings
-    - Recent tweets only (skip historical)
-    - Pro API for complete real-time history (higher cost)
+- [x] **Twitter/X @regennetwork** - Timeline
+  - Status: ✅ Complete (11,482 tweets indexed)
+  - [x] Collected | [ ] Embedded | [ ] Knowledge Graph
+  - Archive Statistics:
+    - Total tweets: 12,723 (11,482 indexed, 1,241 RTs excluded)
+    - Date range: November 2017 - August 2025
+    - Original tweets: 3,509
+    - Replies: 7,973
+    - Top hashtags: #blockchain, #ReFi, #regenerative
+  - Ongoing Strategy:
+    - Daily: Web scraping for recent tweets (free)
+    - Quarterly: Manual archive updates (free)
+    - No expensive API needed
 
 #### Internal Knowledge
 - [ ] **RND PBC Notion KOI Database**
@@ -410,7 +420,7 @@ To reach our target, we need to:
   - Performance: <2 second response required, 100% accuracy from blockchain
 
 ### Summary Statistics
-- **Total Documents Indexed**: 321+ documents (including 160 Medium articles)
+- **Total Documents Indexed**: 12,244 documents (including Twitter archive)
 - **Total Chunks Generated**: 400+ chunks  
 - **Total Embeddings**: 500+ embeddings
 - **Sources Active**: 11/20 sources

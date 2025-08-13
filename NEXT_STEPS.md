@@ -32,7 +32,7 @@ python indexing/scripts/run_full_index.py
 Required for complete indexing:
 - [ ] Discourse API keys for forum.regen.network
 - [ ] Discord bot token for historical messages
-- [ ] Twitter/X API access
+- [x] Twitter/X archive imported (11,482 tweets indexed)
 - [ ] Notion API key for internal docs
 
 Add to `.env`:
