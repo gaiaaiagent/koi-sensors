@@ -5,6 +5,8 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
 ## 📊 Current Status
 
 **Phase 1 Complete** ✅ - Collection pipeline 81.6% complete towards 15,000 document target
+
+**⚠️ ElizaOS Integration Issue**: Documents are successfully indexed (1,014+ files) but automatic RAG is not working in ElizaOS agents. See [ELIZA_INTEGRATION_STATUS.md](ELIZA_INTEGRATION_STATUS.md) for full details and troubleshooting.
 - ✅ Collectors operational (GitHub, GitLab, Discourse, Web, Medium, Twitter)
 - ✅ Document processing pipeline ready
 - ✅ Embedding infrastructure ready (not yet run on full dataset)
