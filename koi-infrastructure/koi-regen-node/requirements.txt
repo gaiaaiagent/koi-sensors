@@ -1,0 +1,8 @@
+koi-net>=1.0.0b16
+rid-lib
+rich
+fastapi
+uvicorn
+httpx
+loguru
+pydantic

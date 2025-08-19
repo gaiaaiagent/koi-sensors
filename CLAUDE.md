@@ -21,8 +21,15 @@ This is a Regen Network indexing system being implemented to collect, process, a
 │   │   └── sources.yaml         # Data source configuration
 │   ├── utils/                   # Credential management utilities
 │   └── requirements.txt         # Python dependencies
+├── koi-infrastructure/          # KOI sensor node implementation
+│   ├── koi-regen-node/         # Main KOI node with RID generation
+│   ├── naming-convention/       # Regen's naming convention docs
+│   └── dependencies/            # KOI-net protocol and templates
 ├── mcp-server/                  # MCP server (cloned and built)
 ├── agents/                      # Eliza agent integration (future phase)
+├── docs/                        # Project documentation
+│   ├── KOI_IMPLEMENTATION.md   # KOI implementation details
+│   └── milestones/              # Milestone tracking
 ├── venv/                        # Python virtual environment
 ├── setup.sh                     # Automated setup script
 ├── .gitignore                   # Git ignore configuration
