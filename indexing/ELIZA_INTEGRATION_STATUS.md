@@ -2,15 +2,16 @@
 
 ## Current State (August 14, 2025)
 
-The indexing system has successfully processed 1,014+ documents from the Regen Network ecosystem. However, integration with ElizaOS agents faces critical issues preventing automatic RAG functionality.
+The indexing system has successfully processed 12,967 documents from the Regen Network ecosystem. However, integration with ElizaOS agents faces critical issues preventing automatic RAG functionality.
 
 ## Documents Successfully Indexed
 
 ### Collection Complete ✅
 - **GitHub Repositories**: regen-ledger, regen-web, etc.
-- **Medium Articles**: 160 unique articles 
-- **Podcast Transcripts**: 40+ episodes transcribed
-- **Twitter Archive**: 12,723 tweets indexed
+- **Medium Articles**: 160 unique articles
+- **Notion Workspace**: 1,120 items (585 pages + 535 database entries) 
+- **Podcast Transcripts**: 120 files (70 episodes transcribed)
+- **Twitter Archive**: 11,483 tweets fully processed
 - **Discourse Forums**: Community discussions
 - **Websites**: docs.regen.network, guides, registry
 

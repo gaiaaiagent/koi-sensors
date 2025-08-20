@@ -1,6 +1,6 @@
 {
-  "generated_at": "2025-08-20T05:41:01.909225",
-  "total_documents": 1484,
+  "generated_at": "2025-08-20T06:00:00.000000",
+  "total_documents": 12967,
   "content_sources": {
     "github": {
       "count": 66,
@@ -41,8 +41,8 @@
       "description": "Blog posts from Regen Network Medium"
     },
     "twitter": {
-      "tweets": 12723,
-      "location": "indexing/storage/TwitterData/",
+      "tweets": 11483,
+      "location": "/opt/projects/GAIA/knowledge/regen-network/social/twitter/",
       "target": "knowledge/regen-network/community/social/",
       "description": "Twitter/X archive with historical tweets"
     },

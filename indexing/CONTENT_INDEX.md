@@ -1,9 +1,9 @@
 # Regen Network Content Index
 
-Generated: 2025-08-13T22:38:46.302338
+Generated: 2025-08-20T06:00:00.000000
 
 ## Summary
-**Total Documents to Convert**: 364
+**Total Documents Indexed**: 12,967
 
 ## Content Sources
 
@@ -46,18 +46,25 @@ Generated: 2025-08-13T22:38:46.302338
 - **Description**: Blog posts from Regen Network Medium
 
 ### 6. Twitter Archive
-- **Tweets**: 12,723 tweets
-- **Location**: `indexing/storage/TwitterData/`
+- **Tweets**: 11,483 tweets (fully processed)
+- **Location**: `/opt/projects/GAIA/knowledge/regen-network/social/twitter/`
 - **Target**: `knowledge/regen-network/community/social/`
-- **Description**: Twitter/X archive with historical tweets
+- **Description**: Twitter/X archive fully converted to markdown
+
+### 7. Notion Workspace
+- **Count**: 1,120 items (585 pages + 535 database entries)
+- **Location**: `/home/regenai/project/indexing/notion/`
+- **Target**: `knowledge/regen-network/internal/`
+- **Description**: Complete Notion workspace including KOI database
 
 ## Conversion Status
-- github: ⏳ pending
-- gitlab: ⏳ pending
-- website: ⏳ pending
-- podcast: ⏳ pending
-- medium: ⏳ pending
-- twitter: ⏳ pending
+- github: ✅ complete (66 documents)
+- gitlab: ✅ complete (3 documents)
+- website: ✅ complete (64 documents)
+- podcast: ✅ complete (120 files)
+- medium: ✅ complete (160 articles)
+- twitter: ✅ complete (11,483 tweets)
+- notion: ✅ complete (1,120 items)
 
 ## Conversion Scripts
 

@@ -4,10 +4,10 @@
 
 ### Primary Documentation
 - **CLAUDE.md** - Added Notion integration section
-- **README.md** - Updated document counts (1,484 total)
+- **README.md** - Updated document counts (12,967 total)
 - **IMPLEMENTATION.md** - Updated target numbers
-- **indexing/CONTENT_INDEX.json** - Added Notion statistics
-- **indexing/INDEXING_STATUS.md** - Complete rewrite with Notion data
+- **indexing/CONTENT_INDEX.json** - Added Notion and Twitter statistics
+- **indexing/INDEXING_STATUS.md** - Complete rewrite with all data sources
 
 ### Milestone Documentation
 - **docs/milestones/milestone_1_1.md** - Marked Notion KOI as COMPLETED
@@ -26,9 +26,10 @@
 | Websites | 64 | ✅ |
 | Podcasts | 120 | ✅ |
 | Medium | 160 | ✅ |
-| Twitter | 12,723 | ⏸️ |
+| Twitter | 11,483 | ✅ |
 | Notion | 1,120 | ✅ |
-| **TOTAL** | **1,484** | |
+| Discord | - | 🔄 Pending |
+| **TOTAL** | **12,967** | |
 
 ## 🔄 Files That May Still Need Updates
 
@@ -38,11 +39,13 @@
 
 ## ✨ Key Improvements Made
 
-1. Removed outdated 15,000 document target references
-2. Added actual counts (1,484 documents)
-3. Documented Notion integration thoroughly
+1. Updated to show 12,967 total documents indexed
+2. Twitter data properly tracked (11,483 tweets in GAIA)
+3. Documented Notion integration thoroughly (1,120 items)
 4. Organized all status docs in proper folders
 5. Updated milestone tracking
+6. Added Discord as pending
+7. Listed additional sources beyond contract scope
 
 ## 📝 Remaining Documentation Tasks
 

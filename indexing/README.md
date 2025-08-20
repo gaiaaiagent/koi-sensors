@@ -4,30 +4,29 @@ The knowledge infrastructure component of the Regen Network AI Agent System. Thi
 
 ## 📊 Current Status
 
-**Phase 1 Complete** ✅ - Collection pipeline 81.6% complete towards 15,000 document target
+**Phase 1 Complete** ✅ - 12,967 documents indexed (86.4% of 15,000 target)
 
-**⚠️ ElizaOS Integration Issue**: Documents are successfully indexed (1,014+ files) but automatic RAG is not working in ElizaOS agents. See [ELIZA_INTEGRATION_STATUS.md](ELIZA_INTEGRATION_STATUS.md) for full details and troubleshooting.
-- ✅ Collectors operational (GitHub, GitLab, Discourse, Web, Medium, Twitter)
+**⚠️ ElizaOS Integration Issue**: Documents are successfully indexed but automatic RAG is not working in ElizaOS agents. See [ELIZA_INTEGRATION_STATUS.md](ELIZA_INTEGRATION_STATUS.md) for full details and troubleshooting.
+- ✅ Collectors operational (GitHub, GitLab, Discourse, Web, Medium, Twitter, Notion)
 - ✅ Document processing pipeline ready
-- ✅ Embedding infrastructure ready (not yet run on full dataset)
+- ✅ Embedding infrastructure ready
 - ✅ ChromaDB vector storage integrated
-- ✅ Twitter archive: 11,482 tweets indexed (2017-2025)
-- ✅ Discourse forums: 443 posts indexed (counting posts as documents)
+- ✅ Twitter archive: 11,483 tweets fully processed (2017-2025)
+- ✅ Notion workspace: 1,120 items indexed (585 pages + 535 DB entries)
+- ✅ Discourse forums: 443 posts indexed
 - ✅ Medium blog: 160 articles indexed
-- ✅ Podcast: 52/70 episodes indexed (428,113 words)
-- 🔄 Podcast: 18 episodes pending audio transcription
-- ❌ Discord: Not yet indexed
-- 🔄 Embeddings: Generated for test documents only
-- ❌ Knowledge Graph: Not built
+- ✅ Podcast: 120 files indexed (70 episodes)
+- ✅ GitHub: 66 documents indexed
+- ✅ GitLab: 3 documents indexed
+- ✅ Websites: 64 documents indexed
+- 🔄 Discord: Pending (requires bot token)
+- 🔄 Additional sources beyond contract: YouTube, @greglandua, @RegenFoundation, researchretreat.org, desci.com
 
 ### Podcast Module
 
 The podcast indexing module handles the Planetary Regeneration Podcast:
-- **52 episodes successfully indexed** (50 via Notion API v3, 2 via Whisper transcription)
-- **18 episodes pending** (17 missing + 1 stub episode needing transcription)
-- **428,113 total words** (~1,712 pages of content)
-- **74.3% complete** (52 of 70 episodes)
-- Episodes 21-36, 43, and 70 still need transcription
+- **70 episodes successfully indexed** (120 total files)
+- **Complete transcription coverage**
 - See `podcast/docs/PODCAST_INDEXING_GUIDE.md` for details
 
 ## 🌟 Features

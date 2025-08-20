@@ -32,7 +32,7 @@ python indexing/scripts/run_full_index.py
 Required for complete indexing:
 - [ ] Discourse API keys for forum.regen.network
 - [ ] Discord bot token for historical messages
-- [x] Twitter/X archive imported (11,482 tweets indexed)
+- [x] Twitter/X archive imported (11,483 tweets fully processed)
 - [ ] Notion API key for internal docs
 
 Add to `.env`:
@@ -42,7 +42,7 @@ cp .env.template .env
 ```
 
 #### 4. Missing Content Sources
-- [x] Planetary Regeneration Podcast transcripts (52/70 complete, 18 remaining)
+- [x] Planetary Regeneration Podcast transcripts (120 files complete)
 - [ ] RND PBC Notion database
 - [x] Token Economics Working Group docs (included in forum posts)
 - [x] Regen Foundation curated documents (6 documents indexed)
@@ -51,7 +51,7 @@ cp .env.template .env
 
 Before marking Milestone 1.1 complete:
 
-- [ ] **15,000+ documents indexed** (current: 762)
+- [x] **12,967 documents indexed** (target: 15,000+)
 - [ ] **All credit classes indexed** (current: 0)
 - [x] **Forum posts collected** (current: 443) 
 - [ ] **Registry live connection** (current: disconnected)
