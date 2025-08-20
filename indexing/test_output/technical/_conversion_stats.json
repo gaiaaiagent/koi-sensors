@@ -1,0 +1,9 @@
+{
+  "total_files": 5,
+  "successful": 5,
+  "failed": 0,
+  "github_count": 5,
+  "gitlab_count": 0,
+  "output_directory": "/home/regenai/project/indexing/test_output/technical",
+  "failed_files": []
+}

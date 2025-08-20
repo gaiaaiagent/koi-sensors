@@ -46,7 +46,7 @@
 - [ ] **PENDING**: Twitter/X timeline (requires API)
 
 #### Internal Knowledge
-- [ ] **PENDING**: RND PBC Notion KOI database
+- [x] **COMPLETED**: RND PBC Notion KOI database (202 entries indexed)
 - [ ] **PENDING**: Curated Regen Foundation documents
 - [ ] **PENDING**: Token Economics Working Group page
 

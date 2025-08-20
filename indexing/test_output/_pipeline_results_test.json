@@ -1,0 +1,83 @@
+{
+  "started_at": "2025-08-13T22:50:29.735567",
+  "mode": "test",
+  "converters": {
+    "convert_github_to_markdown.py": {
+      "script": "convert_github_to_markdown.py",
+      "status": "completed",
+      "output": "GitHub/GitLab Document Converter\n==================================================\nRunning in TEST MODE - converting only 5 documents\nFound 66 GitHub and 3 GitLab documents\nProcessing first 5 files...\n\u2713 [1/5] Converted: github_655d8f7797eb80f6.json\n\u2713 [2/5] Converted: github_fb5e4cf9318ffd21.json\n\u2713 [3/5] Converted: github_0b7a4c0175e1693e.json\n\u2713 [4/5] Converted: github_9c7d5998761f8f53.json\n\u2713 [5/5] Converted: github_72f52fa2b2c484ed.json\n\n==================================================\nCONVERSION SUMMARY\n==================================================\nTotal files processed: 5\nSuccessfully converted: 5\n  - GitHub: 5\n  - GitLab: 0\nFailed: 0\n\nOutput directory: /home/regenai/project/indexing/test_output/technical\n==================================================\nStats saved to: /home/regenai/project/indexing/test_output/technical/_conversion_stats.json\n",
+      "details": {
+        "total_files": 5,
+        "successful": 5,
+        "failed": 0,
+        "github_count": 5,
+        "gitlab_count": 0,
+        "output_directory": "/home/regenai/project/indexing/test_output/technical",
+        "failed_files": []
+      }
+    },
+    "convert_websites_to_markdown.py": {
+      "script": "convert_websites_to_markdown.py",
+      "status": "completed",
+      "output": "Website Document Converter\n==================================================\nRunning in TEST MODE - converting only 5 documents\nFound 5 website documents\nProcessing first 5 files...\n\u2713 [1/5] Converted: website_f5dda486e9124e47.json \u2192 shared\n\u2713 [2/5] Converted: website_cba32f2e32029edc.json \u2192 ecological\n\u2713 [3/5] Converted: website_8a58da7469ff18b9.json \u2192 ecological\n\u2713 [4/5] Converted: website_92ae09cd2fe4a798.json \u2192 ecological\n\u2713 [5/5] Converted: website_e9f93cb751c55a48.json \u2192 ecological\n\n==================================================\nCONVERSION SUMMARY\n==================================================\nTotal files processed: 5\nSuccessfully converted: 5\nFailed: 0\n\nBy Category:\n  - ecological: 4 documents\n  - shared: 1 documents\n\nBy Domain:\n  - regen-network.medium.com: 4 documents\n  - registry.regen.network: 1 documents\n\nOutput directory: /home/regenai/project/indexing/test_output\n==================================================\nStats saved to: /home/regenai/project/indexing/test_output/_website_conversion_stats.json\n",
+      "details": {
+        "total_files": 5,
+        "successful": 5,
+        "failed": 0,
+        "by_category": {
+          "technical": 0,
+          "governance": 0,
+          "ecological": 4,
+          "community": 0,
+          "shared": 1
+        },
+        "by_domain": {
+          "regen-network.medium.com": 4,
+          "registry.regen.network": 1
+        },
+        "output_directory": "/home/regenai/project/indexing/test_output",
+        "failed_files": []
+      }
+    },
+    "convert_podcasts_to_markdown.py": {
+      "script": "convert_podcasts_to_markdown.py",
+      "status": "completed",
+      "output": "Podcast Transcript Converter\n==================================================\nRunning in TEST MODE - converting only 5 documents\nFound 5 podcast documents\nProcessing first 5 files...\n\u2713 [1/5] Converted: episode_003_complete.json\n\u2713 [2/5] Converted: episode_047_complete.json\n\u2713 [3/5] Converted: episode_005_complete.json\n\u2713 [4/5] Converted: episode_049_complete.json\n\u2713 [5/5] Converted: episode_023_complete.json\n\n==================================================\nCONVERSION SUMMARY\n==================================================\nTotal files processed: 5\nSuccessfully converted: 5\nSkipped (no content): 0\nFailed: 0\n\nOutput directory: /home/regenai/project/indexing/test_output/podcasts\n==================================================\nStats saved to: /home/regenai/project/indexing/test_output/podcasts/_podcast_conversion_stats.json\n",
+      "details": {
+        "total_files": 5,
+        "successful": 5,
+        "failed": 0,
+        "skipped": 0,
+        "output_directory": "/home/regenai/project/indexing/test_output/podcasts",
+        "failed_files": [],
+        "skipped_files": []
+      }
+    },
+    "convert_medium_to_markdown.py": {
+      "script": "convert_medium_to_markdown.py",
+      "status": "completed",
+      "output": "Medium Articles Converter\n==================================================\nRunning in TEST MODE - converting only 5 documents\nFound 5 Medium articles\nProcessing first 5 files...\n\u2713 [1/5] Converted: medium_e71a8cd939b99352.json\n\u2713 [2/5] Converted: medium_9592dcaaba8b40f5.json\n\u2713 [3/5] Converted: medium_67f3490e0b7f5ecf.json\n\u2713 [4/5] Converted: medium_e6c640029f6b2d69.json\n\u2713 [5/5] Converted: medium_7480f1a521e4a6bf.json\n\n==================================================\nCONVERSION SUMMARY\n==================================================\nTotal files processed: 5\nSuccessfully converted: 5\nSkipped (no/short content): 0\nFailed: 0\n\nBy Category:\n  - governance: 5 articles\n\nOutput directory: /home/regenai/project/indexing/test_output\n==================================================\nStats saved to: /home/regenai/project/indexing/test_output/_medium_conversion_stats.json\n",
+      "details": {
+        "total_files": 5,
+        "successful": 5,
+        "failed": 0,
+        "skipped": 0,
+        "by_category": {
+          "governance": 5,
+          "ecological": 0,
+          "technical": 0,
+          "community": 0
+        },
+        "output_directory": "/home/regenai/project/indexing/test_output",
+        "failed_files": [],
+        "skipped_files": []
+      }
+    }
+  },
+  "totals": {
+    "successful": 20,
+    "failed": 0,
+    "skipped": 0
+  },
+  "completed_at": "2025-08-13T22:50:30.096683"
+}

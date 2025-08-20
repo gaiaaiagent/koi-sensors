@@ -9,6 +9,8 @@ This is a Regen Network indexing system being implemented to collect, process, a
 **Current Status**: Implementation complete - all collectors, processors, and indexing pipeline fully functional. System tested with 50+ documents and ready for production indexing.
 
 ## Repository Structure
+\
+## 🆕 NOTION WORKSPACE INTEGRATION (August 2025)\n\n### Overview\nSuccessfully indexed the complete Regen Network Notion workspace containing strategic documents, KOI database, and project management data.\n\n### Statistics\n- **729 pages discovered**, 585 successfully extracted (80.2%)\n- **17 databases discovered**, 10 successfully extracted\n- **202 KOI (Knowledge Object Index) entries** with RIDs, strategies, and narratives\n- **45MB of structured content** ready for AI agent integration\n\n### Data Location\n```\nindexing/notion/\n├── databases/         # 10 database exports (JSON format)\n│   ├── KOI_Repo/     # 202 Knowledge Object entries\n│   ├── PRP_Regen_Network_Series_Episodes/\n│   └── [others...]\n├── pages/            # 585 markdown pages\n├── manifest.json     # Master index\n└── crawler/          # Extraction tools\n```\n\n### Key Content Types\n- **KOI Database**: Core knowledge repository with RIDs and metadata\n- **Podcast Data**: PRP episodes and management information\n- **Research Library**: Terrasos whitepaper and research documents\n- **Project Management**: Sprint boards and task tracking\n\n### Integration Points\n- Use `manifest.json` for content discovery\n- Parse `databases/KOI_Repo/entries.json` for knowledge objects\n- Search markdown files in `pages/` for full-text queries
 
 ```
 /home/regenai/project/

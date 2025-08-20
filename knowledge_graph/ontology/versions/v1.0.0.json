@@ -1,0 +1,234 @@
+{
+  "version": "1.0.0",
+  "timestamp": "2025-08-13T07:18:43.885755",
+  "entities": {
+    "EntityType.PERSON": {
+      "properties": {
+        "name": "<class 'str'>",
+        "role": "<class 'str'>",
+        "walletAddress": "<class 'str'>",
+        "socialHandles": "<class 'dict'>",
+        "email": "<class 'str'>",
+        "affiliations": "<class 'list'>"
+      },
+      "required": [
+        "name"
+      ],
+      "patterns": [
+        "(?:[A-Z][a-z]+ ){1,3}[A-Z][a-z]+",
+        "@[a-zA-Z0-9_]+"
+      ],
+      "examples": [
+        "Gregory Landua",
+        "Will Szal",
+        "Sam Vitello"
+      ]
+    },
+    "EntityType.ORGANIZATION": {
+      "properties": {
+        "name": "<class 'str'>",
+        "type": "<class 'str'>",
+        "website": "<class 'str'>",
+        "walletAddress": "<class 'str'>",
+        "role": "<class 'str'>",
+        "location": "<class 'str'>"
+      },
+      "required": [
+        "name"
+      ],
+      "patterns": [
+        "[A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z]+)*(?: (?:Inc|LLC|Foundation|Network|DAO|Labs|PBC))",
+        "Regen (?:Network|Foundation|Registry)",
+        "(?:Verra|Gold Standard|Climate Action Reserve)"
+      ],
+      "examples": [
+        "Regen Network",
+        "Regen Foundation",
+        "Microsoft",
+        "Verra"
+      ]
+    },
+    "EntityType.CREDIT_CLASS": {
+      "properties": {
+        "classId": "<class 'str'>",
+        "creditType": "<class 'str'>",
+        "methodology": "<class 'str'>",
+        "status": "<class 'str'>",
+        "description": "<class 'str'>",
+        "issuer": "<class 'str'>"
+      },
+      "required": [
+        "classId"
+      ],
+      "patterns": [
+        "\\bC\\d{2,3}\\b"
+      ],
+      "examples": [
+        "C01",
+        "C02",
+        "C03"
+      ]
+    },
+    "EntityType.PROJECT": {
+      "properties": {
+        "projectId": "<class 'str'>",
+        "name": "<class 'str'>",
+        "location": "<class 'dict'>",
+        "developer": "<class 'str'>",
+        "creditClass": "<class 'str'>",
+        "startDate": "<class 'str'>",
+        "endDate": "<class 'str'>",
+        "status": "<class 'str'>"
+      },
+      "required": [
+        "projectId"
+      ],
+      "patterns": [
+        "\\bP\\d{3,4}\\b"
+      ],
+      "examples": [
+        "P001",
+        "P002",
+        "P003"
+      ]
+    },
+    "EntityType.METHODOLOGY": {
+      "properties": {
+        "methodologyId": "<class 'str'>",
+        "name": "<class 'str'>",
+        "version": "<class 'str'>",
+        "standardBody": "<class 'str'>",
+        "creditTypes": "<class 'list'>"
+      },
+      "required": [
+        "methodologyId"
+      ],
+      "patterns": [
+        "\\bVM\\d{4}\\b",
+        "methodology[:\\s]+[\\w\\s-]+"
+      ],
+      "examples": [
+        "VM0042",
+        "VM0007"
+      ]
+    },
+    "EntityType.PROPOSAL": {
+      "properties": {
+        "proposalId": "<class 'int'>",
+        "title": "<class 'str'>",
+        "proposer": "<class 'str'>",
+        "status": "<class 'str'>",
+        "proposalDate": "<class 'str'>",
+        "voteEndDate": "<class 'str'>",
+        "type": "<class 'str'>"
+      },
+      "required": [
+        "proposalId"
+      ],
+      "patterns": [
+        "(?:proposal|prop)[\\s#]+(\\d+)"
+      ],
+      "examples": [
+        "Proposal #42",
+        "Prop 23"
+      ]
+    },
+    "EntityType.AI_AGENT": {
+      "properties": {
+        "name": "<class 'str'>",
+        "platform": "<class 'str'>",
+        "koiRid": "<class 'str'>",
+        "creator": "<class 'str'>",
+        "purpose": "<class 'str'>"
+      },
+      "required": [
+        "name"
+      ],
+      "patterns": [
+        "(?:Advocate|Politician|Voice of Nature|Narrative) Agent"
+      ],
+      "examples": [
+        "Advocate Agent",
+        "Politician Agent"
+      ]
+    }
+  },
+  "relationships": [
+    {
+      "source": "EntityType.PERSON",
+      "relation": "RelationType.FOUNDED",
+      "target": "EntityType.ORGANIZATION",
+      "patterns": [
+        "{person} founded {org}",
+        "{person} co-founded {org}"
+      ],
+      "cardinality": "many-to-many"
+    },
+    {
+      "source": "EntityType.ORGANIZATION",
+      "relation": "RelationType.EMPLOYS",
+      "target": "EntityType.PERSON",
+      "patterns": [
+        "{person} (?:at|from|of) {org}",
+        "{person}, {org}"
+      ],
+      "cardinality": "one-to-many"
+    },
+    {
+      "source": "EntityType.PROJECT",
+      "relation": "RelationType.GENERATES",
+      "target": "EntityType.CREDIT_CLASS",
+      "patterns": [
+        "{project} generates {credit}",
+        "{project} issues {credit}"
+      ],
+      "cardinality": "many-to-one"
+    },
+    {
+      "source": "EntityType.PROJECT",
+      "relation": "RelationType.IMPLEMENTS",
+      "target": "EntityType.METHODOLOGY",
+      "patterns": [
+        "{project} uses {methodology}",
+        "{project} implements {methodology}"
+      ],
+      "cardinality": "many-to-one"
+    },
+    {
+      "source": "EntityType.PERSON",
+      "relation": "RelationType.PROPOSED",
+      "target": "EntityType.PROPOSAL",
+      "patterns": [
+        "{person} proposed {proposal}",
+        "{proposal} by {person}"
+      ],
+      "cardinality": "many-to-many"
+    },
+    {
+      "source": "EntityType.DOCUMENT",
+      "relation": "RelationType.REFERENCES",
+      "target": "EntityType.CREDIT_CLASS",
+      "patterns": [
+        "mentions {credit}",
+        "describes {credit}"
+      ],
+      "cardinality": "many-to-many"
+    }
+  ],
+  "extraction_rules": {
+    "priority_order": [
+      "EntityType.CREDIT_CLASS",
+      "EntityType.PROJECT",
+      "EntityType.METHODOLOGY",
+      "EntityType.ORGANIZATION",
+      "EntityType.PERSON",
+      "EntityType.PROPOSAL",
+      "EntityType.AI_AGENT"
+    ],
+    "confidence_thresholds": {
+      "pattern_match": 0.95,
+      "ner_extraction": 0.75,
+      "llm_extraction": 0.6
+    }
+  }
+}

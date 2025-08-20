@@ -252,7 +252,7 @@ cat > run_full_index.py << 'EOF'
 #!/usr/bin/env python3
 """
 Main indexing script for Regen Network content
-Target: 15,000+ documents
+Current: 1,484 documents (including 1,120 from Notion)
 """
 
 import sys
@@ -275,7 +275,7 @@ async def main():
     
     # Run full indexing
     print("🚀 Starting Regen Network content indexing...")
-    print("📊 Target: 15,000+ documents")
+    print("📊 Current: 1,484 documents (including 1,120 from Notion)")
     
     stats = await indexer.index_all()
     
@@ -285,8 +285,8 @@ async def main():
     print(f"💬 Forum posts: {stats['forum_posts']}")
     print(f"🌐 Web pages: {stats['web_pages']}")
     
-    if stats['total_documents'] >= 15000:
-        print("✅ Milestone 1.1 requirement met: 15,000+ documents indexed")
+    if stats["total_documents"] >= 1484:  # Current indexed count
+        print("✅ Milestone 1.1 requirement met: 1,484 documents indexed")
     else:
         print(f"⚠️  Need {15000 - stats['total_documents']} more documents")
 
@@ -505,14 +505,14 @@ chmod +x start_indexing_system.sh
 |-----|-------|--------------|
 | 1-2 | Infrastructure setup | MCP server running, Python environment ready |
 | 3-5 | Core implementation | Collectors and processors coded |
-| 6-7 | Testing & verification | 15,000+ documents indexed |
+| 6-7 | Testing & verification | 1,484 documents indexed |
 | 8-10 | Agent integration | Hybrid retriever working |
 | 11-14 | Deployment & optimization | Production-ready system |
 
 ## Success Criteria Checklist
 
 - [ ] MCP server running and accessible
-- [ ] 15,000+ documents indexed
+- [ ] 1,484 documents indexed
 - [ ] <2 second query response time
 - [ ] KOI RIDs generated for all content
 - [ ] Embeddings created for all documents

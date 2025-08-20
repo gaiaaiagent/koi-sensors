@@ -1,0 +1,18 @@
+{
+  "total_files": 5,
+  "successful": 5,
+  "failed": 0,
+  "by_category": {
+    "technical": 0,
+    "governance": 0,
+    "ecological": 4,
+    "community": 0,
+    "shared": 1
+  },
+  "by_domain": {
+    "regen-network.medium.com": 4,
+    "registry.regen.network": 1
+  },
+  "output_directory": "/home/regenai/project/indexing/test_output",
+  "failed_files": []
+}

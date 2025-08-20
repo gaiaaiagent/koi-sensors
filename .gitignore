@@ -155,3 +155,16 @@ $RECYCLE.BIN/
 *.msm
 *.msp
 *.lnk
+
+# Contract files - CONFIDENTIAL
+contract/
+# Notion data (keep scripts and docs, exclude actual content)
+indexing/notion/storage/
+indexing/notion/logs/*.log
+indexing/notion/crawler/notion_crawl/
+indexing/notion/crawler/*.tar.gz
+indexing/notion/crawler/crawl_output.log
+
+# Ensure all storage folders with actual data are excluded
+indexing/*/storage/
+indexing/storage/

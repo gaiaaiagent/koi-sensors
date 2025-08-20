@@ -1,0 +1,24 @@
+{
+  "build_completed_at": "2025-08-13T07:32:47.315478",
+  "ontology_version": "1.0.0",
+  "statistics": {
+    "total_documents": 184,
+    "processed_documents": 184,
+    "failed_documents": 0,
+    "success_rate": 100.0,
+    "total_entities": 2165,
+    "total_relationships": 0,
+    "processing_time_seconds": 23.480165719985962,
+    "documents_per_second": 7.836401250072183,
+    "entities_by_type": {
+      "Organization": 353,
+      "Person": 1807,
+      "Creditclass": 5
+    }
+  },
+  "extraction_methods": {
+    "pattern_extractor": "Fast regex-based extraction",
+    "claude_extractor": "Semantic analysis by Claude Sonnet",
+    "hybrid_approach": "Combined pattern + semantic extraction"
+  }
+}

@@ -19,7 +19,7 @@ This project represents a pioneering effort to demonstrate that artificial intel
    - 🌿 **Voice of Nature Agent**: Philosophical content and impact stories
 
 2. **Knowledge Infrastructure** ([Details](indexing/README.md))
-   - 15,000+ documents indexed from across Regen ecosystem
+   - 1,484 documents indexed (with Notion: 585 pages, 535 DB entries) from across Regen ecosystem
    - Real-time integration with Registry and MCP server
    - Vector embeddings for semantic search (<2 second queries)
    - Live blockchain data for credit availability
