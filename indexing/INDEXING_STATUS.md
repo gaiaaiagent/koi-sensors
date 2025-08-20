@@ -1,6 +1,6 @@
 # Indexing Status Update - August 2025
 
-## Current Status: ✅ CORE INDEXING COMPLETE
+## Current Status: 🔄 INDEXING IN PROGRESS
 
 ### Total Documents Indexed: 12,967
 - **Twitter/X**: 11,483 tweets (fully processed in GAIA)
@@ -15,9 +15,9 @@
 | Websites | 64 | ✅ Complete |
 | Podcasts | 120 | ✅ Complete |
 | Medium | 160 | ✅ Complete |
-| Twitter/X (@RegenNetwork) | 11,483 | ✅ COMPLETE |
-| Notion | 1,120 | ✅ COMPLETE |
-| Discord | - | 🔄 Pending (requires bot token) |
+| Twitter/X (@RegenNetwork) | 11,483 | ✅ Complete |
+| Notion | 1,120 | ✅ Complete |
+| Discord | - | ❌ NOT INDEXED (requires bot token) |
 
 ### Additional Sources Beyond Contract (To Be Added):
 | Source | Status | Note |
