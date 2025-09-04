@@ -1,0 +1,53 @@
+{
+  "name": "@koi/sensors",
+  "version": "1.0.0",
+  "description": "KOI Sensor Network for Regen Network - Distributed content monitoring and indexing",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js",
+    "sensor:notion": "ts-node src/cli.ts run notion",
+    "sensor:twitter": "ts-node src/cli.ts run twitter",
+    "sensor:all": "ts-node src/cli.ts run all",
+    "fetch:data": "./scripts/fetch-data-from-server.sh",
+    "migrate:existing": "ts-node src/migration/process-existing-v3.ts ./data",
+    "migrate:report": "cat ./data/migration-report-v3.json",
+    "test": "jest",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist",
+    "python:setup": "cd indexing && pip install -r requirements.txt"
+  },
+  "keywords": [
+    "koi",
+    "sensors",
+    "knowledge",
+    "indexing",
+    "regen",
+    "web3"
+  ],
+  "author": "Regen Network",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "commander": "^11.0.0",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/node-cron": "^3.0.11",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
