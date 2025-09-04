@@ -1,0 +1,336 @@
+"""
+KOI Protocol - Coordinator Node
+Full KOI node implementing complete KOI-net protocol with FastAPI
+"""
+
+import asyncio
+import json
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timezone
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import uvicorn
+import logging
+
+from ..nodes.koi_node import KOIFullNode
+from ..core.rid_system import RID
+from ..core.bundle_system import Bundle, KOIEvent, Manifest
+from ..integration.koi_collector_adapter import (
+    TwitterKOIAdapter, DiscourseKOIAdapter, 
+    NotionKOIAdapter, WebScraperKOIAdapter
+)
+
+
+# FastAPI models for request/response
+class EventBroadcastRequest(BaseModel):
+    event_type: str
+    rid: str
+    timestamp: str
+    source_node: str
+    bundle: Optional[Dict[str, Any]] = None
+    reason: Optional[str] = None
+
+
+class EventPollResponse(BaseModel):
+    events: List[Dict[str, Any]]
+    node_id: str
+    timestamp: str
+
+
+class BundleFetchResponse(BaseModel):
+    bundle: Optional[Dict[str, Any]]
+    found: bool
+
+
+class ManifestFetchResponse(BaseModel):
+    manifest: Optional[Dict[str, Any]]
+    found: bool
+
+
+class RIDSFetchResponse(BaseModel):
+    rids: List[str]
+    count: int
+
+
+class HealthResponse(BaseModel):
+    status: str
+    node_id: str
+    node_name: str
+    uptime_seconds: float
+    cache_size: int
+    event_queue_size: int
+    connected_sensors: int
+
+
+class KOICoordinator:
+    """KOI Coordinator - Full Node with sensor management"""
+    
+    def __init__(self, node_name: str = "regen-coordinator", port: int = 8000):
+        self.node_name = node_name
+        self.port = port
+        self.start_time = datetime.now()
+        
+        # Initialize KOI full node
+        self.koi_node = KOIFullNode(node_name, port)
+        
+        # Initialize FastAPI app
+        self.app = FastAPI(
+            title="KOI Coordinator API",
+            description="Full KOI node implementing KOI-net protocol",
+            version="1.0.0"
+        )
+        
+        # Add CORS middleware
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        
+        # Setup logging
+        self.logger = logging.getLogger("koi.coordinator")
+        
+        # Sensor adapters
+        self.sensor_adapters: Dict[str, Any] = {}
+        self.sensor_status: Dict[str, Dict[str, Any]] = {}
+        
+        # Setup routes
+        self._setup_routes()
+    
+    def _setup_routes(self):
+        """Setup FastAPI routes for KOI-net protocol"""
+        
+        @self.app.post("/events/broadcast")
+        async def broadcast_event(request: EventBroadcastRequest):
+            """Broadcast event to network (KOI-net endpoint)"""
+            try:
+                # Convert request to KOIEvent
+                event_data = request.dict()
+                
+                # Handle bundle if present
+                if event_data.get("bundle"):
+                    bundle_data = event_data["bundle"]
+                    bundle = Bundle.from_dict(bundle_data)
+                    event_data["bundle"] = bundle
+                
+                event = KOIEvent.from_dict(event_data)
+                
+                # Process event through KOI node
+                await self.koi_node.handle_event(event)
+                await self.koi_node.broadcast_event(event)
+                
+                self.logger.info(f"Broadcast {event.event_type} event for {event.rid}")
+                
+                return {"status": "success", "event_id": event.rid}
+                
+            except Exception as e:
+                self.logger.error(f"Error broadcasting event: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/events/poll", response_model=EventPollResponse)
+        async def poll_events(
+            node_id: str = Query(..., description="ID of polling node"),
+            max_events: int = Query(50, description="Maximum events to return")
+        ):
+            """Poll for new events (KOI-net endpoint)"""
+            try:
+                # Get queued events
+                events = self.koi_node.get_queued_events(max_events)
+                
+                # Convert events to dict format
+                event_dicts = [event.to_dict() for event in events]
+                
+                # Clear processed events
+                self.koi_node.clear_event_queue(len(events))
+                
+                # Add node as subscriber
+                self.koi_node.add_event_subscriber(node_id)
+                
+                return EventPollResponse(
+                    events=event_dicts,
+                    node_id=self.koi_node.node_id,
+                    timestamp=datetime.now(timezone.utc).isoformat()
+                )
+                
+            except Exception as e:
+                self.logger.error(f"Error polling events: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/bundles/fetch/{rid}", response_model=BundleFetchResponse)
+        async def fetch_bundle(rid: str):
+            """Fetch bundle by RID (KOI-net endpoint)"""
+            try:
+                bundle = self.koi_node.get_cached_bundle(rid)
+                
+                return BundleFetchResponse(
+                    bundle=bundle.to_dict() if bundle else None,
+                    found=bundle is not None
+                )
+                
+            except Exception as e:
+                self.logger.error(f"Error fetching bundle {rid}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/manifests/fetch/{rid}", response_model=ManifestFetchResponse)
+        async def fetch_manifest(rid: str):
+            """Fetch manifest by RID (KOI-net endpoint)"""
+            try:
+                bundle = self.koi_node.get_cached_bundle(rid)
+                manifest = bundle.manifest if bundle else None
+                
+                return ManifestFetchResponse(
+                    manifest=manifest.to_dict() if manifest else None,
+                    found=manifest is not None
+                )
+                
+            except Exception as e:
+                self.logger.error(f"Error fetching manifest {rid}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/rids/fetch", response_model=RIDSFetchResponse)
+        async def fetch_rids():
+            """Fetch list of available RIDs (KOI-net endpoint)"""
+            try:
+                rids = self.koi_node.get_cached_rids()
+                
+                return RIDSFetchResponse(
+                    rids=rids,
+                    count=len(rids)
+                )
+                
+            except Exception as e:
+                self.logger.error(f"Error fetching RIDs: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/health", response_model=HealthResponse)
+        async def health_check():
+            """Health check endpoint (KOI-net endpoint)"""
+            uptime = (datetime.now() - self.start_time).total_seconds()
+            
+            return HealthResponse(
+                status="healthy" if self.koi_node.running else "stopped",
+                node_id=self.koi_node.node_id,
+                node_name=self.node_name,
+                uptime_seconds=uptime,
+                cache_size=len(self.koi_node.cache),
+                event_queue_size=len(self.koi_node.event_queue),
+                connected_sensors=len(self.sensor_adapters)
+            )
+        
+        # Additional management endpoints
+        @self.app.get("/sensors/status")
+        async def get_sensor_status():
+            """Get status of all sensor adapters"""
+            status = {}
+            for sensor_name, adapter in self.sensor_adapters.items():
+                status[sensor_name] = adapter.get_metrics()
+            return status
+        
+        @self.app.post("/sensors/start/{sensor_type}")
+        async def start_sensor(sensor_type: str):
+            """Start a sensor adapter"""
+            try:
+                if sensor_type in self.sensor_adapters:
+                    return {"status": "already_running", "sensor": sensor_type}
+                
+                # Create adapter based on type
+                adapter_classes = {
+                    "twitter": TwitterKOIAdapter,
+                    "discourse": DiscourseKOIAdapter,
+                    "notion": NotionKOIAdapter,
+                    "web": WebScraperKOIAdapter
+                }
+                
+                adapter_class = adapter_classes.get(sensor_type)
+                if not adapter_class:
+                    raise HTTPException(status_code=400, detail=f"Unknown sensor type: {sensor_type}")
+                
+                # Create and start adapter
+                adapter = adapter_class(f"http://localhost:{self.port}")
+                await adapter.start_koi_collection()
+                
+                self.sensor_adapters[sensor_type] = adapter
+                self.logger.info(f"Started {sensor_type} sensor adapter")
+                
+                return {"status": "started", "sensor": sensor_type}
+                
+            except Exception as e:
+                self.logger.error(f"Error starting sensor {sensor_type}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.post("/sensors/stop/{sensor_type}")
+        async def stop_sensor(sensor_type: str):
+            """Stop a sensor adapter"""
+            try:
+                adapter = self.sensor_adapters.get(sensor_type)
+                if not adapter:
+                    raise HTTPException(status_code=404, detail=f"Sensor not found: {sensor_type}")
+                
+                await adapter.stop_koi_collection()
+                del self.sensor_adapters[sensor_type]
+                
+                self.logger.info(f"Stopped {sensor_type} sensor adapter")
+                
+                return {"status": "stopped", "sensor": sensor_type}
+                
+            except Exception as e:
+                self.logger.error(f"Error stopping sensor {sensor_type}: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+    
+    async def start(self):
+        """Start the coordinator"""
+        self.logger.info(f"Starting KOI Coordinator on port {self.port}")
+        
+        # Start KOI node
+        await self.koi_node.start()
+        
+        # Start web server
+        config = uvicorn.Config(
+            app=self.app,
+            host="0.0.0.0",
+            port=self.port,
+            log_level="info"
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+    
+    async def stop(self):
+        """Stop the coordinator"""
+        self.logger.info("Stopping KOI Coordinator")
+        
+        # Stop all sensor adapters
+        for sensor_type in list(self.sensor_adapters.keys()):
+            try:
+                await self.sensor_adapters[sensor_type].stop_koi_collection()
+                del self.sensor_adapters[sensor_type]
+            except Exception as e:
+                self.logger.error(f"Error stopping sensor {sensor_type}: {e}")
+        
+        # Stop KOI node
+        await self.koi_node.stop()
+
+
+# Main entry point
+async def main():
+    """Run KOI coordinator"""
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    # Create and start coordinator
+    coordinator = KOICoordinator()
+    
+    try:
+        await coordinator.start()
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+        await coordinator.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

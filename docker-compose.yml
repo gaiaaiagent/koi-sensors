@@ -1,0 +1,194 @@
+# KOI Sensors Network - Docker Compose Configuration
+version: '3.8'
+
+services:
+  # KOI Coordinator (Full Node)
+  koi-coordinator:
+    build:
+      context: .
+      dockerfile: Dockerfile.coordinator
+    ports:
+      - "8000:8000"  # KOI-net protocol endpoints
+      - "9090:9090"  # Metrics endpoint
+    environment:
+      - KOI_NODE_NAME=regen-coordinator
+      - KOI_NODE_TYPE=FULL
+      - KOI_PORT=8000
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./data/coordinator:/app/data
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - koi-network
+
+  # Twitter Sensor (Partial Node)
+  twitter-sensor:
+    build:
+      context: .
+      dockerfile: Dockerfile.sensor
+    environment:
+      - KOI_SENSOR_TYPE=twitter
+      - KOI_COORDINATOR_URL=http://koi-coordinator:8000
+      - KOI_POLL_INTERVAL=30
+      - LOG_LEVEL=INFO
+      # Twitter API credentials (set in .env file)
+      - TWITTER_BEARER_TOKEN=${TWITTER_BEARER_TOKEN}
+      - TWITTER_API_KEY=${TWITTER_API_KEY}
+      - TWITTER_API_SECRET=${TWITTER_API_SECRET}
+      - TWITTER_ACCESS_TOKEN=${TWITTER_ACCESS_TOKEN}
+      - TWITTER_ACCESS_TOKEN_SECRET=${TWITTER_ACCESS_TOKEN_SECRET}
+    volumes:
+      - ./data/twitter:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - koi-coordinator
+    networks:
+      - koi-network
+
+  # Discord Sensor (Partial Node)
+  discord-sensor:
+    build:
+      context: .
+      dockerfile: Dockerfile.sensor
+    environment:
+      - KOI_SENSOR_TYPE=discord
+      - KOI_COORDINATOR_URL=http://koi-coordinator:8000
+      - KOI_POLL_INTERVAL=30
+      - LOG_LEVEL=INFO
+      # Discord bot credentials
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_GUILD_IDS=${DISCORD_GUILD_IDS}
+    volumes:
+      - ./data/discord:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - koi-coordinator
+    networks:
+      - koi-network
+
+  # Notion Sensor (Partial Node)
+  notion-sensor:
+    build:
+      context: .
+      dockerfile: Dockerfile.sensor
+    environment:
+      - KOI_SENSOR_TYPE=notion
+      - KOI_COORDINATOR_URL=http://koi-coordinator:8000
+      - KOI_POLL_INTERVAL=30
+      - LOG_LEVEL=INFO
+      # Notion API credentials
+      - NOTION_API_KEY=${NOTION_API_KEY}
+      - NOTION_DATABASE_IDS=${NOTION_DATABASE_IDS}
+    volumes:
+      - ./data/notion:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - koi-coordinator
+    networks:
+      - koi-network
+
+  # Web Scraper Sensor (Partial Node)
+  web-sensor:
+    build:
+      context: .
+      dockerfile: Dockerfile.sensor
+    environment:
+      - KOI_SENSOR_TYPE=web
+      - KOI_COORDINATOR_URL=http://koi-coordinator:8000
+      - KOI_POLL_INTERVAL=30
+      - LOG_LEVEL=INFO
+      # Web scraping configuration
+      - WEB_SCRAPE_URLS=${WEB_SCRAPE_URLS}
+      - WEB_SCRAPE_INTERVAL=3600  # 1 hour
+    volumes:
+      - ./data/web:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - koi-coordinator
+    networks:
+      - koi-network
+
+  # YouTube Sensor (Partial Node)
+  youtube-sensor:
+    build:
+      context: .
+      dockerfile: Dockerfile.sensor
+    environment:
+      - KOI_SENSOR_TYPE=youtube
+      - KOI_COORDINATOR_URL=http://koi-coordinator:8000
+      - KOI_POLL_INTERVAL=30
+      - LOG_LEVEL=INFO
+      # YouTube API credentials
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - YOUTUBE_CHANNEL_IDS=${YOUTUBE_CHANNEL_IDS}
+    volumes:
+      - ./data/youtube:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - koi-coordinator
+    networks:
+      - koi-network
+
+  # Telegram Sensor (Partial Node)
+  telegram-sensor:
+    build:
+      context: .
+      dockerfile: Dockerfile.sensor
+    environment:
+      - KOI_SENSOR_TYPE=telegram
+      - KOI_COORDINATOR_URL=http://koi-coordinator:8000
+      - KOI_POLL_INTERVAL=30
+      - LOG_LEVEL=INFO
+      # Telegram bot credentials
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_IDS=${TELEGRAM_CHAT_IDS}
+    volumes:
+      - ./data/telegram:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - koi-coordinator
+    networks:
+      - koi-network
+
+  # Monitoring and Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - koi-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=koi-sensors
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - koi-network
+
+networks:
+  koi-network:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
