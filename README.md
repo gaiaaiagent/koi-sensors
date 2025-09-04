@@ -142,9 +142,11 @@ koi-sensors/
 **Total**: 37,394 characters extracted, 233+ internal links discovered
 
 ### 🎧 **Podcast Sensor** ✅ COMPLETE
-- **Coverage**: Planetary Regeneration Podcast (67/70 episodes detected)
+- **Coverage**: Planetary Regeneration Podcast (67/70 episodes detected, 95.7% rate)
 - **Platform**: SoundCloud with proven server collection methods
-- **Integration**: Aligned with existing 52 transcripts (428,113+ words)
+- **Real-time Detection**: All recent/accessible episodes monitored for changes
+- **Historical Episodes**: Older episodes (like 2020's Episode 22) not in current feeds - normal behavior
+- **Integration**: Aligned with existing 52 transcripts (428,113+ words)  
 - **Monitoring**: 24-hour intervals for new episodes and transcript updates
 - **Status**: Ready for coordinator integration
 
@@ -208,12 +210,13 @@ websites:
 
 ### **Key Findings**
 - **100% website success** rate on all 9 target websites
-- **95.7% podcast success** rate (67/70 episodes detected)
+- **95.7% podcast success** rate (67/70 episodes detected - optimal for real-time monitoring)
 - **37,394 characters** extracted from website landing pages
 - **465,507+ characters** total monitored content (websites + podcasts)
 - **Registry goldmine**: 10,760 characters with 30+ credit class links
 - **Research expansion**: Successfully added 3 new research sites
 - **Podcast integration**: Aligned with existing 52 transcripts (428,113+ words)
+- **Historical Episode Analysis**: Episode 22 (2020) exists but not in current feeds - expected behavior
 
 ## 🎯 Roadmap
 

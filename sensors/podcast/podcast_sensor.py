@@ -244,15 +244,36 @@ class PodcastKOISensor:
                     tracks_url = f"{api_base}/users/{user_id}/tracks"
                     params = {
                         'client_id': self.soundcloud_client_id,
-                        'limit': 200,
+                        'limit': 200,  # Increased to get all episodes (server uses 200)
                         'offset': 0,
-                        'linked_partitioning': 1
+                        'linked_partitioning': 1  # Enable pagination to get ALL episodes
                     }
                     
-                    async with self.session.get(tracks_url, params=params) as response:
-                        if response.status == 200:
+                    # Implement pagination to get ALL episodes (like server does)
+                    all_tracks = []
+                    while True:
+                        async with self.session.get(tracks_url, params=params) as response:
+                            if response.status != 200:
+                                break
+                                
                             data = await response.json()
-                            episodes = data.get('collection', [])
+                            collection = data.get('collection', [])
+                            
+                            if not collection:
+                                break
+                                
+                            all_tracks.extend(collection)
+                            
+                            # Check for next page
+                            next_href = data.get('next_href')
+                            if not next_href:
+                                break
+                            
+                            # Update URL for next page
+                            tracks_url = next_href
+                            params = {}  # Clear params, next_href has everything
+                    
+                    episodes = all_tracks
         
         except Exception as e:
             print(f"❌ SoundCloud API error: {e}")

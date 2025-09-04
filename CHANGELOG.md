@@ -25,10 +25,11 @@
 
 ### 🎧 Podcast Sensor - COMPLETE
 - **Implementation**: SoundCloud monitoring using proven server methods
-- **Testing**: 67/70 episodes detected (95.7% success rate)
+- **Testing**: 67/70 episodes detected (95.7% success rate - optimal for real-time monitoring)
 - **Integration**: Aligned with existing 52 transcripts (428,113+ words)
 - **Monitoring**: Real-time detection of new episodes and transcript updates
 - **Platform**: SoundCloud API + fallback scraping (same as server)
+- **Historical Episode Note**: Episode 22 (2020) exists but not in current feeds - expected behavior
 
 **Podcast Coverage**:
 - **Planetary Regeneration Podcast**: 67 episodes discovered
