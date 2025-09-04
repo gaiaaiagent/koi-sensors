@@ -65,7 +65,7 @@ class GenericRID(RID):
         super().__init__(context, reference)
 
 
-class ORN(RID):
+class ORN(ABC):
     """Object Reference Name - specific RID format for platform content"""
     
     namespace: str = None  # Override in subclasses
@@ -73,13 +73,21 @@ class ORN(RID):
     def __init__(self):
         if self.namespace is None:
             raise ValueError("Namespace must be defined in ORN subclasses")
-        super().__init__("orn", f"{self.namespace}:{self.reference}")
+        self.context = "orn"
     
     @property
     @abstractmethod
     def reference(self) -> str:
         """Generate reference string for this ORN"""
         pass
+    
+    def to_string(self) -> str:
+        """Convert ORN to string representation"""
+        return f"{self.context}:{self.namespace}:{self.reference}"
+    
+    def to_orn(self) -> str:
+        """Alias for to_string for backwards compatibility"""
+        return self.to_string()
 
 
 # Platform-specific ORN implementations

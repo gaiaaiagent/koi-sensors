@@ -1,0 +1,126 @@
+# Website Sensor Configuration
+# Based on server configuration from /tmp/server-sources.yaml
+
+sensor:
+  name: website-sensor
+  type: website
+  node_id: "koi-sensor-website-001"
+  coordinator_url: "http://localhost:8000"  # KOI Coordinator endpoint
+
+# Website sources to monitor (based on server indexing status + new additions)
+websites:
+  # Core Regen Network websites (from server README)
+  - name: docs-regen-network
+    url: https://docs.regen.network
+    strategy: scrape
+    max_depth: 3
+    check_interval: 3600  # 1 hour
+    priority: high
+    current_status: "3 docs indexed - needs deep crawl"
+    notes: "Technical documentation - some from GitHub, some generated"
+
+  - name: guides-regen-network
+    url: https://guides.regen.network
+    strategy: scrape
+    max_depth: 3
+    check_interval: 3600  # 1 hour
+    priority: medium
+    current_status: "25 docs indexed - complete"
+    notes: "User guides and tutorials"
+
+  - name: registry-regen-network
+    url: https://registry.regen.network
+    strategy: hybrid  # Scrape + MCP for live data
+    max_depth: 3  # Increased for deeper crawl
+    check_interval: 1800  # 30 minutes (more frequent for registry)
+    priority: high
+    current_status: "20 docs indexed - needs expansion for ALL credit classes"
+    notes: "ALL credit classes, methodologies, projects - critical for accuracy"
+    
+  - name: regen-foundation
+    url: https://www.regen.foundation
+    strategy: scrape
+    max_depth: 2
+    check_interval: 7200  # 2 hours
+    priority: medium
+    current_status: "7 docs from publications - partial"
+    paths:
+      - /publications
+      - /initiatives
+      - /  # Main page
+    notes: "Foundation updates, curated documents"
+
+  # Community forums (from server README)  
+  - name: forum-regen-network
+    url: https://forum.regen.network
+    strategy: discourse_api  # Use Discourse API when available
+    max_depth: 1
+    check_interval: 3600
+    priority: medium
+    current_status: "428 posts across 77 topics - complete"
+    notes: "Governance discussions, Token Economics Working Group"
+
+  - name: regencommons-discourse
+    url: https://regencommons.discourse.group
+    strategy: discourse_api
+    max_depth: 1
+    check_interval: 7200
+    priority: low
+    current_status: "15 posts across 6 topics - complete"
+    notes: "Community discussions"
+
+  # Additional research websites (new additions)
+  - name: research-retreat-papers
+    url: https://researchretreat.org/papers
+    strategy: scrape
+    max_depth: 2
+    check_interval: 21600  # 6 hours (academic papers change slowly)
+    priority: high
+    current_status: "not indexed - new addition"
+    notes: "Academic research papers - high value content"
+
+  - name: desci-com
+    url: https://desci.com
+    strategy: scrape
+    max_depth: 2
+    check_interval: 21600
+    priority: medium
+    current_status: "not indexed - new addition" 
+    notes: "Decentralized science platform"
+
+  - name: regen-tokenomics
+    url: https://regentokenomics.org
+    strategy: scrape
+    max_depth: 2
+    check_interval: 7200
+    priority: high
+    current_status: "not indexed - new addition"
+    notes: "Tokenomics research and documentation"
+
+# Processing settings
+processing:
+  user_agent: "KOI-Sensor-WebsiteMonitor/1.0"
+  request_delay: 1.0  # Seconds between requests
+  timeout: 30  # Request timeout in seconds
+  retry_attempts: 3
+  content_threshold: 100  # Minimum content length to process
+
+# Content detection
+content_detection:
+  ignore_elements:
+    - script
+    - style
+    - nav
+    - footer
+    - header
+  extract_elements:
+    - article
+    - main
+    - .content
+    - .documentation
+    - .guide
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

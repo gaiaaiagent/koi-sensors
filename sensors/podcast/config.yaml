@@ -1,0 +1,74 @@
+# Podcast Sensor Configuration
+# Based on proven server implementation at /server-project/indexing/podcast
+
+sensor:
+  name: podcast-sensor
+  type: podcast
+  node_id: "koi-sensor-podcast-001"
+  coordinator_url: "http://localhost:8000"  # KOI Coordinator endpoint
+
+# Podcast sources to monitor (based on server success)
+podcasts:
+  - name: planetary-regeneration
+    url: https://soundcloud.com/planetaryregeneration
+    platform: soundcloud
+    description: "The Planetary Regeneration Podcast - 70+ episodes with transcripts"
+    check_interval: 86400  # 24 hours (podcasts don't change frequently)
+    priority: medium
+    current_status: "52 transcripts available, 18 missing - server has complete collection"
+    notes: "Uses proven SoundCloud collection methods from server"
+    
+    # Server statistics (for reference)
+    server_stats:
+      total_episodes: 70
+      transcripts_complete: 52
+      notion_transcripts: 50
+      whisper_transcribed: 2
+      missing_transcripts: 18
+      total_words: 428113
+
+# Processing settings
+processing:
+  user_agent: "KOI-Sensor-PodcastMonitor/1.0"
+  request_delay: 2.0  # Seconds between requests (respectful)
+  timeout: 60  # Request timeout in seconds
+  retry_attempts: 3
+  soundcloud_api_preferred: true
+
+# Transcript monitoring
+transcript_monitoring:
+  enabled: true
+  check_for_new_transcripts: true
+  transcript_sources:
+    - notion  # Professional transcripts
+    - whisper  # AI transcriptions
+  notify_on_new_transcript: true
+
+# Audio transcription (if needed)
+transcription:
+  enabled: false  # Monitoring only for now - server handles transcription
+  whisper_model: "base"  # tiny, base, small, medium, large
+  auto_transcribe_new: false
+  transcribe_missing: false
+  notes: "Full transcription pipeline available in server implementation"
+
+# Content detection
+content_detection:
+  detect_transcript_updates: true
+  detect_episode_metadata_changes: true
+  ignore_minor_changes: true
+  content_threshold: 50  # Minimum content change to trigger UPDATE event
+
+# Integration with server data
+server_integration:
+  use_existing_transcripts: true
+  sync_with_server: false  # Will be true when bridge is implemented
+  server_data_path: "/home/regenai/project/indexing/podcast/storage"
+  preserve_transcript_quality: true
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  log_new_episodes: true
+  log_transcript_updates: true
