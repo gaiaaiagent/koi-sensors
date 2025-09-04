@@ -1,0 +1,250 @@
+# Test configuration - start small!
+test:
+  enabled: true
+  sample_size: 10  # Only collect 10 docs per source for testing
+
+# Data sources from your notes
+sources:
+  # GitHub Repositories
+  github:
+    - name: regen-ledger
+      url: https://github.com/regen-network/regen-ledger.git
+      branch: main
+      paths:
+        - docs/
+        - x/ecocredit/spec/
+        - "*.md"
+      test_paths:  # For testing only
+        - README.md
+        - docs/README.md
+    
+    - name: regen-web
+      url: https://github.com/regen-network/regen-web.git
+      branch: main
+      paths:
+        - docs/
+        - "*.md"
+      test_paths:
+        - README.md
+    
+    - name: regenie-corpus
+      url: https://github.com/regen-network/regenie-corpus.git
+      branch: main
+      paths:
+        - "."  # All AI training data
+      test_paths:
+        - README.md
+    
+    - name: mcp
+      url: https://github.com/regen-network/mcp.git
+      branch: main
+      paths:
+        - README.md
+        - docs/
+      test_paths:
+        - README.md
+
+  # GitLab Repository
+  gitlab:
+    - name: regen-public-docs
+      url: https://gitlab.com/regen-network/regen-public-docs.git
+      branch: master
+      paths:
+        - "."  # All whitepapers and technical papers (7 years old)
+      notes: "Contains whitepaper, system architecture, ecological state protocols"
+      test_paths:
+        - "*.md"
+
+  # Discourse Forums
+  discourse:
+    - name: regen-forum
+      url: https://forum.regen.network
+      api_key: ${DISCOURSE_API_KEY_REGEN}  # Optional, works without
+      test_limit: 5  # Only 5 topics for testing
+      categories:
+        - governance
+        - tokenomics  # Token Economics Working Group posts
+        - general
+      specific_topics:
+        - url: https://forum.regen.network/t/regen-tokenomics-wg/19
+          importance: high  # Token Economics Working Group
+    
+    - name: regencommons-forum
+      url: https://regencommons.discourse.group
+      api_key: ${DISCOURSE_API_KEY_COMMONS}  # Optional
+      test_limit: 5
+      categories: all
+
+  # Websites to scrape
+  websites:
+    - name: docs-regen-network
+      url: https://docs.regen.network
+      strategy: scrape  # Some content dynamically generated
+      max_depth: 3
+      test_limit: 5
+      notes: "Technical documentation - some from GitHub, some generated"
+    
+    - name: guides-regen-network
+      url: https://guides.regen.network
+      strategy: scrape  # Not found on GitHub
+      max_depth: 3
+      test_limit: 5
+      notes: "User guides and tutorials"
+    
+    - name: registry-regen-network
+      url: https://registry.regen.network
+      strategy: hybrid  # Scrape + MCP for live data
+      max_depth: 2
+      test_limit: 5
+      notes: "ALL credit classes, methodologies, projects"
+    
+    - name: regen-foundation
+      url: https://www.regen.foundation
+      strategy: scrape
+      paths:
+        - /publications  # Foundation documents
+        - /initiatives
+        - /  # Main page
+      test_limit: 5
+      notes: "Foundation updates, curated documents"
+
+  # Medium Blog
+  medium:
+    - name: regen-network-medium
+      url: https://regen-network.medium.com
+      strategy: scrape
+      max_articles: 100  # Historical posts
+      test_limit: 3
+      notes: "blog.regen.network doesn't exist, this is the blog"
+
+  # Podcast
+  podcast:
+    - name: planetary-regeneration
+      url: https://soundcloud.com/planetaryregeneration
+      strategy: metadata  # Would need transcription service
+      notes: "Need to get transcripts - check with team"
+      # test_limit: 2  # Commented out for full indexing
+
+  # Discord (requires bot)
+  discord:
+    enabled: false  # Enable after bot setup
+    guild_id: ${DISCORD_GUILD_ID}
+    bot_token: ${DISCORD_BOT_TOKEN}
+    channels:
+      - general
+      - governance
+      - development
+      - validators
+    notes: "Need bot with read permissions"
+
+  # Twitter/X
+  twitter:
+    enabled: false  # Enable after strategy decision
+    handle: "@regennetwork"
+    strategy: "export"  # Options: export, scrape, api
+    notes: |
+      Options:
+      1. Export archive from Twitter settings (best for history)
+      2. Scrape public timeline (no credentials needed)
+      3. Basic API for ongoing updates ($100/month)
+
+  # Twitter/X accounts
+  twitter:
+    enabled: true
+    config_file: ../twitter/config/twitter_sources.yaml
+    accounts:
+      - username: regen_network
+        include_replies: true
+        include_retweets: true
+    collector: twitter.collectors.twitter_collector.TwitterCollector
+    notes: "Twitter scraping configured - run twitter/scripts/setup_twitter_auth.py first"
+  
+  # Internal Notion (needs special handling)
+  notion:
+    enabled: false  # Needs Notion API access
+    database_id: ${NOTION_DATABASE_ID}
+    api_key: ${NOTION_API_KEY}
+    notes: "RND PBC Notion KOI database - just naming convention"
+
+# Live Data Sources (via MCP, not cached)
+live_sources:
+  mcp_server:
+    url: http://localhost:3000
+    endpoints:
+      - ecocredit.classes
+      - ecocredit.batches
+      - ecocredit.projects
+      - marketplace.sell-orders
+    notes: "Jean Carlo's MCP server for live chain data"
+  
+  registry_api:
+    url: http://public-rpc.regen.vitwit.com:1317
+    endpoints:
+      - /regen/ecocredit/v1/classes
+      - /regen/ecocredit/v1/batches
+      - /regen/ecocredit/marketplace/v1/sell-orders
+      - /regen/ecocredit/v1/projects
+    refresh_interval: 21600  # 6 hours per contract
+    notes: "Direct chain queries for real-time credit availability"
+
+# Processing settings
+processing:
+  chunk_size: 1000
+  chunk_overlap: 200
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  batch_size: 32
+
+# Cache policies by source type
+cache_policies:
+  mcp:
+    strategy: reference  # Never cache, always query live
+    ttl: 0
+  registry_api:
+    strategy: reference  # Query live for real-time data
+    ttl: 0
+  github:
+    strategy: full  # Cache everything
+    ttl: 604800  # 7 days
+  gitlab:
+    strategy: full
+    ttl: 604800
+  discourse:
+    strategy: full
+    ttl: 86400  # 1 day
+  website:
+    strategy: full  # Changed from metadata to full
+    ttl: 259200  # 3 days
+  medium:
+    strategy: full
+    ttl: 259200
+  twitter:
+    strategy: full
+    ttl: 86400
+  discord:
+    strategy: full
+    ttl: 86400
+
+# Priority order for indexing
+indexing_priority:
+  1: "github"  # Core documentation
+  2: "mcp_server"  # Live registry data
+  3: "websites"  # docs, guides, registry sites
+  4: "discourse"  # Forum discussions
+  5: "gitlab"  # Whitepapers
+  6: "medium"  # Blog posts
+  7: "discord"  # If available
+  8: "twitter"  # If strategy decided
+  9: "podcast"  # If transcripts available
+  10: "notion"  # If API access granted
+
+# Notes from your requirements
+notes:
+  docs_regen_network: "Some content from GitHub, some dynamically generated - need to scrape"
+  guides_regen_network: "Can't find on GitHub - scrape directly"
+  registry_regen_network: "Scrape site + use MCP for live data"
+  blog: "blog.regen.network doesn't exist, use Medium instead"
+  foundation: "blog.regen.foundation doesn't exist, use regen.foundation/publications"
+  gitlab: "Everything is 7 years old but contains important whitepapers"
+  podcast: "SoundCloud is source, need transcription service"
+  twitter: "Recommend export archive for complete history"
+  notion: "They have naming convention, not actual KOI node"

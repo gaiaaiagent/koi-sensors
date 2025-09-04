@@ -1,0 +1,5 @@
+{"entity_type": "CreditClass", "value": "C01", "confidence": 1.0, "properties": {"classId": "C01", "creditType": "carbon", "source": "pattern"}, "source_document": "33ad73782d08b507", "extracted_at": "2025-08-13T07:51:50.956152"}
+{"entity_type": "CreditClass", "value": "C06", "confidence": 1.0, "properties": {"classId": "C06", "creditType": "unknown", "source": "pattern"}, "source_document": "6ca2b82f872dec14", "extracted_at": "2025-08-13T07:51:51.089947"}
+{"entity_type": "CreditClass", "value": "C01", "confidence": 1.0, "properties": {"classId": "C01", "creditType": "unknown", "source": "pattern"}, "source_document": "ff397411d72c9017", "extracted_at": "2025-08-13T07:51:51.742905"}
+{"entity_type": "CreditClass", "value": "C02", "confidence": 1.0, "properties": {"classId": "C02", "creditType": "unknown", "source": "pattern"}, "source_document": "ff397411d72c9017", "extracted_at": "2025-08-13T07:51:51.743124"}
+{"entity_type": "CreditClass", "value": "C03", "confidence": 1.0, "properties": {"classId": "C03", "creditType": "unknown", "source": "pattern"}, "source_document": "ff397411d72c9017", "extracted_at": "2025-08-13T07:51:51.743178"}

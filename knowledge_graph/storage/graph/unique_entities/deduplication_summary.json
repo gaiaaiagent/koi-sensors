@@ -1,0 +1,34 @@
+{
+  "deduplication_completed_at": "2025-08-13T07:51:52.049988",
+  "total_statistics": {
+    "raw_entities": 259,
+    "excluded_entities": 0,
+    "unique_entities": 35,
+    "duplicates_removed": 224
+  },
+  "by_entity_type": {
+    "Creditclass": {
+      "raw_count": 5,
+      "excluded_count": 0,
+      "unique_count": 4,
+      "duplicates_removed": 1
+    },
+    "Organization": {
+      "raw_count": 222,
+      "excluded_count": 0,
+      "unique_count": 23,
+      "duplicates_removed": 199
+    },
+    "Person": {
+      "raw_count": 32,
+      "excluded_count": 0,
+      "unique_count": 8,
+      "duplicates_removed": 24
+    }
+  },
+  "quality_metrics": {
+    "exclusion_rate": 0.0,
+    "deduplication_rate": 86.48648648648648,
+    "final_quality_score": 13.513513513513514
+  }
+}

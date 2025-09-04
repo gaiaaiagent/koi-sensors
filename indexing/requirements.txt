@@ -1,0 +1,51 @@
+# Core
+aiohttp>=3.9.0
+httpx>=0.25.0
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# Git operations
+GitPython>=3.1.40
+
+# Web scraping
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+html2text>=2020.1.16
+
+# Embeddings & Vector Search
+sentence-transformers>=2.2.0
+chromadb>=0.4.0
+numpy>=1.24.0
+
+# Document processing
+pypdf2>=3.0.0
+markdown>=3.5.0
+langdetect>=1.0.9
+
+# Discord
+discord.py>=2.3.0
+
+# Audio transcription and processing
+openai-whisper>=20230918
+pydub>=0.25.0
+ffmpeg-python>=0.2.0
+yt-dlp>=2024.1.0  # For downloading audio from SoundCloud
+SpeechRecognition>=3.10.0  # Alternative transcription option
+
+# Web scraping with JavaScript support
+playwright>=1.40.0  # Headless browser automation
+selenium>=4.15.0  # Alternative browser automation
+beautifulsoup4>=4.12.0  # HTML parsing (already listed above)
+
+# Twitter/X scraping
+twscrape>=1.14.0  # Primary Twitter scraper with auth support
+ntscraper>=0.3.0  # Fallback Twitter scraper
+pandas>=2.0.0  # Data processing for tweets
+
+# Utilities
+tqdm>=4.66.0
+loguru>=0.7.0
+diskcache>=5.6.0
+schedule>=1.2.0
+keyring>=24.0.0
+cryptography>=41.0.0

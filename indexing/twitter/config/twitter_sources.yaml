@@ -1,0 +1,93 @@
+# Twitter/X Data Source Configuration
+
+twitter:
+  # Accounts to scrape
+  accounts:
+    - username: regen_network
+      include_replies: true
+      include_retweets: true
+      include_quotes: true
+      date_range:
+        start: 2020-01-01  # Regen Network founding year
+        end: null  # Current date
+      max_tweets: 5000  # Maximum tweets to collect per account
+      
+    # Add more accounts if needed in the future
+    # - username: RegenFoundation
+    #   include_replies: false
+    #   include_retweets: false
+    #   date_range:
+    #     start: 2021-01-01
+    #     end: null
+  
+  # Rate limiting configuration
+  rate_limits:
+    requests_per_hour: 300  # Conservative limit to avoid detection
+    retry_attempts: 3
+    cooldown_seconds: 60  # Wait between accounts
+    backoff_multiplier: 2  # Exponential backoff on rate limit
+  
+  # Caching configuration
+  cache:
+    enabled: true
+    ttl_hours: 6  # Cache tweets for 6 hours
+    incremental: true  # Only fetch new tweets after last collection
+    
+  # Collection settings
+  collection:
+    batch_size: 100  # Number of tweets to process at once
+    save_raw: true  # Save raw tweet JSON
+    save_media: false  # Download images/videos (storage intensive)
+    
+  # Scraper configuration
+  scraper:
+    primary: twscrape  # Primary scraper to use
+    fallback: ntscraper  # Fallback if primary fails
+    timeout: 30  # Request timeout in seconds
+    
+  # Content filtering
+  filters:
+    # Keywords to prioritize (boost relevance)
+    priority_keywords:
+      - "carbon"
+      - "credit"
+      - "ReFi"
+      - "regenerative"
+      - "climate"
+      - "nature"
+      - "ecological"
+      - "biodiversity"
+      - "soil"
+      - "methodology"
+      - "governance"
+      - "$REGEN"
+      
+    # Exclude certain content types
+    exclude:
+      - promotional_only: false  # Keep promotional tweets
+      - replies_to_self: false  # Keep thread replies
+      
+  # Test mode configuration
+  test:
+    enabled: true  # Start with test mode
+    limit: 50  # Only collect 50 tweets for testing
+    
+# Authentication notes
+auth:
+  instructions: |
+    To collect Twitter data, you need to set up authentication:
+    
+    1. Run: python /home/regenai/project/indexing/twitter/scripts/setup_twitter_auth.py
+    2. Choose authentication method:
+       a. Cookie-based (recommended): Export cookies from browser
+       b. Auth token: Get auth_token from browser developer tools
+       c. Account credentials: Username/password (less reliable)
+    
+    For cookie export:
+    1. Log into twitter.com in your browser
+    2. Open Developer Tools (F12)
+    3. Go to Application/Storage > Cookies
+    4. Find and copy 'auth_token' and 'ct0' values
+    5. Paste when prompted by setup script
+    
+    The auth data will be encrypted and stored securely.

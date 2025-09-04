@@ -1,0 +1,76 @@
+{
+  "generated_at": "2025-08-20T06:00:00.000000",
+  "total_documents": 12967,
+  "content_sources": {
+    "github": {
+      "count": 66,
+      "location": "indexing/storage/documents/github_*.json",
+      "target": "knowledge/regen-network/technical/",
+      "description": "Technical documentation from GitHub repositories"
+    },
+    "gitlab": {
+      "count": 3,
+      "location": "indexing/storage/documents/gitlab_*.json",
+      "target": "knowledge/regen-network/technical/",
+      "description": "Historical whitepapers from GitLab"
+    },
+    "website": {
+      "count": 64,
+      "location": "indexing/storage/documents/website_*.json",
+      "target": "knowledge/regen-network/[categorized]",
+      "description": "Content from various Regen Network websites",
+      "breakdown": {
+        "other": 10,
+        "registry.regen.network": 20,
+        "regen.foundation": 6,
+        "guides.regen.network": 25,
+        "docs.regen.network": 3
+      }
+    },
+    "podcast": {
+      "soundcloud_metadata": 50,
+      "transcripts": 70,
+      "location": "indexing/podcast/storage/podcast_complete/",
+      "target": "knowledge/regen-network/community/podcasts/",
+      "description": "Planetary Regeneration Podcast transcripts"
+    },
+    "medium": {
+      "count": 160,
+      "location": "indexing/medium/storage/articles/",
+      "target": "knowledge/regen-network/community/articles/",
+      "description": "Blog posts from Regen Network Medium"
+    },
+    "twitter": {
+      "tweets": 11483,
+      "location": "/opt/projects/GAIA/knowledge/regen-network/social/twitter/",
+      "target": "knowledge/regen-network/community/social/",
+      "description": "Twitter/X archive with historical tweets"
+    },
+    "notion": {
+      "pages": 585,
+      "databases": 10,
+      "total_entries": 535,
+      "location": "indexing/notion/",
+      "target": "knowledge/regen-network/notion/",
+      "description": "Complete Notion workspace export including KOI database",
+      "breakdown": {
+        "KOI_Repo": 202,
+        "PRP_Episodes": 7,
+        "Podcast_Management": 35,
+        "Research_Library": 17,
+        "Science_Sprint_Board": 195,
+        "Other_databases": 79
+      }
+    }
+  },
+  "conversion_status": {
+    "github": "completed",
+    "gitlab": "completed",
+    "website": "completed",
+    "podcast": "completed",
+    "medium": "completed",
+    "twitter": "pending",
+    "notion": "completed"
+  },
+  "last_conversion": "2025-08-20T05:41:01.909251"
+}

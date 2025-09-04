@@ -1,0 +1,11 @@
+{
+  "build_completed_at": "2025-08-13T07:51:52.050206",
+  "processing_time_seconds": 2.000219,
+  "documents_processed": 184,
+  "raw_entities_extracted": 259,
+  "unique_entities_final": 35,
+  "duplicates_removed": 224,
+  "bad_entities_excluded": 0,
+  "extraction_method": "whitelist_v2",
+  "quality_score": 13.513513513513514
+}
