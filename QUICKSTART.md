@@ -1,97 +1,92 @@
-# Quick Start Guide
+# Quick Start Guide - KOI Sensor Network
 
-## 🚀 5-Minute Setup
+## 🚀 Production Pipeline Setup
 
-### 1. Prerequisites Check
+### 1. Prerequisites
 ```bash
-python3 --version  # Need 3.12+
-node --version     # Need v18+
-npm --version      # Need 9+
+python3 --version  # Need 3.11+
+pip install -r requirements.txt
 ```
 
-### 2. Automated Setup
-```bash
-# Clone repository
-git clone https://github.com/regen-network/ai-agent-system.git
-cd ai-agent-system
+### 2. Start the Complete KOI Pipeline
 
-# Run setup (handles everything)
-chmod +x setup.sh
-./setup.sh
+#### Terminal 1: KOI Coordinator
+```bash
+cd koi-sensors
+python koi_protocol/coordinator/run_coordinator.py
+# Runs on port 8000
 ```
 
-### 3. Quick Test
+#### Terminal 2: KOI Event Bridge (in koi-processor repo)
 ```bash
-# Activate environment
-source venv/bin/activate
-
-# Test with 5 documents
-python indexing/scripts/test_collection.py --limit 5
-
-# Verify it worked
-ls -la indexing/storage/documents/
+cd ../koi-processor
+python koi_event_bridge.py
+# Runs on port 8100
 ```
 
-## 📊 Full Indexing
-
-### Option 1: Phased Indexing (Recommended for 15,000+ docs)
+#### Terminal 3: BGE Embedding Server (in koi-processor repo)
 ```bash
-# Phase 1: Collect and cache documents
-python indexing/scripts/run_collection_only.py --test --limit 50  # Test first
-python indexing/scripts/run_collection_only.py  # Full collection
-
-# Phase 2: Generate embeddings (when ready)
-python indexing/scripts/generate_embeddings.py
-
-# Phase 3: Build knowledge graph (optional)
-python indexing/scripts/build_knowledge_graph.py
+cd ../koi-processor
+python bge_server.py
+# Runs on port 8888
 ```
 
-### Option 2: All-in-One Indexing
+#### Terminal 4: Website Sensor
 ```bash
-# Test mode first
-python indexing/scripts/run_full_index.py --test --limit 50
-
-# Full indexing (all phases at once)
-python indexing/scripts/run_full_index.py
+cd ../koi-sensors/sensors/websites
+python run_website_sensor.py
+# Monitors 9 websites for changes
 ```
 
-### Option 3: With MCP Server
+### 3. Verify Pipeline Operation
 ```bash
-# Terminal 1: Start MCP server
-cd mcp-server
-npm run dev:server
+# Check coordinator status
+curl http://localhost:8000/status
 
-# Terminal 2: Run indexing
-cd ..
-source venv/bin/activate
-python indexing/scripts/run_collection_only.py
+# Monitor events
+curl http://localhost:8000/events/poll
+
+# Test content injection
+python test_website_sensor.py
 ```
 
-## 🔍 Using the Search
+## 📊 Content Processing Flow
 
-```python
-# Python example
-from indexing.processors import Embedder
+### How Content Flows Through the Pipeline
+1. **Sensor Detection**: Website/podcast sensors detect new or changed content
+2. **KOI Event Generation**: Content packaged with RID and CID identifiers
+3. **Coordinator Routing**: Events forwarded to processor bridge
+4. **BGE Processing**: Text chunked and embeddings generated (1024-dim)
+5. **PostgreSQL Storage**: Embeddings stored with pgvector extension
+6. **Agent Access**: Content immediately available for RAG queries (<3-5s)
 
-embedder = Embedder()
-results = embedder.search("carbon credits", n_results=5)
+### Monitor Processing
+```bash
+# Watch events being processed
+curl http://localhost:8000/events/poll
 
-for result in results:
-    print(f"Content: {result['content'][:200]}...")
+# Check database for new content
+psql -U postgres -d eliza_db -c "SELECT COUNT(*) FROM memories WHERE type='koi_document';"
+
+# Query embeddings
+psql -U postgres -d eliza_db -c "SELECT COUNT(*) FROM embeddings WHERE dim_1024 IS NOT NULL;"
 ```
 
-## ✅ Verify System
+## ✅ Pipeline Health Check
 
 ```bash
-# Check all requirements
-python indexing/scripts/verify_requirements.py
+# Check all components are running
+ps aux | grep -E "koi_coordinator|koi_event_bridge|bge_server|website_sensor"
+
+# Test end-to-end flow
+python test_pipeline_flow.py
 
 # Expected output:
-# ✅ Query response time: <2s
-# ✅ Embeddings generated
-# ✅ KOI RIDs implemented
-# ⚠️ Need to run full indexing for 15,000 documents
+# ✅ Coordinator: Running on port 8000
+# ✅ Event Bridge: Running on port 8100
+# ✅ BGE Server: Running on port 8888
+# ✅ Website Sensor: Active monitoring
+# ✅ Database: Content stored and queryable
 ```
 
 ## 🆘 Troubleshooting
