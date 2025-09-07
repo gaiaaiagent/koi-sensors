@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import logging
+import httpx
 
 from ..nodes.koi_node import KOIFullNode
 from ..core.rid_system import RID
@@ -97,6 +98,9 @@ class KOICoordinator:
         self.sensor_adapters: Dict[str, Any] = {}
         self.sensor_status: Dict[str, Dict[str, Any]] = {}
         
+        # Processor bridge URL (for forwarding events)
+        self.processor_bridge_url = "http://localhost:8100/process-koi-event"
+        
         # Setup routes
         self._setup_routes()
     
@@ -121,6 +125,9 @@ class KOICoordinator:
                 # Process event through KOI node
                 await self.koi_node.handle_event(event)
                 await self.koi_node.broadcast_event(event)
+                
+                # Forward to processor bridge
+                await self._forward_to_processor(event)
                 
                 self.logger.info(f"Broadcast {event.event_type} event for {event.rid}")
                 
@@ -279,6 +286,40 @@ class KOICoordinator:
             except Exception as e:
                 self.logger.error(f"Error stopping sensor {sensor_type}: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+    
+    async def _forward_to_processor(self, event: KOIEvent):
+        """Forward KOI event to processor bridge"""
+        try:
+            # Convert event to format expected by processor
+            event_data = {
+                "event_type": event.event_type,
+                "bundle": {
+                    "rid": event.rid,
+                    "cid": event.bundle.cid if event.bundle else "",
+                    "content": event.bundle.content if event.bundle else {},
+                    "metadata": event.bundle.manifest.metadata if event.bundle and event.bundle.manifest else {},
+                    "manifest": event.bundle.manifest.to_dict() if event.bundle and event.bundle.manifest else {}
+                },
+                "timestamp": event.timestamp or datetime.now(timezone.utc).isoformat(),
+                "source_sensor": event.source_node or self.node_name
+            }
+            
+            # Send to processor bridge
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.processor_bridge_url,
+                    json=event_data
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    self.logger.info(f"Event forwarded to processor: {result.get('chunks_created', 0)} chunks, {result.get('embeddings_created', 0)} embeddings")
+                else:
+                    self.logger.warning(f"Processor bridge returned {response.status_code}: {response.text}")
+                    
+        except Exception as e:
+            # Log but don't fail - processor is optional
+            self.logger.warning(f"Could not forward to processor: {e}")
     
     async def start(self):
         """Start the coordinator"""
