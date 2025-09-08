@@ -5,6 +5,7 @@ Full KOI node implementing complete KOI-net protocol with FastAPI
 
 import asyncio
 import json
+import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Query
@@ -31,6 +32,11 @@ class EventBroadcastRequest(BaseModel):
     source_node: str
     bundle: Optional[Dict[str, Any]] = None
     reason: Optional[str] = None
+    # Additional fields that sensors may send
+    node_id: Optional[str] = None
+    node_type: Optional[str] = None
+    event_id: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
 
 
 class EventPollResponse(BaseModel):
@@ -114,11 +120,48 @@ class KOICoordinator:
                 # Convert request to KOIEvent
                 event_data = request.dict()
                 
-                # Handle bundle if present
+                # Handle bundle if present, or create one from sensor data
                 if event_data.get("bundle"):
                     bundle_data = event_data["bundle"]
                     bundle = Bundle.from_dict(bundle_data)
                     event_data["bundle"] = bundle
+                elif "data" in event_data:
+                    # Create bundle from sensor data
+                    from ..core.bundle_system import Bundle, Manifest
+                    
+                    # Extract data from the sensor event
+                    sensor_data = event_data.pop("data", {})
+                    
+                    # Create a simple manifest without using RID object
+                    # Just create the necessary fields directly
+                    import hashlib
+                    from datetime import datetime, timezone
+                    
+                    content_str = json.dumps(sensor_data, sort_keys=True)
+                    content_hash = hashlib.sha256(content_str.encode()).hexdigest()
+                    
+                    manifest = Manifest(
+                        rid=event_data["rid"],
+                        timestamp=event_data["timestamp"],
+                        content_hash=content_hash,
+                        size_bytes=len(content_str.encode()),
+                        content_type="application/json",
+                        version="1.0",
+                        metadata=sensor_data.get("metadata", {})
+                    )
+                    
+                    # Create bundle with the sensor content
+                    bundle = Bundle(
+                        rid=event_data["rid"],
+                        cid="",  # Will be generated
+                        content=sensor_data,
+                        manifest=manifest
+                    )
+                    event_data["bundle"] = bundle
+                    
+                    # Clean up extra fields not needed by KOIEvent
+                    event_data.pop("node_id", None)
+                    event_data.pop("node_type", None)
                 
                 event = KOIEvent.from_dict(event_data)
                 
@@ -363,8 +406,11 @@ async def main():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
+    # Get port from environment or use default
+    port = int(os.environ.get('KOI_COORDINATOR_PORT', '8000'))
+    
     # Create and start coordinator
-    coordinator = KOICoordinator()
+    coordinator = KOICoordinator(port=port)
     
     try:
         await coordinator.start()
