@@ -1,0 +1,21 @@
+sensor:
+  node_id: website-sensor-local-001
+  sensor_name: website-sensor-local
+  platform: website
+  api:
+    type: http
+    base_url: http://localhost:8200
+  koi_net:
+    coordinator_url: http://localhost:8200
+    node_type: partial
+    node_name: website-sensor-local-001
+
+websites:
+  - url: https://regen.network
+    name: Regen Network Main
+    check_interval: 300  # 5 minutes for testing
+    max_depth: 1
+  - url: https://docs.regen.network
+    name: Regen Docs
+    check_interval: 300
+    max_depth: 1

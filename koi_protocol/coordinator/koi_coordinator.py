@@ -153,9 +153,8 @@ class KOICoordinator:
                     # Create bundle with the sensor content
                     bundle = Bundle(
                         rid=event_data["rid"],
-                        cid="",  # Will be generated
-                        content=sensor_data,
-                        manifest=manifest
+                        manifest=manifest,
+                        contents=sensor_data
                     )
                     event_data["bundle"] = bundle
                     
@@ -338,8 +337,8 @@ class KOICoordinator:
                 "event_type": event.event_type,
                 "bundle": {
                     "rid": event.rid,
-                    "cid": event.bundle.cid if event.bundle else "",
-                    "content": event.bundle.content if event.bundle else {},
+                    "cid": "",  # Bundle doesn't have cid attribute
+                    "content": event.bundle.contents if event.bundle else {},
                     "metadata": event.bundle.manifest.metadata if event.bundle and event.bundle.manifest else {},
                     "manifest": event.bundle.manifest.to_dict() if event.bundle and event.bundle.manifest else {}
                 },
