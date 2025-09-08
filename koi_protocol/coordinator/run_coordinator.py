@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 """
 Simple KOI Coordinator Runner
 Demonstrates how coordinator receives events from sensors
@@ -34,16 +35,16 @@ async def main():
     # Create and start coordinator
     coordinator = KOICoordinator(
         node_name="koi-coordinator-main",
-        port=8000
+        port=int(os.getenv("KOI_COORDINATOR_PORT", 8000))
     )
     
     try:
-        logger.info("Starting KOI Coordinator on port 8000...")
+        logger.info(f"Starting KOI Coordinator on port {coordinator.port}...")
         await coordinator.start()
         
         # Keep running
         print("\n✅ Coordinator ready! Sensors can now connect.")
-        print("📡 Listening on http://localhost:8000")
+        print(f"📡 Listening on http://localhost:{coordinator.port}")
         print("🔗 Key endpoints:")
         print("   POST /events/broadcast - Receive events from sensors")
         print("   GET  /events/poll      - Poll events (for partial nodes)")
