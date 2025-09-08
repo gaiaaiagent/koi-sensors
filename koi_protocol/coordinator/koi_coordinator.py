@@ -119,13 +119,20 @@ class KOICoordinator:
             try:
                 # Convert request to KOIEvent
                 event_data = request.dict()
+                self.logger.debug(f"Received event data keys: {event_data.keys()}")
+                self.logger.debug(f"Event type: {event_data.get('event_type')}")
                 
                 # Handle bundle if present, or create one from sensor data
                 if event_data.get("bundle"):
                     bundle_data = event_data["bundle"]
-                    bundle = Bundle.from_dict(bundle_data)
-                    event_data["bundle"] = bundle
+                    self.logger.debug(f"Bundle data keys: {bundle_data.keys() if isinstance(bundle_data, dict) else 'not a dict'}")
+                    # Keep bundle as dictionary for KOIEvent.from_dict()
+                    # It will be converted to Bundle object inside KOIEvent.from_dict()
+                    if not isinstance(bundle_data, dict):
+                        self.logger.error(f"Bundle data is not a dictionary: {type(bundle_data)}")
+                        raise ValueError("Bundle must be a dictionary")
                 elif "data" in event_data:
+                    self.logger.debug(f"Creating bundle from sensor data")
                     # Create bundle from sensor data
                     from ..core.bundle_system import Bundle, Manifest
                     
@@ -151,24 +158,32 @@ class KOICoordinator:
                     )
                     
                     # Create bundle with the sensor content
+                    self.logger.debug(f"Creating Bundle with rid={event_data['rid']}")
                     bundle = Bundle(
                         rid=event_data["rid"],
                         manifest=manifest,
                         contents=sensor_data
                     )
-                    event_data["bundle"] = bundle
+                    self.logger.debug(f"Bundle created successfully, type: {type(bundle)}")
+                    # Convert Bundle to dictionary for KOIEvent.from_dict()
+                    event_data["bundle"] = bundle.to_dict()
                     
                     # Clean up extra fields not needed by KOIEvent
                     event_data.pop("node_id", None)
                     event_data.pop("node_type", None)
+                    event_data.pop("event_id", None)
+                    event_data.pop("data", None)
                 
+                self.logger.debug(f"Creating KOIEvent from data")
                 event = KOIEvent.from_dict(event_data)
+                self.logger.debug(f"KOIEvent created: type={type(event)}, has_bundle={event.bundle is not None}")
                 
                 # Process event through KOI node
                 await self.koi_node.handle_event(event)
                 await self.koi_node.broadcast_event(event)
                 
                 # Forward to processor bridge
+                self.logger.debug(f"Forwarding event to processor bridge")
                 await self._forward_to_processor(event)
                 
                 self.logger.info(f"Broadcast {event.event_type} event for {event.rid}")
@@ -176,7 +191,9 @@ class KOICoordinator:
                 return {"status": "success", "event_id": event.rid}
                 
             except Exception as e:
+                import traceback
                 self.logger.error(f"Error broadcasting event: {e}")
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
                 raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.get("/events/poll", response_model=EventPollResponse)
