@@ -104,6 +104,9 @@ class KOICoordinator:
         self.sensor_adapters: Dict[str, Any] = {}
         self.sensor_status: Dict[str, Dict[str, Any]] = {}
         
+        # Track broadcast sensors (external sensors that send events)
+        self.broadcast_sensors: Dict[str, Dict[str, Any]] = {}  # node_id -> sensor info
+        
         # Processor bridge URL (for forwarding events)
         self.processor_bridge_url = "http://localhost:8100/process-koi-event"
         
@@ -177,6 +180,17 @@ class KOICoordinator:
                 self.logger.debug(f"Creating KOIEvent from data")
                 event = KOIEvent.from_dict(event_data)
                 self.logger.debug(f"KOIEvent created: type={type(event)}, has_bundle={event.bundle is not None}")
+                
+                # Track the broadcast sensor
+                if "source_node" in event_data:
+                    source_node = event_data["source_node"]
+                    self.broadcast_sensors[source_node] = {
+                        "node_id": source_node,
+                        "last_event": datetime.now(timezone.utc).isoformat(),
+                        "event_count": self.broadcast_sensors.get(source_node, {}).get("event_count", 0) + 1,
+                        "event_type": event_data.get("event_type", "unknown")
+                    }
+                    self.logger.debug(f"Tracked broadcast sensor: {source_node}")
                 
                 # Process event through KOI node
                 await self.koi_node.handle_event(event)
@@ -283,16 +297,19 @@ class KOICoordinator:
                 uptime_seconds=uptime,
                 cache_size=len(self.koi_node.cache),
                 event_queue_size=len(self.koi_node.event_queue),
-                connected_sensors=len(self.sensor_adapters)
+                connected_sensors=len(self.sensor_adapters) + len(self.broadcast_sensors)
             )
         
         # Additional management endpoints
         @self.app.get("/sensors/status")
         async def get_sensor_status():
             """Get status of all sensor adapters"""
-            status = {}
+            status = {
+                "managed_sensors": {},
+                "broadcast_sensors": self.broadcast_sensors
+            }
             for sensor_name, adapter in self.sensor_adapters.items():
-                status[sensor_name] = adapter.get_metrics()
+                status["managed_sensors"][sensor_name] = adapter.get_metrics()
             return status
         
         @self.app.post("/sensors/start/{sensor_type}")
@@ -416,14 +433,21 @@ class KOICoordinator:
 # Main entry point
 async def main():
     """Run KOI coordinator"""
+    import argparse
+    
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Get port from environment or use default
-    port = int(os.environ.get('KOI_COORDINATOR_PORT', '8000'))
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='KOI Coordinator')
+    parser.add_argument('--port', type=int, default=8200, help='Port to run on')
+    args = parser.parse_args()
+    
+    # Get port from command line or environment
+    port = args.port if args.port else int(os.environ.get('KOI_COORDINATOR_PORT', '8200'))
     
     # Create and start coordinator
     coordinator = KOICoordinator(port=port)
