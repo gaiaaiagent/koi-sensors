@@ -1,5 +1,19 @@
 # KOI Sensors Changelog
 
+## Event Bridge v2 Integration - September 10, 2025
+
+### 🔄 Major Update - Deduplication and Versioning
+- **Event Bridge v2**: Updated all references from `koi_event_bridge.py` to `koi_event_bridge_v2.py`
+- **RID Deduplication**: Sensors now benefit from automatic duplicate prevention at processor level
+- **Version Control**: UPDATE events properly create new versions with audit trail
+- **Isolated Tables**: Clean separation between sensor data and other content sources
+- **Documentation**: Updated CLAUDE.md, README.md with v2 features
+
+### 🧹 Repository Cleanup
+- Removed obsolete test files (forum samples, notion responses)
+- Cleaned temporary log files
+- Streamlined repository for production deployment
+
 ## Phase 1 Complete - Website & Podcast Sensors (September 2025)
 
 ### 🌐 Website Sensor - COMPLETE

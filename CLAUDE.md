@@ -24,7 +24,7 @@ KOI Sensors → KOI Coordinator → KOI Event Bridge → BGE Embeddings → Post
 
 ### Pipeline Components (All Production-Deployed)
 - **KOI Sensors**: Monitor websites, documents, and data sources - ACTIVE
-- **KOI Event Bridge** (`koi_event_bridge.py`): Real-time processing of sensor events through BGE pipeline - OPERATIONAL
+- **KOI Event Bridge v2** (`koi_event_bridge_v2.py`): Real-time processing with RID-based deduplication and versioning - OPERATIONAL
 - **BGE Embedding Server** (`bge_server.py`): HTTP API generating 1024-dimensional embeddings - TESTED
 - **PostgreSQL Integration**: Direct storage in agent database with pgvector - VERIFIED
 - **Agent RAG Access**: Processed content immediately available for queries - CONFIRMED

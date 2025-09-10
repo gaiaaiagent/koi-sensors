@@ -23,6 +23,16 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 - ✅ Content change detection operational
 - ✅ Docker deployment ready
 
+## 🔄 Event Bridge v2 Integration
+
+**NEW**: The KOI sensor network now integrates with Event Bridge v2, providing:
+- **RID-based Deduplication**: Automatically prevents duplicate content ingestion using Resource Identifiers
+- **Version Control**: UPDATE events create new versions with complete audit trail
+- **Isolated Tables**: Clean separation between sensor data and other content sources
+- **Production Tested**: Deduplication verified working on live Regen Network infrastructure
+
+See [koi-processor v2.0.0](https://github.com/gaiaaiagent/koi-processor) for implementation details.
+
 ## 🏗️ Architecture Integration
 
 This sensor network is **Phase 1** of the complete 3-repository KOI system, fully aligned with [KOI_COMPLETE_RESEARCH.md](../koi-research/docs/KOI_COMPLETE_RESEARCH.md):
