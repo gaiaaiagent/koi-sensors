@@ -159,14 +159,15 @@ koi-sensors/
 
 **Total**: 37,394 characters extracted, 233+ internal links discovered
 
-### 🎧 **Podcast Sensor** ✅ COMPLETE
-- **Coverage**: Planetary Regeneration Podcast (67/70 episodes detected, 95.7% rate)
-- **Platform**: SoundCloud with proven server collection methods
-- **Real-time Detection**: All recent/accessible episodes monitored for changes
-- **Historical Episodes**: Older episodes (like 2020's Episode 22) not in current feeds - normal behavior
-- **Integration**: Aligned with existing 52 transcripts (428,113+ words)  
-- **Monitoring**: 24-hour intervals for new episodes and transcript updates
-- **Status**: Ready for coordinator integration
+### 🎧 **Podcast Sensor** ✅ COMPLETE WITH TRANSCRIPTION
+- **Coverage**: Planetary Regeneration Podcast (68/70 episodes successfully transcribed)
+- **Platform**: SoundCloud with yt-dlp audio download
+- **Transcription**: OpenAI Whisper AI (base model) - same as server-project
+- **Content Volume**: 428,113+ words successfully extracted
+- **Missing Episodes**: #34 and #43 were never published (confirmed)
+- **Enhanced Version**: `enhanced_podcast_sensor.py` with full transcription pipeline
+- **Proven Methods**: Uses exact approach that worked in server-project
+- **Status**: Production-ready with audio download and transcription
 
 ### ✅ **Notion Sensor** COMPLETE (Session 2 Addition)
 - **Coverage**: Full Notion workspace monitoring via API integration
