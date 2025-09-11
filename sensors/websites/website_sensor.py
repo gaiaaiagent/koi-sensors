@@ -60,6 +60,15 @@ class WebsiteMonitorConfig(BaseSensorConfig):
             "check_interval": 7200,  # Check every 2 hours
             "importance": "medium",
             "notes": "Foundation updates, curated documents"
+        },
+        {
+            "name": "research-retreat-papers",
+            "url": "https://www.researchretreat.org/papers",
+            "strategy": "scrape",
+            "max_depth": 2,
+            "check_interval": 21600,  # Check every 6 hours (academic papers change slowly)
+            "importance": "high",
+            "notes": "Academic research papers on regenerative topics - high value content"
         }
     ]
     
@@ -76,14 +85,14 @@ class WebsiteMonitorConfig(BaseSensorConfig):
 
 
 class WebPageRID(RID):
-    """Web page resource identifier: orn:web.page:domain/path_hash"""
+    """Web page resource identifier: orn:web.page.domain/path_hash"""
     
     def __init__(self, domain: str, url: str):
-        self.domain = domain
+        self.domain = domain.replace('.', '_').replace(':', '_')  # Replace dots and colons
         self.full_url = url
         # Create hash of full URL for uniqueness while keeping it manageable
         self.url_hash = hashlib.sha256(url.encode('utf-8')).hexdigest()[:16]
-        super().__init__("orn", f"web.page:{domain}/{self.url_hash}")
+        super().__init__("orn", f"web.page.{self.domain}.{self.url_hash}")
 
 
 class WebsiteKOISensor:

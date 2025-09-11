@@ -1,0 +1,106 @@
+# Ledger Sensor Configuration
+sensor_name: ledger-sensor
+platform: regen-ledger
+
+# API Configuration
+api:
+  base_url: https://regen-rest.publicnode.com
+  timeout_seconds: 30
+  max_retries: 3
+
+# RPC Endpoints (with fallbacks)
+rpc_endpoints:
+  - https://regen-rpc.polkachu.com
+  - https://rpc-regen.ecostake.com
+  - https://regen.rpc.m.stavr.tech
+
+# REST/LCD Endpoints (with fallbacks)
+rest_endpoints:
+  - https://regen-rest.publicnode.com
+  - https://rest-regen.ecostake.com
+  - https://regen.api.m.stavr.tech
+  - https://api-regen-ia.cosmosia.notional.ventures
+  - https://regen.api.ping.pub
+
+# Query Intervals (seconds)
+query_intervals:
+  governance: 300      # 5 minutes
+  ecocredit: 600      # 10 minutes
+  consensus: 60       # 1 minute
+  stats: 3600         # 1 hour
+  daily_report: 86400 # 24 hours
+  weekly_report: 604800 # 7 days
+
+# Content Filter Configuration
+content_filter:
+  keywords_include:
+    - regen
+    - carbon
+    - credit
+    - governance
+    - proposal
+    - validator
+  min_content_length: 10
+  max_content_length: 50000
+
+# Processing Configuration
+processing:
+  extract_entities: true
+  extract_sentiment: false
+  extract_topics: true
+  batch_size: 100
+  processing_interval_seconds: 30
+
+# KOI Network Configuration
+koi_net:
+  node_name: regen-ledger-sensor
+  node_type: PARTIAL
+  coordinator_url: http://localhost:8089
+  cache_directory: .ledger_cache
+  event_queue_file: ledger_events.json
+  polling_interval_seconds: 30
+
+# KOI Event Bridge Configuration
+koi_bridge:
+  url: http://localhost:8089
+  send_governance: true
+  send_ecocredits: true
+  send_marketplace: true
+  send_validators: false  # Usually too many/frequent
+  send_stats: true
+
+# Monitoring Configuration
+monitoring:
+  log_level: INFO
+  log_file: ledger_sensor.log
+  enable_metrics: true
+  health_check_port: 8080
+
+# Data Collection Settings
+collection:
+  max_proposals_per_query: 100
+  max_credit_classes: 50
+  max_batches_per_class: 100
+  max_validators: 100
+  max_sell_orders: 500
+
+# Report Generation Settings
+reports:
+  daily:
+    enabled: true
+    time: "12:00"  # UTC
+    include_stats: true
+    include_proposals: true
+    include_issuances: true
+    include_marketplace: true
+  weekly:
+    enabled: true
+    day: "friday"
+    time: "15:00"  # UTC
+    sections:
+      - executive_summary
+      - key_metrics
+      - governance_update
+      - credit_activity
+      - marketplace_overview
+      - validator_performance

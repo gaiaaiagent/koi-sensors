@@ -168,10 +168,16 @@ koi-sensors/
 - **Monitoring**: 24-hour intervals for new episodes and transcript updates
 - **Status**: Ready for coordinator integration
 
+### ✅ **Notion Sensor** COMPLETE (Session 2 Addition)
+- **Coverage**: Full Notion workspace monitoring via API integration
+- **Features**: Database discovery, page content extraction, property handling
+- **Change Detection**: SHA-256 content hashing for NEW/UPDATE events
+- **Integration**: Complete KOI Event Bridge support with RID generation
+- **Status**: Ready for production with provided integration secret
+
 ### 🐦 **Additional Sensors** 📋 PLANNED
-- **Twitter Sensor**: Real-time tweet monitoring
-- **Discord Sensor**: Message monitoring with bot permissions  
-- **Notion Sensor**: Database content monitoring
+- **Twitter Sensor**: Real-time tweet monitoring (files exist, needs completion)
+- **Discord Sensor**: Message monitoring (waiting for bot channel approval)
 
 ## 📊 Integration with Existing System
 

@@ -1,0 +1,273 @@
+{
+  "timestamp": "2025-09-10T22:15:22.380916",
+  "source": "discourse_sensor",
+  "document_count": 10,
+  "documents": [
+    {
+      "rid": "1b37acae952648bb",
+      "source": "discourse:forum.regen.network",
+      "source_type": "forum",
+      "url": "https://forum.regen.network/t/welcome-to-regen-network/5",
+      "title": "Welcome to Regen Network! :wave:",
+      "content": "# Welcome to Regen Network! :wave:\n\n\n## Post by system (2025-06-05T14:24:52.420Z)\nWe are so glad you joined us. Regen Regen is a sovereign, proof-of-stake blockchain built to ensure utility for ecological data and climate markets. Here are some things you can do to get started: Introduce yourself by adding your picture and information about yourself and your interests to your profile. What is one thing you\u2019d like to be asked about? Get to know the community by browsing discussions that are already happening here. When you find a post interesting, informative, or entertaining, use the to show your appreciation or support! Contribute by commenting, sharing your own perspective, asking questions, or offering feedback in the discussion. Before replying or starting new topics, please review the Community Guidelines. Configure email & notifications to make sure you stay in the loop! Discourse has a robust system for configuring emails, notifications and tracked topics. See Configuring Email & Notifications If you need help or have a suggestion, feel free to ask in Site Feedback or contact the admins.\n\n\n## Post by montymerlin (2025-06-26T17:11:26.091Z)\nHello Regen Network\n",
+      "author": "system",
+      "timestamp": "2025-06-05T14:24:52.369000+00:00",
+      "metadata": {
+        "forum": "forum.regen.network",
+        "topic_id": 5,
+        "category": 4,
+        "posts_count": 2,
+        "views": 47,
+        "like_count": 6,
+        "reply_count": 0,
+        "tags": [
+          "validator",
+          "community",
+          "tokenomics"
+        ],
+        "pinned": true,
+        "archived": false
+      }
+    },
+    {
+      "rid": "2baf1260cf9be2f7",
+      "source": "discourse:forum.regen.network",
+      "source_type": "forum",
+      "url": "https://forum.regen.network/t/ecological-contracts-economic-layer/512",
+      "title": "Ecological Contracts + Economic Layer",
+      "content": "# Ecological Contracts + Economic Layer\n\n\n## Post by brawlaphant (2025-09-10T20:31:15.119Z)\nEcological Contracts + Economic Layer Beyond tokenomics adjustments, the real leverage for Regen is in coordinating ecological contract formation (1\u2013100 years) and pairing that with a trading strategy module to sustain liquidity. The idea is simple: Ecological contracts anchor Regen\u2019s mission. Token volumes (REGEN + ecocredits) should reflect and support contract activity. Trading strategies + distribution tools ensure economic sustainability and visibility. AI may be overhyped, but distribution tech and capital efficiency are scaling fast. Regen\u2019s gap is not narrative hype or tokenomic tweaks \u2014 it\u2019s under-provisioned ecological contract infrastructure. That\u2019s the layer worth designing for.\n",
+      "author": "brawlaphant",
+      "timestamp": "2025-09-10T20:31:15.076000+00:00",
+      "metadata": {
+        "forum": "forum.regen.network",
+        "topic_id": 512,
+        "category": 4,
+        "posts_count": 1,
+        "views": 1,
+        "like_count": 0,
+        "reply_count": 0,
+        "tags": [
+          "ecocredit",
+          "tokenomics"
+        ],
+        "pinned": false,
+        "archived": false
+      }
+    },
+    {
+      "rid": "b4b2bb8bee491aef",
+      "source": "discourse:forum.regen.network",
+      "source_type": "forum",
+      "url": "https://forum.regen.network/t/new-testnet-to-replace-regen-upgrade/510",
+      "title": "New testnet to replace regen-upgrade",
+      "content": "# New testnet to replace regen-upgrade\n\n\n## Post by S4mmy_B (2025-09-09T17:36:22.378Z)\nHey folks, As many of you know, during the Cosmos SDK 0.47 upgrade, @anilcse and the Vitwit helped us successfully complete the migration by standing up a temporary upgrade chain called regen-upgrade, which replaced regen-redwood. That chain has served its purpose well, but Vitwit would now like to shut it down in place of us spinning up a new, longer-term testnet. The RND PBC is happy to take initiative to spin up a new chain, but we need support on a few things: Validators: Ideally, we\u2019d like 3\u20135 validators running nodes to keep the testnet resilient. We can get started with fewer if necessary, but having a strong validator set would be great. Name: Our last testnet was named regen-redwood. Curious if folks want to keep this name, or if we as the community want to explore a new name. Coordination: We\u2019ll need to agree on parameters, initial setup, and testnet governance. Generally, I think we keep the existing params used on regen-upgrade and adjust governance requirements depending on the number of validators running nodes. But if there\u2019s anything we want to adjust at this time, like adding new allowed denoms to the ecocredit module, would love to hear suggestions! Looking forward, I would also propose this chain serves as the staging grounds to deploy the upcoming Cosmos SDK 0.53 upgrade such that we don\u2019t have to replicate this process again in a few months time. If you\u2019re interested in running a validator or contributing to this effort, please comment below. Let\u2019s make sure the Regen ecosystem continues to have a strong testing and experimentation ground moving forward. \u2013 S4mmyb\n\n\n## Post by brawlaphant (2025-09-10T18:14:19.908Z)\nBig +1 on the new testnet: evergreen. Can we run the stablecoin allowlist (USDC.noble / USDT.kava) in parallel on it? A short rehearsal (IBC traces, fees, Marketplace buy/retire, circuit-breaker caps) would de-risk mainnet and line up real demand for credits and REGEN/USDC liquidity. If validators see downsides, happy to note them. Add Noble-issued USDC (`usdc.noble`) to the Regen Ledger currency allowlist Governance Governance Proposal: Enable usdc.noble on Regen Ledger Title: Add Noble-issued USDC (usdc.noble) to the Regen Ledger currency allowlist Summary: This proposal enables the use of Cosmos-native USDC \u2014 specifically usdc.noble \u2014 on Regen Ledger by adding it to the currency_allow_list. This unlocks USDC for use in the Regen Marketplace and future IBC-native flows, enabling dollar-denominated ecocredit purchases and broader ReFi utility. Context & Motivation Noble is the official\u2026 Add Kava-issued USDT (`usdt.kava`) to the Regen Ledger currency allowlist Governance Governance Proposal \u2014 Enable usdt.kava on Regen Ledger Title Add Kava-issued USDT (usdt.kava) to the Regen Ledger currency allowlist Summary This proposal adds Cosmos-native USDT, minted on Kava, to Regen\u2019s currency_allow_list. Native USDT will let users buy and retire ecocredits with dollar liquidity already circulating in Cosmos, improving UX and paving the way for ReFi integrations and future BD with Tether. Context & Motivation Kava is the sole Cosmos chain approved by T\u2026\n",
+      "author": "S4mmy_B",
+      "timestamp": "2025-09-09T17:36:22.329000+00:00",
+      "metadata": {
+        "forum": "forum.regen.network",
+        "topic_id": 510,
+        "category": 9,
+        "posts_count": 2,
+        "views": 24,
+        "like_count": 2,
+        "reply_count": 0,
+        "tags": [
+          "governance",
+          "validator",
+          "community",
+          "ecocredit",
+          "marketplace",
+          "tokenomics"
+        ],
+        "pinned": false,
+        "archived": false
+      }
+    },
+    {
+      "rid": "34e37c4cbcad7655",
+      "source": "discourse:forum.regen.network",
+      "source_type": "forum",
+      "url": "https://forum.regen.network/t/regen-tokenomics-wg/19",
+      "title": "$REGEN Tokenomics WG",
+      "content": "# $REGEN Tokenomics WG\n\n\n## Post by Max_Semenchuk (2023-08-04T12:26:58.440Z)\nHey friends, Max here For about a month we\u2019ve been discussing this working group internally and I\u2019m happy to share now a brief status update with the community. In continuation of https://commonwealth.im/regen/discussion/7802-request-for-proposals-regen-tokenomics-upgrade, we\u2019d like to kickstart a working group, where I\u2019ll be stewarding the process. The key request i\u2019m taking into the work is a token economics upgrade: Improving utility and incentives for ecocredit origination Functionally linking ecocredit value and volume living on Regen Ledger to the economic model of the REGEN token Improving the network\u2019s economic security & capacity We had a public discussion about it on a recent news hour, check it out for more details below. Check out our updated Executive Summary (2024) and Reports Call to action: Voice your needs, ideas and proposals regarding the tokenomics work Indicate your interest in participating in the working group More: https://regentokenomics.org/\n\n\n## Post by Sarah_Bax (2023-08-04T15:49:27.908Z)\nThanks for sharing this tokenomics update, Max! Can you share the timeline & the proposed tokenomics upgrade process here for the community? Is this the best location for community members to share their ideas, concerns, and needs?\n\n\n## Post by Gregory (2023-08-04T19:01:47.497Z)\nI am REALLY excited to see this taking shape. RND will be sharing the context and learnings form our work with credit originators and buyers.\n\n\n## Post by Sarah_Bax (2023-08-05T15:27:26.429Z)\nEmbedding this side discussion, discretely related to fee structure for Regen Ledger API, one of many topics and ideas proposed with the tokenomics 2.0 upgrade. Join this side conversation! https://commonwealth.im/regen/discussion/12412-proposing-a-fee-for-use-of-the-regen-ledger-api-for-dapp-development-expansion\n\n\n## Post by cosmos1u9z809y6n6g2dkmmljtrj30qvmlrdxd5t60w93 (2023-08-06T06:32:00.911Z)\nWe will need new memes to go along with new tokenomics Some organic meme metaphors we can include if eth is the gas for the world computer, what does that make REGEN for the world eco state? Staking regen as eco-direct action LPing as creating more biodiversity eco credits as the microbiology to make financial capital nutrients people soluble Just a few ideas, but the closer we link regen tokenomics and the ecosystem to living ecosystems the more legacy regens we can attract and onboard into web3 In summary telling the story of the tech through strengthening the connection between community members as described by regen foundation https://regenfoundation.mirror.xyz/CJQb6MsQkjI3rbyoe3w0NrsiMwfnNPX3Rv6X4W_tKQ0\n\n\n## Post by Dave_Fortson-LOA_Labs (2023-08-10T13:41:31.356Z)\nThank you Max and all of those supporting this effort - long overdue and exciting! I\u2019d recommend tracking the Atom Accelerator DAO who has recently funded an extensive upgrade of $ATOM tokenomics. Here\u2019s a teaser at what they are looking at: https://twitter.com/LeThang137/status/1689302645327171584/photo/1 I\u2019ll continue to add more resources to this thread as they avail themselves.\n\n\n## Post by Will-Regen_Foundation (2023-08-14T23:50:53.449Z)\nThank you for getting this going Max! I\u2019m wondering: do we need to create some kind of standing community space for this (say, a bi-weekly call), or does it seem like the existing calls (community calls every other Tuesday, and X Spaces every other Thursday), will suffice? I would also love to hear from the community regarding nominations for signers for this DAO/working group.\n\n\n## Post by Will-Regen_Foundation (2023-08-14T23:53:55.275Z)\nRegarding inspiration: likely worth us taking a close look at Akash. They\u2019re also built on the Cosmos SDK, and as far as I understanding, use the AKT token to pay for compute. It looks like their token has found a good product-market fit from what I\u2019ve seen so far.\n\n\n## Post by Christian_Regen (2023-08-25T17:52:53.168Z)\nThanks for heading this up, Max. And apologies for my slow reply, but I am definitely interested in this long-overdue conversation. How can I support it to continue to move? I would like to comment on my high-level hopes for this work: From my observations, if we continue with the current state, we have a slow decline of the value of the REGEN token to zero, but with a connection to the real-world value of the Regen Registry, Regen Marketplace, and a proper mix of other tokenomic strategies added in, we have the opportunity to reverse that trend. This in turn leads to greater interest in Regen Network, the REGEN token, and the work we are all doing, which then enables all parties working within the Network to have more resources to implement their plans, and this creates a flywheel of sorts that catapults this community and the ecological impact behind it. Let\u2019s do it!\n\n\n## Post by Brian_Weinberg (2023-09-05T11:10:39.990Z)\nCross posting this https://commonwealth.im/regen/discussion/13019-the-road-to-1. Shared with Gregory and Will privately and they both told me to post. Ref; Tokenomics. We need to walk the \"Road to $1 \" Here are factors I\u2019m sure there are many more. What would you add/subtract? Macro web 3 influence (ETH Bitcoin Cosmos Osmosis) need to Rally again. The probability this will happen again is strong. We need to demonstrate obvious utility. for example the data infrastructure to move from verified credits by 50 pages written by a PHD to real time all the time data. Real time data all the time streams coming off of an infrastructure of low cost sensors (in the water, in the air, in the ground), satellites (algorithms extracting indicators), and even autonomous vehicles with camera\u2019s / sensors on top. Include and transcend carbon credits but do it towards performance of outcomes (carbon cycle, nitrogen cycle, water quality, air quality, heat, health outcomes). Experiment with urban GIS based bounties to increase self organizing local market teams. Pay attention and link performance to market #'s (daily trades, weekly, monthly, quarterly dashboards) buyers and sellers on wholesale and retail fronts. Restructure sales dpmt and/or strategy. Continue to add Layer 1 deals across web 3 to go Carbon Positive (ie buy credits). accumulate AUM and a portfolio mix of company holdings (ETH, Bitcoin, Osmosis Cosmos, etc) earned and expanded by nature of the collaborative projects. Consider a physical exchange and more of that UI experience. (what is your equivalent of ringing the NASDAQ bell and where do I go do that)? Go where the people are. Hyperlocal USA credits is where my focus is. Winning there and in other blockchain placed based communities where folks can go kick the tires on projects is also novel (instead of it being in the other side of the world to them).: ie Climate Ac\n\n\n## Post by Max_Semenchuk (2023-09-14T11:26:57.562Z)\nReport on the current state and executive summary overview: https://www.loom.com/share/80915dd0c8a94e1d8cfbda6d654140ee Also: we\u2019re going to start having weekly REGEN Tokenomics Working Group calls on Tuesdays at 11:00am Eastern on Zoom, beginning in October. You can register here: https://us06web.zoom.us/meeting/register/tZUrcOihqzIoHdXllXzuqDUvlBwTeIHfFr5b\n\n\n## Post by Max_Semenchuk (2023-09-27T10:47:29.542Z)\nReport Jun-Sep\u201923 We\u2019ve been in conversations with Will since mid Jun about this group. Now almost a quarter since i\u2019d like to share main updates on the progress. After conducting Research overiew and Talks with the leaders I\u2019ve drafted the 1st version of Regen Tokenomics \u2013 Executive summary for Funders It was presented here on the Commonwealth as well as on community calls, twitter space etc. Next stop \u2013 weekly REGEN Tokenomics Working Group calls on Tuesdays at 11:00am Eastern on Zoom, beginning in October to discuss the details and build in public. You can register here. Finally, we\u2019ve set up the fund as a DAF (donor-advised fund) in SDG Impact Fund. Biome Trust was the first to send $10k and we have Foundation, RND and Cerulean with the same commitments. We plan to engage $100k over a year. Here\u2019s the budget for the first months, including my $2k fee for the work done so far in this quarter. Please share your comments and questions, Max, $REGEN Tokenomics working group steward.\n\n\n## Post by Max_Semenchuk (2023-10-09T07:35:41.250Z)\nWe\u2019ve done the first public sync call for the tokenomics working group, which will happen weekly further on. We had 13 people onboard and have discussed the following topics: Check-in and introductions Visions discussed over the retreat meetings (Aaron and Michael Z) Minting and burning proposal (to be prepared for commonwealth soon) Do we adopt cosmwasm? Executive summary and plans for the year Overall there are some ideas for the nearest updates and more long-term developments including research and audits. You can check the recording and notes here: https://www.notion.so/maxplay/Weekly-Sessions-Plan-e91fc224150148499dd7f7bbb631d58d?pvs=4 Also, you can join our working group by signing this form: https://forms.gle/5LMMRHCtjCm6XSDw7\n\n\n## Post by Max_Semenchuk (2023-10-30T10:20:00.489Z)\nUpdates for the October: We did 4 sync calls, with 33 people participating in the Working Group (8-15 on the call on average). Here are Weekly Sessions Recs + Notes from those calls. This quarter we\u2019re working on a paper (or a number of papers) on the $REGEN Economics Research which captures the tokenomics dynamics and current 2 focuses of discussion: Decreasing the Validators Fees Sales Pressure on the Token (see and comments also on Sarah\u2019s analysis) Increasing the Token Demand through Service Fees (see also posts from Aaron and Ryan) With this work we intend to find the best leverages to the token price and better decisions over tokenomics overall. You can track the actual tasks, documents and updates on the $REGEN Tokenomics Hub.\n\n\n## Post by Max_Semenchuk (2024-01-06T08:00:22.379Z)\nQ4 Reflections $REGEN Tokenomics Research \u2013 is getting a lot of updates recently, expect to publish the first article this year (but feel free to explore and comment on drafts). Slowly transferring into Tokenomics paper 2.0 Increasing the Token Demand through Service Fees \u2013 join Token burning upgrades discussion Decreasing Inflation / Sales Pressure on the Token \u2013 The discussion on decreasing inflation involves considering the diversification of protocol funding and increasing the diversity of utility. Suggestions include allocating inflation to addresses provably engaged with network activities adding value beyond security and creating an eco-credit creator bonding mechanism. Road to $1 \u2013 Read the doc and join the tokenomics sync on Dec 19 for the focused discussion. WG Funding \u2013 we have received a big donation (~1M $REGEN, $83k at the time of writing) Tokenomics Retreat \u2013 is probably happening around EthDenver (Feb 23 - Mar 3, 2024), but let us know if you have other suggestions Launched https://regentokenomics.org/\n\n\n## Post by Max_Semenchuk (2024-01-24T11:46:35.623Z)\nJan 2024 update Updating Parameters: Lowering Inflation passed \u2013 now inflation is closer to the market level and should decrease the pressure on the price of the token 2024 Plans \u2013 drafting now ideas for the year. What is 1 great actionable goal we should take? $REGEN Tokenomics Research \u2013 1 of 4 chapters \u201c$REGEN Investor Foresight\u201d is out, it explores different worlds or scenarios where ecological activists might use Regen network. Based on this further \u201cfuture checks\u201d could be done for the decisions to be made Regen Network analysis of collective value generation \u2013 request for comments. The task of drafting this brief stems from the concern of many stakeholders that current token pricing is reaching unsustainable points and reversing that trend is deemed an existential issue to secure network governance and security. Easy way to buy $REGEN \u2013 appeared as a conversation on 1 on the calls, what comes to your mind? We\u2019ve received a donation of 1M Regen and decided to stake 80% to Commons Hub, 20% to P2P, (maybe moving to 40:40:20 with Notional once they\u2019re back up). All serve as multisig stewards, difference is towards supporting smaller organisations.\n\n\n## Post by Max_Semenchuk (2024-02-15T13:15:36.493Z)\nFeb 2024 update $R Tokenomics 2024 Executive Summary received an update for this year, it includes improved goals and metrics. Budget and roadmap can still be improved \u2013 feedback is appreciated, also you can see and sort all projects we do by goal or type in the updated wiki homepage Mark DeRugeriis has created a mapping the tokenomics model and is seeking for feedback \u2013 check it out, leave comments or reach out to him directly. After some discussions on Commonwealth Othman will be bringing an inflation reduction proposal on the chain soon Aaron, Robert, and others have been working on the burn function for service fees\n\n\n## Post by Max_Semenchuk (2024-03-28T08:38:56.559Z)\nMar 2024 update Proposal #41, regarding halving REGEN inflation, is adopted Q1 2024 in Review report ready Raise $15-30M with RegenCoop DAO \u2013 let\u2019s discuss\n\n\n## Post by Max_Semenchuk (2024-05-04T14:22:37.041Z)\nApr 2024 update Please support our Tokenomics gitcoin grant! Roles, Circles & Coordination \u2013 added more details regarding the internal working groups and organization ways Raise $15-30M with RegenCoopBank \u2013 this quarter we\u2019re doing an evaluation with the network and investors See Investor Data Room Impact Investor CustDev\n\n\n## Post by Max_Semenchuk (2024-05-22T11:36:32.554Z)\nMay 2024 update The group is exploring the changes to the consensus model to lower validation costs for the network (a commonwealth post to appear soon) $REGEN constitution is discussed with a stewards council proposal (ppt) as a next step Also researching the opportunities of a lending pool for local projects and $regen csDAOs\n",
+      "author": "Max_Semenchuk",
+      "timestamp": "2023-08-04T12:26:58.440000+00:00",
+      "metadata": {
+        "forum": "forum.regen.network",
+        "topic_id": 19,
+        "category": 10,
+        "posts_count": 20,
+        "views": 93,
+        "like_count": 10,
+        "reply_count": 3,
+        "tags": [
+          "governance",
+          "validator",
+          "community",
+          "ecocredit",
+          "marketplace",
+          "tokenomics"
+        ],
+        "pinned": false,
+        "archived": false
+      }
+    },
+    {
+      "rid": "ed86c0a5dad1562e",
+      "source": "discourse:forum.regen.network",
+      "source_type": "forum",
+      "url": "https://forum.regen.network/t/why-should-i-consider-regen-protocol-for-developing-dapps/511",
+      "title": "Why should i consider Regen protocol for developing dApps?",
+      "content": "# Why should i consider Regen protocol for developing dApps?\n\n\n## Post by Farhan (2025-09-10T06:45:07.165Z)\nGood evening everyone, I see only three provider listed in CompareNodes https://www.comparenodes.com/protocols/regen/ for Regen protocol. This very low compare to others protocols. Is it safe to develop dApps on Regen protocol at all? Screenshot 2025-09-10 1153521862\u00d71078 267 KB\n",
+      "author": "Farhan",
+      "timestamp": "2025-09-10T06:45:07.121000+00:00",
+      "metadata": {
+        "forum": "forum.regen.network",
+        "topic_id": 511,
+        "category": 4,
+        "posts_count": 1,
+        "views": 8,
+        "like_count": 1,
+        "reply_count": 0,
+        "tags": [
+          "tokenomics"
+        ],
+        "pinned": false,
+        "archived": false
+      }
+    },
+    {
+      "rid": "c3f123c3512a5a9f",
+      "source": "discourse:regencommons.discourse.group",
+      "source_type": "forum",
+      "url": "https://regencommons.discourse.group/t/welcome-to-regen-commons/5",
+      "title": "Welcome to Regen Commons! :wave:",
+      "content": "# Welcome to Regen Commons! :wave:\n\n\n## Post by system (2025-02-28T19:10:12.603Z)\nWe are so glad you joined us. Regen Commons It\u2019s a decentralized brand and IP commons designed to nurture & grow the Regen identity across Web3, ensuring it remains a public good while aligning shared incentives. Here are some things you can do to get started: Introduce yourself by adding your picture and information about yourself and your interests to your profile. What is one thing you\u2019d like to be asked about? Get to know the community by browsing discussions that are already happening here. When you find a post interesting, informative, or entertaining, use the to show your appreciation or support! Contribute by commenting, sharing your own perspective, asking questions, or offering feedback in the discussion. Before replying or starting new topics, please review the Community Guidelines. If you need help or have a suggestion, feel free to ask in Site Feedback or contact the admins.\n",
+      "author": "system",
+      "timestamp": "2025-02-28T19:10:12.557000+00:00",
+      "metadata": {
+        "forum": "regencommons.discourse.group",
+        "topic_id": 5,
+        "category": 4,
+        "posts_count": 1,
+        "views": 75,
+        "like_count": 1,
+        "reply_count": 0,
+        "tags": [
+          "tokenomics",
+          "community"
+        ],
+        "pinned": true,
+        "archived": false
+      }
+    },
+    {
+      "rid": "a5132e2f05f77c92",
+      "source": "discourse:regencommons.discourse.group",
+      "source_type": "forum",
+      "url": "https://regencommons.discourse.group/t/the-regen-meta-commons-coordination-network-nation/79",
+      "title": "The Regen Meta - Commons, Coordination & Network Nation",
+      "content": "# The Regen Meta - Commons, Coordination & Network Nation\n\n\n## Post by montymerlin (2025-09-08T15:55:25.714Z)\nA living blueprint for weaving identity, culture, and coordination into a global regenerative alliance. 0) TL;DR Regen Identity is a protopian, cross-domain cultural identity: to be net-positive for people and planet. It is the shared narrative that binds a diverse movement. Regen Commons (RCM) is the cultural membrane, identity gateway, and mutualisation engine: it stewards shared principles, knowledge, credentials, brand guardianship, and digital assets to expand collective capacity and enable trust and legitimacy across the movement. Regen Coordination (RCN) is the operational hub: it converts identity and trust into collective action\u2014funding rounds, programs, standards, and cross-network delivery (initially with strong Web3/ReFi focus). Together, RCM + RCN provide the cultural and operational scaffolding for a Regen Network Nation (RNN)\u2014 a polycentric, translocal political entity that governs itself through commons infrastructure, voluntary membership, and contribution-based governance. This proposal is an emergent and iterative design. Names, interfaces, and structures will evolve through practice, evidence, and community input. 1) The Regen Meta This proposal seeks to explore and develop the meta of Regen: a living blueprint for how identity, culture, and coordination could weave together into something greater than the sum of their parts. In one sense, meta means \u201cbeyond\u201d or \u201cabout itself\u201d \u2014 a vantage point that lets us step back and see the whole regenerative movement, not just its individual nodes or projects. In another sense, meta refers to the \u201crules of the game\u201d \u2014 the strategies, patterns, and structures that shape how we collaborate. Applied here, this document explores how Regen Commons, Regen Coordination, and the emerging Regen Network Nation might interlock and synergise \u2014 building shared identity, stewarding collective assets, and enabling movement-wide governance. Together, these layers could provide the cultural, operational, and political scaffolding of a regenerative movement capable of acting with coherence at scale. By aligning principles, curating shared cultural and digital assets, and coordinating collective capacity, we aim to make aligning with Regen the Most Effective Tactic Available for individuals, communities, and institutions committed to a thriving future \u2014 and, ultimately, to out-collaborate the competition. 2) The Regen Identity Being \u2018Regen\u2019 is a shared cultural identity \u2014 expressed through the commitment to be net-positive for people, planet, and future generations. To leave things better than we found them. Binding together a diverse movement, it provides both a unifying ethos and a flexible membrane \u2014 open enough to welcome people and projects from all corners of the globe and across many disciplines, yet coherent enough to carry legitimacy as a collective signal. It allows Web3 builders, ecological stewards, social innovators, artists, and communities to recognize each other as part of a common story and a shared mission: to regen. 2.1 Essence Protopian orientation: steady, compounding improvement (\u201cleave it better than we found it\u201d). Regenerative outcomes: ecological restoration, social vitality, and economic resilience. Whole systems thinking: addressing root causes, not symptoms. Pluralism with coherence: many disciplines, one shared ethos. Lived practice: Regen is not only an identity but a practice, expressed through actions that generate positive feedback loops. 1.2 Cultural Signals Narratives & memes: \u201cJoin the ReGeneration\u201d, \u201cout-collaborate the competition\u201d, \u201ca more beautiful world our hearts know is possible\u201d Practices: transparency, reciprocity, stewardship, care, collaboration, continuous learning. Cultural expression: symbols, art, gatherings, rituals, language, storytelling and aesthetics that signal belonging and express regen values. Everyday practices: embedding regen values into daily choices, relationships, and ways of working. 3) One Movement, Many Layers The Regen identity, culture and movement can be supported and strengthened through three interlocking layers. Each layer has a distinct role \u2014 Commons for identity and legitimacy, Coordination for collaboration and execution, and Network Nation for governance at scale \u2014 yet they continually reinforce one another. Together, they provide the scaffolding for a movement becoming both culturally coherent and operationally effective, capable of acting with legitimacy, agility, and collective power. [ LAYER 3 ] Regen Network Nation (RNN) Meta-structure for polycentric governance, diplomacy, and shared sovereignty [ LAYER 2 ] Regen Coordination (RCN) Execution & ecosystem hub for programs, funding, ops [ LAYER 1 ] Regen Commons (RCM) Identity gateway, cultural membrane, credentialing & brand stewardship 4) Regen Commons (RCM): Identity & Cultural Membrane Purpose: Protect, nourish, and evolve Regen as a shared cultural asset and credible signal. \u201ca rising tide lifts all boats\u201d 4.1 Core Functions Identity gateway: Profiles, attestations, and verifiable credentials (e.g., \u201cRegen Initiative\u201d designation). Brand stewardship: Purpose-trust\u2013held trademark; Copyfair licensing with tiered rights (public, contributors, commercial). Cultural canon: Shared principles, rituals, symbols, storytelling, media, memes, & narrative assets that bind the Regen movement. Immune system: A lightweight stewardship model\u2014anchored in a rotating Stewarding Council, consent-by-default decision-making, and a public registry\u2014that mostly stays dormant. It only activates when evidence of misuse or misalignment arises, responding proportionately and with dialogue-first principles. Asset Commons: A shared pool of resources\u2014knowledge, IP, graphic assets, design templates, digital infrastructure\u2014that projects can draw from and contribute back to, lowering the cost of participation and amplifying collective visibility. Entanglement: The Commons grows more valuable as more communities contribute \u2014 knowledge, assets, and legitimacy compound, making participation \u201csticky.\u201d Strong ties raise the cost of exit and create powerful incentives to align, collaborate, and coordinate rather than defect or free-ride. 4.2 Roles & Participation Observer \u2192 Contributor \u2192 Steward pathway; stewardship earned via demonstrated service. Open by default: Any aligned project can acknowledge principles and use the mark under Copyfair terms. 4.3 Outputs Regen Charter & registry Credentials & attestations Trademark policy & Copyfair license Assets & Knowledge Commons for aligned use 5) Regen Coordination (RCN): Execution & Ecosystem Hub Purpose: Turn trust into action\u2014run programs, weave networks, and deliver shared infrastructure. 5.1 Core Functions Program delivery: dedicated domain allocation (DDA), ImpactQF, retro funding, bioregional pools, grants, bounties. Tooling & standards: CIDS-aligned impact data, reputation (Karma GAP), Prosperity Pass, TVF metrics, \u2018regenerative stack\u2019. Matchmaking: Contributors \u2194 projects \u2194 funders \u2194 tooling. Capacity-building: Train and support local leaders to adopt regen tools and practices, turning infrastructure into real-world capability. Interoperability: Integration across DAOs, NGOs, co-ops, public sector allies; L1/L2 partnerships (Celo, Ethereum, etc.). Sensemaking & learning: Evaluation frameworks, reporting, decision intelligence. 5.2 Scope Emphasis Web3/ReFi first (initially): Solve fragmentation in crypto-enabled regeneration; keep value on-chain (reduce off-ramp leakage). Cosmo-local pathways: Local nodes connected via shared protocols and funding engines (Ethereum Localism). 5.3 Outputs Funding rounds & playbooks Shared ops standards (impact, identity, reporting) Partnerships & network alliances Public goods: data commons, open tooling, curricula Case studies & learning resources 6) Regen Network Nation (RNN): Polycentric Political Scaffold Purpose: Name and hold the emergent whole of the movement we are building \u2014 the entangled mesh of Regen Commons, Regen Coordination, and the wider federation of people, projects, and organizations that identify as regen and choose to coordinate. In addition, Regen Network Nation (RNN) adds a political and extitutional layer \u2014 flexible governance, diplomatic interfaces, and decision-making systems that operate across networks \u2014 enabling the movement to act with legitimacy and coherence at scale. It is not a single organization, but a network polity: a polycentric ecosystem where legitimacy and authority flow from aggregated contributions, shared identity, and cultural coherence. 6.1 Core Idea Meta-layer identity: RNN names and frames the whole regenerative meshwork as a polity. Polycentric governance: Authority is distributed across many centers (Commons, Coordination, Local Nodes, DAOs, hubs, etc.), all nested in shared principles. Functional sovereignty: Not territorial control, but collective capacity to self-govern, steward resources, and coordinate across domains. Extitutional governance: Lightweight, distributed structures that complement but do not replicate traditional institutions, enabling legitimacy and legibility but minimising bureaucracy. 6.2 Identity-to-Governance Flow The living pipeline of legitimacy connects individuals and projects deeper into RNN: Identity Claim: Person/org acknowledges Regen Commons principles and receives basic attestations. Credential Threshold: Trust graph + PageRank-weighted attestations cross a threshold \u2192 Commons Credential. Coordination Access: Credential unlocks Regen Coordination pathways \u2014 funding rounds, working groups, partner programs. Contribution Recognition: Contributions earn non-transferable credentials (soulbound reputation) \u2192 higher rights/roles. Movement Governance: Aggregated contributions and reputation inform RNN voting weights for movement-wide, political-scale decisions. 6.3 Governance Principles Contribution-staked authority: rights and roles earned through experience, service and expertise, not capital. Consent-by-default: governance stays light; formal mechanisms activate only when contested. Polycentric balance: multiple semi-autonomous centers (Commons, Coordination, Local Nodes, DAOs), operating within a shared Regen Charter. Entanglement + exit: strong ties make alignment and collaboration attractive, while exit and fork remain open to preserve legitimacy. 6.4 Scope of Movement-Level Decisions Examples of what RNN governance could cover: Collective stance on misuse or dilution of the Regen identity. Allocation of shared funding pools for ecosystem-wide infrastructure. Setting baseline standards across Regen-aligned projects. Coordinated diplomacy with other networks, institutions, or states. Closing Regen Commons protects the story and the signal. Regen Coordination turns that signal into coordinated outcomes. Together, they prototype the Regen Network Nation \u2014 not as a monolith, but as a polycentric commons where identity, infrastructure, and governance co-evolve through practice. This is a living blueprint: emergent, experimental, and open. We will iterate in public, learn together, and keep steering toward protopian futures \u2014 where being regen becomes the most effective tactic available.\n",
+      "author": "montymerlin",
+      "timestamp": "2025-09-08T15:55:25.548000+00:00",
+      "metadata": {
+        "forum": "regencommons.discourse.group",
+        "topic_id": 79,
+        "category": 4,
+        "posts_count": 1,
+        "views": 12,
+        "like_count": 0,
+        "reply_count": 0,
+        "tags": [
+          "governance",
+          "validator",
+          "tokenomics",
+          "marketplace",
+          "community"
+        ],
+        "pinned": false,
+        "archived": false
+      }
+    },
+    {
+      "rid": "3977a1070975ac15",
+      "source": "discourse:regencommons.discourse.group",
+      "source_type": "forum",
+      "url": "https://regencommons.discourse.group/t/regen-onchain-ai-agents-tooling-offer-for-regen-commons/72",
+      "title": ".regen onchain AI agents \u2014 tooling offer for Regen Commons",
+      "content": "# .regen onchain AI agents \u2014 tooling offer for Regen Commons\n\n\n## Post by tmo (2025-07-15T21:54:31.414Z)\nExcited to see Gaia AI and Regen Network AI Agent Collab! Context With Gaia and Regen teaming up on agent infrastructure, it seems like the right time to officially contribute the .regen onchain agent contract to Regen Commons. The contract already runs in production for other namespaces and is designed to be handed over to and operated by the steward of your choice; it is fully decentralized. What the contract provides Feature Notes Unique onchain agent names alice.regen, foundation.regen, plot-42.regen, etc. Soul-bound identity Each name has its own cross-chain 0x wallet (ERC-20, 721, 1155, signing, approvals) with full agent identity (bio, purpose, mandate, place, style) Modular control Manual (owner wallet), automated (program), or autonomous (LLM via ElizaOS). Client-agnostic Works with our two front-ends, other open-source dashboards, or any custom client you build. DeFi ready Live swaps and transfers; Aave, Uni LP, Farcaster MiniApp, NLP Tx creation in the queue. Fundraising Name creation can be permissioned or permissionless; free or priced; use priced account creation to raise funds for Regen Commons Design space for Regen Commons with .regen agents Governance hooks (token-weighted, reputation-based, or both). Place-based and impact metrics. Treasury automations (market-making, reward flows, grant disbursements). Reputation or credential overlays. ElizaOS: use ours or install plugin on yours; use any LLM Happy to collaborate on any of the above. All collabs from any group are open source for all groups to use. Relation to natural capital ensurance by BASIN Ensurance is markets for what matters; primarily built to ensure natural capital. Ensurance links stocks (ERC-1155 assets) and flows (ERC-20 currencies) to fund natural assets and the people who care for them. A namespace (ie .regen) is a Group contract. Agent accounts are part of that namespace and can designate a primary currency/asset to focus their efforts. Polycentric All groups and agents operate independently but benefit from collective activity called ensurance proceeds. Next steps Express interest\u2014reply here or DM. Allow-list\u2014I\u2019ll add interested parties so they can mint their accounts. Live demo\u2014walk-through with real agent accounts. Hand-off / Stewardship transfer\u2014contract ownership passes to the entity the community designates (Regen Commons, Regen Foundation, RND, etc.). Current footprint: 25 other namespaces, \\800+ agent accounts. The architecture scales indefinitely. Contact We have a small Telegram chat going re this, or happy to schedule a call / Twitter Space / video if that\u2019s easier. Let me know how you\u2019d like to proceed. I really think this could be a useful tool for the Regen movement and excited to hand-it off to you.\n\n\n## Post by tmo (2025-09-08T03:35:22.429Z)\nsince this post was the last post/reply on this entire forum since July and it is now Sept we will move on\n",
+      "author": "tmo",
+      "timestamp": "2025-07-15T21:54:31.343000+00:00",
+      "metadata": {
+        "forum": "regencommons.discourse.group",
+        "topic_id": 72,
+        "category": 4,
+        "posts_count": 2,
+        "views": 53,
+        "like_count": 0,
+        "reply_count": 0,
+        "tags": [
+          "governance",
+          "tokenomics",
+          "community"
+        ],
+        "pinned": false,
+        "archived": false
+      }
+    },
+    {
+      "rid": "7e8f15974cebb6b7",
+      "source": "discourse:regencommons.discourse.group",
+      "source_type": "forum",
+      "url": "https://regencommons.discourse.group/t/model-for-decentralized-brand-stewardship-draft/23",
+      "title": "Model for Decentralized Brand Stewardship (draft)",
+      "content": "# Model for Decentralized Brand Stewardship (draft)\n\n\n## Post by guil (2025-03-06T14:57:40.018Z)\nHey regens! I\u2019ve been following the convo around Regen Commons and got the itch to start pulling some of these ideas together into a rough proposal. Took a stab at mapping things out in a way that (hopefully) makes sense and reflects everything that\u2019s been discussed so far. Dropping the doc here for y\u2019all to take a look. Keen to hear what you think! What feels solid? What needs work? Feel free to add comments directly to the doc or share them here. Loving this discussion docs.google.com Regen Commons: Decentralized Brand Stewardship Model Regen Commons: A Decentralized Brand Stewardship Model TLDR; Regen Commons is a shared governance system where projects in the regenerative space work together to protect and strengthen the \"regen\" meme in Web3. By establishing shared principles and...\n\n\n## Post by m3metix (2025-03-21T05:10:19.805Z)\nI see this as a well intentioned approach here. But is it attempting to protect regenerative values and the expression of these in our work as mirrors of living systems using the very mechanisms of extraction and control that regenerative systems seek to transform? Maybe there is good creative tension in all this. But I honestly think it\u2019s a suck on energy and attention. What is being protected here? Like creating all these bureaucratic and technocratic mechanisms when the energy could be better devoting to creating healing relationships with our kin. Know that this comes from a genuine place of care but I just think and feel this whole approach is not attuned to the regenerative spirit at the basis of our work. You cannot trademark or own being in right relationship with Earth\u2019s systems. That relationship exists through practice, presence, and participation. I understand the fear of co-opting that is happening and will continue to happen but is this whole approach a diversion?\n\n\n## Post by guil (2025-04-03T18:08:15.774Z)\nI agree. This isn\u2019t meant to become a big bureaucracy or drain anyone\u2019s energy. If you check the proposal, you\u2019ll see it\u2019s designed to be as minimal as possible: the word \u2018regen initiative\u2019 stays open for anyone, and if there\u2019s a problem, we try to address it socially first, only going the legal route if absolutely necessary. We just don\u2019t want what happened with \u2018Sustainable\u2019 (where it got co-opted and lost all meaning) to happen again. Greenwashing is real, and it hurts people doing the real work.\n\n\n## Post by kanas (2025-04-25T02:51:49.628Z)\nThis is really nice\n\n\n## Post by Salvador (2025-06-24T15:18:43.138Z)\nCoincido contigo. Nuestro trabajo como regeneradores deber\u00e1 ser validado por el prestigio de un actuar congruente, consistente, continuo y ejemplar. Dudo que podamos apropiarnos de un t\u00e9rmino o concepto general (filos\u00f3fico, ling\u00fcistico) mediante la sola herramienta legal dise\u00f1ada para registrar marcas o patentes cuyo fin principal y acaso exclusivo es el lucro.\n\n\n## Post by Salvador (2025-06-24T15:23:08.164Z)\nPuedo prever el riesgo que encierra el registro del concepto ante las leyes de propiedad intelectual. Sugiero mejor tratar de construir un consenso ante la comunidad cient\u00edfico-acad\u00e9mica y a\u00fan de negocios a fin de ir permeando una definici\u00f3n suficientemente aceptable en la sociedad.\n",
+      "author": "guil",
+      "timestamp": "2025-03-06T14:57:39.974000+00:00",
+      "metadata": {
+        "forum": "regencommons.discourse.group",
+        "topic_id": 23,
+        "category": 4,
+        "posts_count": 6,
+        "views": 114,
+        "like_count": 11,
+        "reply_count": 3,
+        "tags": [
+          "governance",
+          "tokenomics",
+          "community",
+          "marketplace"
+        ],
+        "pinned": false,
+        "archived": false
+      }
+    },
+    {
+      "rid": "7cbe4d09650d545d",
+      "source": "discourse:regencommons.discourse.group",
+      "source_type": "forum",
+      "url": "https://regencommons.discourse.group/t/request-for-proposals-facilitating-the-summoning-of-regen-commons/47",
+      "title": "Request For Proposals: Facilitating the summoning of Regen Commons",
+      "content": "# Request For Proposals: Facilitating the summoning of Regen Commons\n\n\n## Post by Gregory0 (2025-04-01T16:58:37.164Z)\nRegen Commons Facilitation RFP Co-Designing the Constitution for a Decentralized Brand Commons Overview Regen Commons is initiating a facilitation-led process to co-create its governance, legal, and economic architecture. This RFP invites qualified facilitators or facilitator collectives to manage a participatory process that culminates in a foundational constitution or organizing document. This is a pivotal moment to build legitimacy within the regenerative Web3 ecosystem by aligning legal structures, governance mechanisms, and memetic power around the Regen identity. Goals The selected facilitator(s) will manage a structured, inclusive process to define and document: Legal Framework Structure and purpose of the Commons (e.g., Purpose Trust, DUNA) Governance Mechanism Decision-making rules, onboarding, voting models Token Strategy Use, issuance, rights, and responsibilities Membership Model How new members are added and recognized Contribution Valuation How to assess and reward new contributions (e.g. IP, labor, capital) Exit Mechanism Offboarding protocols and exit options Business Plan & Relationship to SporkDAO Funding roadmap, governance alignment, and SporkDAO participation Target Audience The resulting process and documents should resonate with and gain legitimacy from the Web3 regenerative community, including: ReFi founders & contributors DAO governance experts Decentralized identity and public goods advocates Projects using the \u201cRegen\u201d brand/meme Deliverables Facilitation of a multi-phase engagement (e.g. workshops, async input, synthesis) Final draft of a Regen Commons Constitution / Core Document A public-facing summary for community ratification Implementation roadmap & recommendations Evaluation Criteria Track record in Web3 governance, legal design, and facilitation Familiarity with regenerative economics and ReFi principles Experience distilling group complexity into actionable frameworks Ability to manage time-sensitive, high-integrity processes Alignment with Regen Commons values Budget & Timeline Budget: $20,000 Timeline: May\u2013June 2025 (Deliverables complete) Funding: Seed funding from SporkDAO, with follow on and complimentary funding from Regen Network, and other Regen Commons members possible. Invited Candidates Jessica Zartler / BlockScience Team (Systemic governance + crypto-economic modeling expertise) Regen Unite (Cori + collaborators) (Deeply involved in framing Regen Commons narrative and organizing early sessions) Open Civics (Benjamin Life, Jess, Sam) (Sense-making methodology, ontological document design, multi-org consensus-building) You? Submit your proposal to join this shortlist. Governance & Selection Proposals will be reviewed by a multi-sig committee composed of: Gregory Landua Kevin Owocki Griff Green Michael Zargham Scott Moriss Joshua Lapidis Benjamin Life Selection will be based on alignment, capacity, and community trust. How to Submit Please send a proposal that includes: Team bios & relevant experience Timeline & milestone plan Proposed facilitation methodology Budget breakdown Related work examples or references Reflections on Regen Commons goals & values Deadline: April 15, 2025 Email: gregory@regen.network Telegram: @cpt_grog Key Resources We strongly recommend reviewing these background materials: [Brand Commons Legal Strategy Memo] [Summary of Multi-sig Responsibilities] [Regen Commons 1-Pager for ETH Denver] [Regen Commons Tweet Thread] [Regen Commons Discourse Forum] Why This Matters Regen Commons is not just a DAO. It is a memetic, legal, and cultural coordination layer for the regenerative Web3 movement. Help us build a legitimate, plural, and anchored foundation\u2014and co-create a new model for governing decentralized cultural assets with integrity.\n\n\n## Post by guil (2025-05-16T11:16:21.725Z)\nHello beloved community, We want to share a quick update in response to the ongoing conversation around the facilitation of the Regen Commons. The core Regens Unite team fully supports the proposal submitted by Greaterthan to take on this task. We care deeply about this initiative. While the vision for a Regen Commons has been around for some time, it now feels like the right moment to move it forward more intentionally. That said, our team is currently stretched thin. Some of us are navigating personal challenges, or tied up in active projects that have us stretched thin. Rather than let things stall, we\u2019ve reached out to trusted collaborators. Greaterthan feels like the right fit. They\u2019ve worked with us before and bring strong experience in facilitation, governance, legal design, and organizational development. We\u2019re especially excited about their use of Liberating Structures, simple but powerful tools that make participation easier and more meaningful. These methods help groups move from fragmentation to clarity and collaboration. Greaterthan would take the lead, with our support in providing context, community insight, and additional facilitation. We\u2019re aiming for an approach that\u2019s clear, inclusive, and grounded in shared values. We\u2019re excited to see where this next phase takes us. With that, here are the contents of the GT proposal for full transparency: docs.google.com Proposal - Regen Commons &amp; Greaterthan Proposal Regen Commons + Greaterthan April 22, 2025 Facilitated Core Agreements for a Decentralized Brand Commons Context Regen Commons is undertaking a unique opportunity to transition personal ownership of a trademark to... With care, The Regens Unite core team\n",
+      "author": "Gregory0",
+      "timestamp": "2025-04-01T16:58:37.092000+00:00",
+      "metadata": {
+        "forum": "regencommons.discourse.group",
+        "topic_id": 47,
+        "category": 4,
+        "posts_count": 2,
+        "views": 318,
+        "like_count": 2,
+        "reply_count": 0,
+        "tags": [
+          "governance",
+          "tokenomics",
+          "community",
+          "marketplace"
+        ],
+        "pinned": false,
+        "archived": false
+      }
+    }
+  ]
+}

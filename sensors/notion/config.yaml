@@ -1,0 +1,61 @@
+# Notion Sensor Configuration
+# Monitor Notion databases and pages for changes
+
+sensor:
+  name: notion-sensor
+  type: partial_node
+  coordinator_url: http://localhost:8200
+  
+  # Notion API settings
+  api_version: "2022-06-28"
+  
+  # Default monitoring settings
+  default_check_interval: 3600  # 1 hour
+  default_priority: medium
+
+# Databases to monitor
+# Add database IDs here after discovering them with test script
+databases:
+  # Example format:
+  # - id: "database-id-here"
+  #   name: "Database Name"
+  #   check_interval: 3600
+  #   priority: high
+  #   filters:
+  #     - property: "Status"
+  #       value: "Published"
+
+# Specific pages to monitor (optional)
+pages:
+  # Example format:
+  # - id: "page-id-here"
+  #   name: "Important Page"
+  #   check_interval: 1800
+  #   priority: high
+
+# Content extraction settings
+extraction:
+  include_properties: true
+  include_comments: false
+  max_depth: 10  # Maximum nesting depth for blocks
+  
+# Tags to auto-apply based on content
+auto_tags:
+  - pattern: "governance|proposal|vote"
+    tag: "governance"
+  - pattern: "ecocredit|carbon|offset"
+    tag: "ecocredits"
+  - pattern: "marketplace|registry|trading"
+    tag: "marketplace"
+  - pattern: "whitepaper|research|academic"
+    tag: "research"
+  - pattern: "community|stakeholder|participation"
+    tag: "community"
+  - pattern: "technical|developer|api|code"
+    tag: "technical"
+
+# Export settings for KOI Event Bridge
+export:
+  format: "koi_bundle"
+  include_metadata: true
+  preserve_formatting: true
