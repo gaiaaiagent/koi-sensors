@@ -2,11 +2,32 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🔧 IMPORTANT: Replicability and Dependency Management
+
+**When developing features for this repository, ALWAYS ensure:**
+1. **All dependencies are explicitly documented** in requirements.txt or package.json
+2. **Installation instructions are complete** - assume nothing is pre-installed
+3. **Build steps are documented** - others cloning the repo must be able to build from scratch
+4. **Local development assumptions are avoided** - what works locally may not work for others
+5. **Platform-specific requirements are noted** (e.g., system packages, OS-specific tools)
+6. **Version requirements are specified** to avoid compatibility issues
+7. **Alternative approaches are provided** when using optional/advanced dependencies
+
+**Example**: Don't assume playwright, Chrome, or system libraries are installed. Always:
+- Add to requirements.txt with version pins
+- Document installation steps in README
+- Provide fallback options if dependencies fail
+- Include troubleshooting for common issues
+
+This ensures the solution can be replicated by anyone cloning the repository, regardless of their local setup.
+
 ## Project Overview
 
 This is a complete KOI (Knowledge Organization Infrastructure) sensor network that monitors, processes, and makes content immediately available to Eliza AI agents. The system integrates with the KOI processor pipeline to provide real-time content ingestion and BGE embedding generation for agent RAG queries.
 
 **Current Status**: 100% COMPLETE KOI sensor-to-agent pipeline fully operational. Real-time content flows from sensors through KOI Event Bridge and BGE processing to PostgreSQL, immediately available for agent queries. Production deployed, tested, and verified with full end-to-end functionality.
+
+**Milestone B Progress**: Sessions 1-6 complete (all data source sensors operational). Session 7 architecture defined - Daily Content Curator will be a processor component, not a KOI node.
 
 ## 🚀 COMPLETE KOI PIPELINE INTEGRATION (September 2025) - PRODUCTION READY
 
