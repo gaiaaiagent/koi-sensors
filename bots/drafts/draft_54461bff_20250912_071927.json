@@ -1,0 +1,105 @@
+{
+  "draft_id": "54461bff-68dd-4338-aa5d-83ff69d62f99",
+  "thread_date": "2025-09-08T07:18:55.733433+00:00",
+  "status": "draft",
+  "posts": [
+    {
+      "type": "headline",
+      "content": "1/3 \ud83c\udf31 Regen Network Update",
+      "char_count": 26,
+      "urls": [],
+      "metadata": {
+        "priority": "high",
+        "position": 1
+      },
+      "position": 1,
+      "style_score": 1.0
+    },
+    {
+      "type": "stat",
+      "content": "2/3 \ud83d\udcca Today's Network Stats:\nNetwork operating normally. All systems functional.",
+      "char_count": 80,
+      "urls": [],
+      "metadata": {
+        "position": 2
+      },
+      "position": 2,
+      "style_score": 1.0
+    },
+    {
+      "type": "community",
+      "content": "3/3 \ud83d\udc9a Join our community to stay updated on regenerative finance initiatives\n\n#RegenNetwork #ReFi #Regenerative",
+      "char_count": 111,
+      "urls": [],
+      "metadata": {
+        "generated": true
+      },
+      "style_score": 1.0
+    }
+  ],
+  "style_score": 1.0,
+  "validation": {
+    "validated": true,
+    "total_links": 0,
+    "valid_links": 0,
+    "invalid_links": 0,
+    "invalid_urls": [],
+    "details": {}
+  },
+  "metadata": {
+    "content_sources": {
+      "new_today": 5,
+      "recent_48h": 34,
+      "trending_topics": 6
+    },
+    "stats": {
+      "new_proposals": 2,
+      "new_batches": 5,
+      "new_credits": 7297,
+      "marketplace_volume": 92149,
+      "active_proposals": 3
+    },
+    "scenario": "minimal",
+    "generated_for_testing": true
+  },
+  "curator_output": {
+    "thread_date": "2025-09-08T07:18:55.733433+00:00",
+    "posts": [
+      {
+        "type": "headline",
+        "content": "Regen Network Update",
+        "metadata": {
+          "priority": "high",
+          "position": 1
+        }
+      },
+      {
+        "type": "stat",
+        "content": "Network operating normally. All systems functional.",
+        "source": "ledger_sensor",
+        "published_at": "2025-09-12T07:18:55.733428+00:00",
+        "metadata": {
+          "position": 2
+        }
+      }
+    ],
+    "metadata": {
+      "content_sources": {
+        "new_today": 5,
+        "recent_48h": 34,
+        "trending_topics": 6
+      },
+      "stats": {
+        "new_proposals": 2,
+        "new_batches": 5,
+        "new_credits": 7297,
+        "marketplace_volume": 92149,
+        "active_proposals": 3
+      },
+      "scenario": "minimal",
+      "generated_for_testing": true
+    }
+  },
+  "created_at": "2025-09-12T07:19:27.823770+00:00",
+  "updated_at": "2025-09-12T07:19:27.823770+00:00"
+}

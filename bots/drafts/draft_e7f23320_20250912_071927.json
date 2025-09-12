@@ -1,0 +1,143 @@
+{
+  "draft_id": "e7f23320-4b91-4d2a-ad20-4a36cb483ee5",
+  "thread_date": "2025-09-09T07:18:55.733331+00:00",
+  "status": "draft",
+  "posts": [
+    {
+      "type": "headline",
+      "content": "1/4 \ud83c\udf31 Regen Network Community Update",
+      "char_count": 36,
+      "urls": [],
+      "metadata": {
+        "priority": "high",
+        "position": 1
+      },
+      "position": 1,
+      "style_score": 1.0
+    },
+    {
+      "type": "stat",
+      "content": "2/4 \ud83d\udcca Today's Network Stats:\n\ud83d\udc9a Community Growth:\n\u2022 500+ new Discord members\n\u2022 15 community calls this month\n\u2022 8 new validator nodes",
+      "char_count": 131,
+      "urls": [],
+      "metadata": {
+        "position": 2
+      },
+      "position": 2,
+      "style_score": 1.0
+    },
+    {
+      "type": "link",
+      "content": "3/4 \ud83d\udd17 Recording from yesterday's community call on regenerative finance now available\nhttps://regen.network/community-calls/episode-23",
+      "char_count": 134,
+      "urls": [
+        "https://regen.network/community-calls/episode-23"
+      ],
+      "metadata": {
+        "position": 3
+      },
+      "position": 3,
+      "style_score": 1.0
+    },
+    {
+      "type": "cta",
+      "content": "4/4 \ud83d\udd17 Join our Discord community at discord.gg/regen\n\n#RegenNetwork #ReFi #Regenerative",
+      "char_count": 87,
+      "urls": [],
+      "metadata": {
+        "position": 4
+      },
+      "position": 4,
+      "style_score": 1.0
+    }
+  ],
+  "style_score": 1.0,
+  "validation": {
+    "validated": true,
+    "total_links": 1,
+    "valid_links": 1,
+    "invalid_links": 0,
+    "invalid_urls": [],
+    "details": {
+      "https://regen.network/community-calls/episode-23": {
+        "valid": true,
+        "status_code": 200,
+        "reason": "Trusted domain",
+        "checked": false
+      }
+    }
+  },
+  "metadata": {
+    "content_sources": {
+      "new_today": 14,
+      "recent_48h": 47,
+      "trending_topics": 7
+    },
+    "stats": {
+      "new_proposals": 0,
+      "new_batches": 0,
+      "new_credits": 21521,
+      "marketplace_volume": 31163,
+      "active_proposals": 5
+    },
+    "scenario": "community",
+    "generated_for_testing": true
+  },
+  "curator_output": {
+    "thread_date": "2025-09-09T07:18:55.733331+00:00",
+    "posts": [
+      {
+        "type": "headline",
+        "content": "Regen Network Community Update",
+        "metadata": {
+          "priority": "high",
+          "position": 1
+        }
+      },
+      {
+        "type": "stat",
+        "content": "\ud83d\udc9a Community Growth:\n\u2022 500+ new Discord members\n\u2022 15 community calls this month\n\u2022 8 new validator nodes",
+        "source": "ledger_sensor",
+        "published_at": "2025-09-12T07:18:55.733324+00:00",
+        "metadata": {
+          "position": 2
+        }
+      },
+      {
+        "type": "link",
+        "content": "Recording from yesterday's community call on regenerative finance now available",
+        "url": "https://regen.network/community-calls/episode-23",
+        "source": "podcast",
+        "published_at": "2025-09-11T11:18:55.733324+00:00",
+        "metadata": {
+          "position": 3
+        }
+      },
+      {
+        "type": "cta",
+        "content": "Join our Discord community at discord.gg/regen",
+        "metadata": {
+          "position": 4
+        }
+      }
+    ],
+    "metadata": {
+      "content_sources": {
+        "new_today": 14,
+        "recent_48h": 47,
+        "trending_topics": 7
+      },
+      "stats": {
+        "new_proposals": 0,
+        "new_batches": 0,
+        "new_credits": 21521,
+        "marketplace_volume": 31163,
+        "active_proposals": 5
+      },
+      "scenario": "community",
+      "generated_for_testing": true
+    }
+  },
+  "created_at": "2025-09-12T07:19:27.802826+00:00",
+  "updated_at": "2025-09-12T07:19:27.802826+00:00"
+}

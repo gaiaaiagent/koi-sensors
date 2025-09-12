@@ -1,0 +1,172 @@
+{
+  "draft_id": "525e9b77-6257-4a0b-a69c-31b5a8b39332",
+  "thread_date": "2025-09-11T07:18:55.733081+00:00",
+  "status": "draft",
+  "posts": [
+    {
+      "type": "headline",
+      "content": "1/5 \ud83c\udf31 Regen Network Daily Update",
+      "char_count": 32,
+      "urls": [],
+      "metadata": {
+        "priority": "high",
+        "position": 1
+      },
+      "position": 1,
+      "style_score": 1.0
+    },
+    {
+      "type": "stat",
+      "content": "2/5 \ud83d\udcca Today's Network Stats:\n\ud83d\udcca Network Stats:\n\u2022 3 new governance proposals\n\u2022 87% voting participation\n\u2022 2.4M REGEN staked",
+      "char_count": 121,
+      "urls": [],
+      "metadata": {
+        "position": 2
+      },
+      "position": 2,
+      "style_score": 1.0
+    },
+    {
+      "type": "link",
+      "content": "3/5 \ud83d\udd17 New proposal for credit class methodology update now open for voting\nhttps://forum.regen.network/t/proposal-42-credit-methodology",
+      "char_count": 135,
+      "urls": [
+        "https://forum.regen.network/t/proposal-42-credit-methodology"
+      ],
+      "metadata": {
+        "position": 3
+      },
+      "position": 3,
+      "style_score": 1.0
+    },
+    {
+      "type": "link",
+      "content": "4/5 \ud83d\udd17 Community discussion on governance participation rewards gaining traction\nhttps://forum.regen.network/t/governance-rewards-discussion",
+      "char_count": 139,
+      "urls": [
+        "https://forum.regen.network/t/governance-rewards-discussion"
+      ],
+      "metadata": {
+        "position": 4
+      },
+      "position": 4,
+      "style_score": 1.0
+    },
+    {
+      "type": "cta",
+      "content": "5/5 \ud83d\udd17 Join the governance discussion at forum.regen.network\n\n#RegenNetwork #ReFi #Regenerative",
+      "char_count": 94,
+      "urls": [],
+      "metadata": {
+        "position": 5
+      },
+      "position": 5,
+      "style_score": 1.0
+    }
+  ],
+  "style_score": 1.0,
+  "validation": {
+    "validated": true,
+    "total_links": 2,
+    "valid_links": 2,
+    "invalid_links": 0,
+    "invalid_urls": [],
+    "details": {
+      "https://forum.regen.network/t/proposal-42-credit-methodology": {
+        "valid": true,
+        "status_code": 200,
+        "reason": "Trusted domain",
+        "checked": false
+      },
+      "https://forum.regen.network/t/governance-rewards-discussion": {
+        "valid": true,
+        "status_code": 200,
+        "reason": "Trusted domain",
+        "checked": false
+      }
+    }
+  },
+  "metadata": {
+    "content_sources": {
+      "new_today": 15,
+      "recent_48h": 26,
+      "trending_topics": 5
+    },
+    "stats": {
+      "new_proposals": 3,
+      "new_batches": 0,
+      "new_credits": 38081,
+      "marketplace_volume": 86873,
+      "active_proposals": 3
+    },
+    "scenario": "governance",
+    "generated_for_testing": true
+  },
+  "curator_output": {
+    "thread_date": "2025-09-11T07:18:55.733081+00:00",
+    "posts": [
+      {
+        "type": "headline",
+        "content": "Regen Network Daily Update",
+        "metadata": {
+          "priority": "high",
+          "position": 1
+        }
+      },
+      {
+        "type": "stat",
+        "content": "\ud83d\udcca Network Stats:\n\u2022 3 new governance proposals\n\u2022 87% voting participation\n\u2022 2.4M REGEN staked",
+        "source": "ledger_sensor",
+        "published_at": "2025-09-12T07:18:55.733070+00:00",
+        "metadata": {
+          "position": 2
+        }
+      },
+      {
+        "type": "link",
+        "content": "New proposal for credit class methodology update now open for voting",
+        "url": "https://forum.regen.network/t/proposal-42-credit-methodology",
+        "source": "discourse",
+        "published_at": "2025-09-12T05:18:55.733070+00:00",
+        "metadata": {
+          "position": 3
+        }
+      },
+      {
+        "type": "link",
+        "content": "Community discussion on governance participation rewards gaining traction",
+        "url": "https://forum.regen.network/t/governance-rewards-discussion",
+        "source": "discourse",
+        "published_at": "2025-09-12T02:18:55.733070+00:00",
+        "metadata": {
+          "position": 4
+        }
+      },
+      {
+        "type": "cta",
+        "content": "Join the governance discussion at forum.regen.network",
+        "metadata": {
+          "position": 5
+        }
+      }
+    ],
+    "metadata": {
+      "content_sources": {
+        "new_today": 15,
+        "recent_48h": 26,
+        "trending_topics": 5
+      },
+      "stats": {
+        "new_proposals": 3,
+        "new_batches": 0,
+        "new_credits": 38081,
+        "marketplace_volume": 86873,
+        "active_proposals": 3
+      },
+      "scenario": "governance",
+      "generated_for_testing": true
+    }
+  },
+  "created_at": "2025-09-12T07:19:27.817765+00:00",
+  "updated_at": "2025-09-12T07:19:27.817765+00:00"
+}
