@@ -1,0 +1,107 @@
+# GitHub Sensor Configuration
+# Indexes documentation from GitHub repositories
+
+sensor:
+  name: github-sensor
+  type: github
+  node_id: "koi-sensor-github-001"
+  coordinator_url: "http://localhost:8005/api/event"  # KOI Coordinator endpoint
+  koi_bridge_url: "http://localhost:8005/api/event"   # KOI Event Bridge endpoint
+
+# GitHub repositories to monitor
+repositories:
+  - name: regen-ledger
+    url: https://github.com/regen-network/regen-ledger
+    branch: main
+    paths: ["."]  # All documentation in the repository
+    priority: high
+    check_interval: 7200  # 2 hours
+    notes: "Main Regen Network blockchain implementation"
+    
+  - name: regen-web
+    url: https://github.com/regen-network/regen-web
+    branch: main
+    paths: ["docs", "README.md"]
+    priority: high
+    check_interval: 7200  # 2 hours
+    notes: "Regen Network web application"
+    
+  - name: regen-data-standards
+    url: https://github.com/regen-network/regen-data-standards
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400  # 4 hours
+    notes: "Regen Network data standards repository"
+    
+  - name: regenie-corpus
+    url: https://github.com/regen-network/regenie-corpus
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400  # 4 hours
+    notes: "Regen Network knowledge corpus"
+    
+  - name: mcp
+    url: https://github.com/regen-network/mcp
+    branch: main
+    paths: ["docs", "README.md", "src"]
+    priority: medium
+    check_interval: 14400  # 4 hours
+    notes: "Regen Network MCP (Model Control Protocol)"
+
+# File patterns to index
+doc_extensions:
+  - "*.md"
+  - "*.MD" 
+  - "*.mdx"
+  - "*.rst"
+  - "*.txt"
+  - "*.asciidoc"
+  - "*.json"
+  - "*.yaml"
+  - "*.yml"
+  - "*.toml"
+  - "*.ini"
+  - "*.cfg"
+  - "LICENSE*"
+  - "COPYRIGHT*"
+  - "NOTICE*"
+  - "README*"
+  - "CHANGELOG*"
+  - "CONTRIBUTING*"
+
+# Directories to exclude
+excluded_dirs:
+  - node_modules
+  - vendor
+  - dist
+  - build
+  - .git
+  - __pycache__
+  - .pytest_cache
+  - coverage
+  - .next
+  - out
+  - target
+  - bin
+  - .vscode
+  - .idea
+
+# Processing settings
+processing:
+  request_delay: 1.0  # Seconds between requests
+  timeout: 60  # Request timeout in seconds
+  retry_attempts: 3
+  clone_timeout: 60  # Git clone timeout in seconds
+
+# Content detection
+content_detection:
+  content_threshold: 50  # Minimum content length to process
+  detect_changes: true
+  ignore_binary_files: true
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

@@ -246,7 +246,9 @@ class NotionCompleteCrawler:
         self.logger.info(f'Summary report saved to {report_path}')
 
 if __name__ == '__main__':
-    NOTION_SECRET = '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'
+    NOTION_SECRET = os.environ.get('NOTION_SECRET', '')
+    if not NOTION_SECRET:
+        raise ValueError('NOTION_SECRET environment variable is required')
     
     # Check if we want to continue from a specific batch
     start_from = int(sys.argv[1]) if len(sys.argv) > 1 else 0

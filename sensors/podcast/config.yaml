@@ -5,12 +5,13 @@ sensor:
   name: podcast-sensor
   type: podcast
   node_id: "koi-sensor-podcast-001"
-  coordinator_url: "http://localhost:8000"  # KOI Coordinator endpoint
+  coordinator_url: "http://localhost:8005/api/event"  # KOI Coordinator endpoint
 
 # Podcast sources to monitor (based on server success)
 podcasts:
   - name: planetary-regeneration
     url: https://soundcloud.com/planetaryregeneration
+    rss_url: https://feeds.soundcloud.com/users/soundcloud:users:672989060/sounds.rss
     platform: soundcloud
     description: "The Planetary Regeneration Podcast - 70+ episodes with transcripts"
     check_interval: 86400  # 24 hours (podcasts don't change frequently)

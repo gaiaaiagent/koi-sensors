@@ -4,9 +4,9 @@ sensor:
   platform: website
   api:
     type: http
-    base_url: http://localhost:8200
+    base_url: http://localhost:8005
   koi_net:
-    coordinator_url: http://localhost:8200
+    coordinator_url: http://localhost:8005/api/event
     node_type: partial
     node_name: website-sensor-local-001
 

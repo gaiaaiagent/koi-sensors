@@ -22,7 +22,7 @@ import base64
 class GitHubConfig:
     """GitHub sensor configuration"""
     repos: List[Dict[str, Any]]
-    koi_bridge_url: str = "http://localhost:8089"
+    koi_bridge_url: str = "http://localhost:8005/api/event"
     source_sensor: str = "github-sensor"
     
     # File patterns to index
@@ -268,7 +268,6 @@ class GitHubSensor:
                 match = re.search(date_pattern, content[:500])  # Check first 500 chars
                 if match:
                     try:
-                        from datetime import datetime
                         published_at = datetime.strptime(match.group(1), '%Y-%m-%d')
                         confidence = 0.8
                     except:
@@ -408,6 +407,12 @@ async def main():
                 "url": "https://github.com/regen-network/regen-web",
                 "branch": "main",
                 "paths": ["docs", "README.md"]
+            },
+            {
+                "name": "regen-data-standards",
+                "url": "https://github.com/regen-network/regen-data-standards",
+                "branch": "main",
+                "paths": ["."]
             },
             {
                 "name": "regenie-corpus",

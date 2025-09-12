@@ -1,0 +1,52 @@
+# Medium Sensor Configuration
+# Monitors Regen Network Medium blog for new articles
+
+sensor:
+  name: medium-sensor
+  type: medium
+  node_id: "koi-sensor-medium-001"
+  coordinator_url: "http://localhost:8005/api/event"  # KOI Coordinator endpoint
+
+# Medium sources to monitor
+medium_sources:
+  - name: regen-network-medium
+    url: https://regen-network.medium.com
+    rss_url: https://medium.com/feed/@regen-network  # RSS feed URL
+    check_interval: 21600  # Check every 6 hours (blog posts don't change frequently)
+    priority: high
+    notes: "Main Regen Network blog on Medium"
+
+# Collection behavior
+collection:
+  max_articles_per_check: 20  # Limit per check to avoid overwhelming
+  use_rss: true  # Primary method
+  use_scraping: true  # Fallback method
+  historical_years: [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]  # Years to check archives
+
+# Content filtering
+content_filtering:
+  min_content_length: 500  # Minimum article length
+  extract_images: false  # Don't extract images to keep text-focused
+
+# HTTP settings
+http:
+  request_delay: 1.0  # Seconds between requests
+  user_agent: "KOI-Sensor/1.0 (Regen Network Knowledge Indexer; +https://regen.network)"
+  timeout_seconds: 30
+
+# Auto-tags based on content
+auto_tags:
+  governance: ["governance", "proposal", "voting", "dao"]
+  ecocredits: ["ecocredit", "credit", "carbon", "biodiversity", "nature-based"]
+  marketplace: ["marketplace", "trading", "buying", "selling", "registry"]
+  methodology: ["methodology", "protocol", "standard", "verification"]
+  development: ["development", "technical", "blockchain", "cosmos", "sdk"]
+  community: ["community", "commons", "regenerative", "ecosystem"]
+  climate: ["climate", "climate change", "emissions", "sustainability"]
+  agriculture: ["agriculture", "farming", "soil", "regenerative agriculture"]
+  finance: ["finance", "refi", "investment", "funding", "tokenomics"]
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

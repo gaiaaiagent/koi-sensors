@@ -198,7 +198,9 @@ class NotionCrawler:
         return content
 
 if __name__ == '__main__':
-    NOTION_SECRET = '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'
+    NOTION_SECRET = os.environ.get('NOTION_SECRET', '')
+    if not NOTION_SECRET:
+        raise ValueError('NOTION_SECRET environment variable is required')
     crawler = NotionCrawler(NOTION_SECRET)
     content = crawler.run_discovery()
     
