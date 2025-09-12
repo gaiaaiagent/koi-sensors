@@ -386,6 +386,24 @@ class WebsiteKOISensor:
             # Extract page metadata
             metadata = self.extract_page_metadata(soup, url)
             
+            # Extract publication date for Daily Curator
+            import sys
+            sys.path.append('/Users/darrenzal/projects/RegenAI/koi-processor')
+            try:
+                from utils.date_extractor import extract_publication_date
+                published_at, confidence = extract_publication_date(str(soup), 'website')
+            except:
+                published_at, confidence = None, 0.0
+            
+            # Fallback to last-modified if no publication date found
+            if not published_at and metadata.get("last_modified"):
+                try:
+                    from dateutil import parser
+                    published_at = parser.parse(metadata["last_modified"])
+                    confidence = 0.6  # Lower confidence for modification date
+                except:
+                    pass
+            
             # Create document in format compatible with existing system
             document = {
                 "id": f"web_{rid.url_hash}",
@@ -395,6 +413,12 @@ class WebsiteKOISensor:
                 "title": metadata.get("title", ""),
                 "content": content,
                 "metadata": {
+                    # Publication date metadata for Daily Curator
+                    "published_at": published_at.isoformat() if published_at else None,
+                    "published_confidence": confidence,
+                    "extracted_from": "meta_tags" if confidence > 0.8 else "last_modified" if confidence > 0.5 else "unknown",
+                    
+                    # Original metadata
                     "domain": domain,
                     "path": parsed_url.path,
                     "description": metadata.get("description", ""),

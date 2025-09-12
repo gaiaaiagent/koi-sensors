@@ -436,9 +436,29 @@ class LedgerSensor(BaseSensor):
     def extract_content(self, item_data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract normalized content from ledger data"""
         item_type = item_data.get("type")
+        
+        # Extract blockchain timestamp for publication date
+        block_time = None
+        confidence = 0.0
+        
+        # For blockchain data, use block time as publication date
+        if item_data.get("block_time"):
+            block_time = item_data.get("block_time")
+            confidence = 1.0  # Blockchain timestamps are immutable and exact
+        elif item_data.get("timestamp"):
+            block_time = item_data.get("timestamp")
+            confidence = 0.95
+        else:
+            # Use current time as fallback
+            block_time = datetime.now(timezone.utc).isoformat()
+            confidence = 0.5
+        
         content = {
             "type": item_type,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            # Publication date metadata for Daily Curator
+            "published_at": block_time,
+            "published_confidence": confidence
         }
         
         if item_type == "governance_proposal":

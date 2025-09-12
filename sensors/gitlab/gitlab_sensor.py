@@ -271,6 +271,38 @@ class GitLabSensor:
                 return None
             self.processed_rids.add(rid)
             
+            # Extract publication date
+            published_at = None
+            confidence = 0.0
+            
+            # For markdown/text files, try to extract date from content
+            if file_path.suffix in ['.md', '.mdx', '.txt']:
+                import re
+                # Look for date patterns
+                date_pattern = r'date:\s*["\']*(\d{4}-\d{2}-\d{2})'
+                match = re.search(date_pattern, content[:500] if isinstance(content, str) else "")
+                if match:
+                    try:
+                        from datetime import datetime
+                        published_at = datetime.strptime(match.group(1), '%Y-%m-%d')
+                        confidence = 0.8
+                    except:
+                        pass
+            
+            # For whitepapers, use file modification time
+            if not published_at:
+                try:
+                    import os
+                    stat = os.stat(file_path)
+                    published_at = datetime.fromtimestamp(stat.st_mtime)
+                    confidence = 0.6  # Lower confidence for file dates
+                except:
+                    pass
+            
+            # Add publication date metadata for Daily Curator
+            metadata["published_at"] = published_at.isoformat() if published_at else None
+            metadata["published_confidence"] = confidence
+            
             # Add collection timestamp
             metadata["collected_at"] = datetime.now(timezone.utc).isoformat()
             

@@ -30,6 +30,20 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 - **Version Control**: UPDATE events create new versions with complete audit trail
 - **Isolated Tables**: Clean separation between sensor data and other content sources
 - **Production Tested**: Deduplication verified working on live Regen Network infrastructure
+- **Publication Date Tracking**: All sensors now extract and pass publication dates for content curation
+
+### 📅 Publication Date Intelligence (Session 7 Complete)
+All sensors have been updated to distinguish between content publication date and ingestion date:
+- **Twitter/X**: Uses `created_at` timestamp (95% confidence)
+- **Discourse**: API provides exact timestamps (95% confidence)
+- **Medium**: Extracts publication dates from articles (95% confidence)
+- **Websites**: Extracts from meta tags or Last-Modified headers (60-95% confidence)
+- **Podcasts**: Uses RSS pubDate fields (95% confidence)
+- **GitHub/GitLab**: Extracts from content or uses commit dates (60-80% confidence)
+- **Notion**: Uses API `created_time` (85% confidence)
+- **Ledger**: Blockchain timestamps are immutable (100% confidence)
+
+This enables the Daily Content Curator to select genuinely recent content for social media posts.
 
 See [koi-processor v2.0.0](https://github.com/gaiaaiagent/koi-processor) for implementation details.
 

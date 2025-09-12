@@ -389,6 +389,19 @@ class PodcastKOISensor:
                                 content: str, event_type: str):
         """Emit KOI event for podcast episode"""
         try:
+            # Parse publication date from created_at
+            created_at = episode_data.get('created_at', '')
+            published_at = None
+            confidence = 0.0
+            
+            if created_at:
+                try:
+                    from dateutil import parser
+                    published_at = parser.parse(created_at)
+                    confidence = 0.95  # High confidence for API-provided dates
+                except:
+                    pass
+            
             # Create document in server-compatible format
             document = {
                 "id": f"podcast_{episode_data.get('id', '')}",
@@ -398,6 +411,11 @@ class PodcastKOISensor:
                 "title": episode_data.get('title', 'Untitled Episode'),
                 "content": content,
                 "metadata": {
+                    # Publication date metadata for Daily Curator
+                    "published_at": published_at.isoformat() if published_at else None,
+                    "published_confidence": confidence,
+                    
+                    # Original metadata
                     "type": "podcast_episode",
                     "platform": "soundcloud",
                     "episode_id": str(episode_data.get('id', '')),

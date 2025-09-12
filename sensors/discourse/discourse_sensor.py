@@ -280,6 +280,16 @@ class DiscourseSensor:
             except:
                 created_at = datetime.now().isoformat()
         
+        # Extract updated_at if available
+        updated_at = None
+        if topic_data.get('updated_at'):
+            try:
+                updated_at = datetime.fromisoformat(
+                    topic_data['updated_at'].replace('Z', '+00:00')
+                ).isoformat()
+            except:
+                updated_at = created_at
+        
         document = {
             'rid': rid,
             'source': f'discourse:{forum_name}',
@@ -290,6 +300,11 @@ class DiscourseSensor:
             'author': posts[0].get('username') if posts else 'anonymous',
             'timestamp': created_at or datetime.now().isoformat(),
             'metadata': {
+                # Publication date metadata for Daily Curator
+                'published_at': created_at,  # Discourse API provides exact timestamps
+                'published_confidence': 0.95,  # High confidence for API data
+                'last_modified': updated_at,
+                
                 'forum': forum_name,
                 'topic_id': topic_id,
                 'category': topic_data.get('category_id'),

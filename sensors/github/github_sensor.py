@@ -256,6 +256,35 @@ class GitHubSensor:
                 return None
             self.processed_rids.add(rid)
             
+            # Extract publication date
+            published_at = None
+            confidence = 0.0
+            
+            # For markdown files, try to extract date from content
+            if file_path.suffix in ['.md', '.mdx']:
+                import re
+                # Look for date in frontmatter
+                date_pattern = r'date:\s*["\']*(\d{4}-\d{2}-\d{2})'
+                match = re.search(date_pattern, content[:500])  # Check first 500 chars
+                if match:
+                    try:
+                        from datetime import datetime
+                        published_at = datetime.strptime(match.group(1), '%Y-%m-%d')
+                        confidence = 0.8
+                    except:
+                        pass
+            
+            # Fallback to git commit date (would need git integration)
+            if not published_at:
+                # For now, use file modification time as approximation
+                try:
+                    import os
+                    stat = os.stat(file_path)
+                    published_at = datetime.fromtimestamp(stat.st_mtime)
+                    confidence = 0.6  # Lower confidence for file system dates
+                except:
+                    pass
+            
             # Create document
             doc = {
                 "rid": rid,
@@ -266,6 +295,11 @@ class GitHubSensor:
                 "branch": branch,
                 "content": content,
                 "metadata": {
+                    # Publication date metadata for Daily Curator
+                    "published_at": published_at.isoformat() if published_at else None,
+                    "published_confidence": confidence,
+                    
+                    # Original metadata
                     "file_type": file_path.suffix or "no_extension",
                     "file_size": len(content),
                     "lines": content.count('\n') + 1,

@@ -186,12 +186,19 @@ class TwitterSensor(BaseSensor):
     
     def extract_content(self, item_data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract normalized content from tweet data"""
+        created_at = item_data.get('created_at')
+        
         return {
             "text": item_data.get('text', ''),
             "author_id": item_data.get('author_id'),
             "author_username": item_data.get('user', {}).get('username', ''),
             "author_name": item_data.get('user', {}).get('name', ''),
-            "created_at": item_data.get('created_at'),
+            "created_at": created_at,
+            
+            # Publication date metadata for Daily Curator
+            "published_at": created_at,  # Twitter provides exact timestamps
+            "published_confidence": 0.95,  # High confidence for API data
+            
             "tweet_id": item_data.get('id'),
             "conversation_id": item_data.get('conversation_id'),
             "in_reply_to_user_id": item_data.get('in_reply_to_user_id'),

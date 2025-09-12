@@ -465,6 +465,10 @@ class NotionKOISensor:
                         if not title:
                             title = f"Page {page_id[:8]}"
                         
+                        # Extract Notion timestamps for publication date
+                        created_time = page.get("created_time")
+                        last_edited_time = page.get("last_edited_time")
+                        
                         # Create change document
                         change = {
                             "event_type": event_type,
@@ -473,11 +477,17 @@ class NotionKOISensor:
                             "title": title,
                             "content": content,
                             "metadata": {
+                                # Publication date metadata for Daily Curator
+                                "published_at": created_time,  # Notion provides ISO format timestamps
+                                "published_confidence": 0.85,  # Good confidence for API data
+                                "last_modified": last_edited_time,
+                                
+                                # Original metadata
                                 "database_id": db_id,
                                 "database_title": db_info["title"],
                                 "page_url": page.get("url", ""),
-                                "created_time": page.get("created_time"),
-                                "last_edited_time": page.get("last_edited_time"),
+                                "created_time": created_time,
+                                "last_edited_time": last_edited_time,
                                 "properties": properties
                             }
                         }
