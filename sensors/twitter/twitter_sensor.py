@@ -147,14 +147,20 @@ class TwitterSensor(BaseSensor):
             else:
                 user_id = user_identifier
             
+            # Build exclude list based on config
+            exclude_list = []
+            if not self.config.collect_retweets:
+                exclude_list.append('retweets')
+            if not self.config.collect_replies:
+                exclude_list.append('replies')
+            
             response = self.client.get_users_tweets(
                 id=user_id,
                 max_results=self.config.api.max_results,
                 tweet_fields=self.config.api.tweet_fields,
                 user_fields=self.config.api.user_fields,
                 expansions=self.config.api.expansions,
-                exclude=['retweets'] if not self.config.collect_retweets else None,
-                exclude=['replies'] if not self.config.collect_replies else None
+                exclude=exclude_list if exclude_list else None
             )
             
             if response.data:

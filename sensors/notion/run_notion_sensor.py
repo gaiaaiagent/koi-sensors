@@ -44,7 +44,7 @@ async def run_with_coordinator():
         print(f"⚠️  Using default configuration")
     
     # Get Notion token
-    notion_token = os.getenv('NOTION_INTEGRATION_SECRET', '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')
+    notion_token = os.getenv('NOTION_API_KEY')
     
     if not notion_token:
         print("❌ No Notion token found. Set NOTION_INTEGRATION_SECRET env var.")
@@ -132,7 +132,7 @@ async def run_standalone():
     print("Running without coordinator (test mode)")
     print("=" * 60)
     
-    notion_token = os.getenv('NOTION_INTEGRATION_SECRET', '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')
+    notion_token = os.getenv('NOTION_API_KEY')
     
     async with NotionKOISensor(notion_token=notion_token) as sensor:
         # Discover workspace

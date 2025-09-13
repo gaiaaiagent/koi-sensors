@@ -39,7 +39,7 @@ async def test_notion_sensor():
         print(f"   {item_type}/{item_id[:8]}... → {rid.to_orn()}")
     
     # Set up Notion token
-    notion_token = os.getenv('NOTION_INTEGRATION_SECRET', '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')
+    notion_token = os.getenv('NOTION_API_KEY')
     
     print(f"\n🔧 Testing Sensor Setup:")
     print(f"   Token configured: {'✅' if notion_token else '❌'}")
@@ -158,7 +158,7 @@ async def test_notion_sensor():
 async def test_specific_database(database_id: str):
     """Test a specific database by ID"""
     
-    notion_token = os.getenv('NOTION_INTEGRATION_SECRET', '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')
+    notion_token = os.getenv('NOTION_API_KEY')
     
     async with NotionKOISensor(notion_token=notion_token) as sensor:
         print(f"\n🎯 Testing specific database: {database_id}")

@@ -17,7 +17,9 @@ import sys
 # Add parent directories to path for imports
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from indexing.koi_client import KOIClient
+from koi_protocol.nodes.koi_node import KOIPartialNode
+from koi_protocol.core.rid_system import RID
+from koi_protocol.core.bundle_system import Bundle, document_to_bundle
 
 
 class DiscourseSensor:
@@ -28,7 +30,6 @@ class DiscourseSensor:
     
     def __init__(self):
         """Initialize Discourse sensor"""
-        self.koi_client = KOIClient()
         self.client = httpx.AsyncClient(timeout=30.0)
         self.forums = [
             {
@@ -453,8 +454,9 @@ class DiscourseSensor:
                 }, f, indent=2)
             print(f"   💾 Saved to: {output_file}")
             
-            # Send to KOI
-            await self.send_to_koi(all_documents)
+            # Send to KOI (commented out - saved to JSON file instead)
+            # await self.send_to_koi(all_documents)
+            print(f"   ✅ Documents saved locally - ready for processing")
         
         print("=" * 60)
     

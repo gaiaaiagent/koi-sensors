@@ -283,7 +283,6 @@ class GitLabSensor:
                 match = re.search(date_pattern, content[:500] if isinstance(content, str) else "")
                 if match:
                     try:
-                        from datetime import datetime
                         published_at = datetime.strptime(match.group(1), '%Y-%m-%d')
                         confidence = 0.8
                     except:
@@ -294,7 +293,7 @@ class GitLabSensor:
                 try:
                     import os
                     stat = os.stat(file_path)
-                    published_at = datetime.fromtimestamp(stat.st_mtime)
+                    published_at = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
                     confidence = 0.6  # Lower confidence for file dates
                 except:
                     pass

@@ -555,7 +555,7 @@ async def main():
     load_dotenv()
     
     # Get Notion token from environment or use provided one
-    notion_token = os.getenv('NOTION_INTEGRATION_SECRET', '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')
+    notion_token = os.getenv('NOTION_API_KEY')
     
     async with NotionKOISensor(notion_token=notion_token) as sensor:
         print("\n🔍 Searching Notion workspace...")
