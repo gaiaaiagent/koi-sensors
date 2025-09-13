@@ -22,7 +22,7 @@ import base64
 class GitHubConfig:
     """GitHub sensor configuration"""
     repos: List[Dict[str, Any]]
-    koi_bridge_url: str = "http://localhost:8005/api/event"
+    koi_bridge_url: str = "http://localhost:8100/process-koi-event"
     source_sensor: str = "github-sensor"
     
     # File patterns to index
@@ -354,7 +354,7 @@ class GitHubSensor:
                 # Send to KOI Event Bridge
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.post(
-                        f"{self.config.koi_bridge_url}/process",
+                        self.config.koi_bridge_url,
                         json=event
                     )
                     
