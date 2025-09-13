@@ -5,8 +5,8 @@ sensor:
   name: github-sensor
   type: github
   node_id: "koi-sensor-github-001"
-  coordinator_url: "http://localhost:8005/api/event"  # KOI Coordinator endpoint
-  koi_bridge_url: "http://localhost:8005/api/event"   # KOI Event Bridge endpoint
+  coordinator_url: "http://localhost:8005"  # KOI Coordinator endpoint
+  koi_bridge_url: "http://localhost:8005"   # KOI Event Bridge endpoint
 
 # GitHub repositories to monitor
 repositories:

@@ -81,7 +81,7 @@ class MediumKOISensor:
         # Initialize KOI node
         self.koi_node = KOIPartialNode(
             node_name="medium-sensor",
-            coordinator_url=getattr(config.koi_net, 'coordinator_url', 'http://localhost:8000'),
+            coordinator_url=getattr(config.koi_net, 'coordinator_url', 'http://localhost:8005'),
             poll_interval=30
         )
         
@@ -642,7 +642,7 @@ async def main():
         api=APIConfig(),  # No API needed for RSS/scraping
         koi_net=KoiNetConfig(
             node_name="medium-monitor-sensor",
-            coordinator_url="http://localhost:8000"
+            coordinator_url="http://localhost:8005"
         ),
         monitoring=MonitoringConfig(
             log_level="INFO"

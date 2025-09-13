@@ -5,7 +5,7 @@ sensor:
   name: website-sensor
   type: website
   node_id: "koi-sensor-website-001"
-  coordinator_url: "http://localhost:8005/api/event"  # KOI Coordinator endpoint
+  coordinator_url: "http://localhost:8005"  # KOI Coordinator endpoint
 
 # Website sources to monitor (based on server indexing status + new additions)
 websites:

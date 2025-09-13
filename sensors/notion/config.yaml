@@ -4,7 +4,7 @@
 sensor:
   name: notion-sensor
   type: partial_node
-  coordinator_url: http://localhost:8005/api/event
+  coordinator_url: http://localhost:8005
   
   # Notion API settings
   api_version: "2022-06-28"

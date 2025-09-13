@@ -145,7 +145,6 @@ class KOICoordinator:
                     # Create a simple manifest without using RID object
                     # Just create the necessary fields directly
                     import hashlib
-                    from datetime import datetime, timezone
                     
                     content_str = json.dumps(sensor_data, sort_keys=True)
                     content_hash = hashlib.sha256(content_str.encode()).hexdigest()
