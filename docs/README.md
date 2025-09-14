@@ -1,4 +1,4 @@
-# KOI Sensors Documentation Index
+# KOI Sensors Documentation
 
 ## Quick Links
 - [Main README](../README.md)

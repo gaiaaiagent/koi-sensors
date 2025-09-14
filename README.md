@@ -50,7 +50,7 @@ See [koi-processor v2.0.0](https://github.com/gaiaaiagent/koi-processor) for imp
 ## 📚 Documentation
 
 All documentation has been organized for better navigation:
-- **[Documentation Index](docs/INDEX.md)** - Complete documentation guide
+- **[Documentation Overview](docs/)** - Complete documentation guide
 - **[Quick Start Guide](QUICKSTART.md)** - Get started quickly
 - **[Development Docs](docs/development/)** - Development guides and next steps
 - **[Status & Changelogs](docs/status/)** - Current status and recent changes
