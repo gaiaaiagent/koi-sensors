@@ -47,6 +47,15 @@ This enables the Daily Content Curator to select genuinely recent content for so
 
 See [koi-processor v2.0.0](https://github.com/gaiaaiagent/koi-processor) for implementation details.
 
+## 📚 Documentation
+
+All documentation has been organized for better navigation:
+- **[Documentation Index](docs/INDEX.md)** - Complete documentation guide
+- **[Quick Start Guide](QUICKSTART.md)** - Get started quickly
+- **[Development Docs](docs/development/)** - Development guides and next steps
+- **[Status & Changelogs](docs/status/)** - Current status and recent changes
+- **[Architecture Docs](docs/architecture/)** - System design and implementation details
+
 ## 🏗️ Architecture Integration
 
 This sensor network is **Phase 1** of the complete 3-repository KOI system, fully aligned with [KOI_COMPLETE_RESEARCH.md](../koi-research/docs/KOI_COMPLETE_RESEARCH.md):
