@@ -14,16 +14,17 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 - ✅ **CAT Receipts**: Full provenance tracking through transformation pipeline
 - ✅ **Production Tested**: End-to-end pipeline verified with real content
 
-**Active Sensors in Production**:
-- ✅ **Website Sensor**: 9/9 sites monitored, real-time change detection
-- ✅ **Medium Sensor**: 10 articles indexed, RSS feed monitoring
-- ✅ **Notion Sensor**: 208 pages discovered, API integration complete (performance optimization needed)
-- ✅ **GitHub Sensor v2**: Repository monitoring with KOI protocol integration
+**Active Sensors in Production** (as of September 14, 2025):
+- ✅ **Website Sensor**: Monitoring 8+ Regen sites with real-time change detection
+- ✅ **GitHub Sensor v2**: Repository monitoring with full KOI protocol integration
 - ✅ **GitLab Sensor v2**: Whitepaper and documentation monitoring
-- ✅ **Twitter Sensor v2**: KOI protocol ready (requires API credentials)
+- ✅ **Medium Sensor**: RSS feed monitoring with article extraction
+- ✅ **Discourse Sensor**: Forum monitoring (batch mode with KOI protocol support)
+- ✅ **Telegram Sensor v2**: Channel monitoring configured (requires messages to activate)
+- ⚠️ **Twitter Sensor v2**: KOI protocol ready (RID import error - needs fix)
 - 🚧 **Discord Sensor**: Bot token required for channel monitoring
-- 🚧 **Telegram Sensor**: Bot token required for channel monitoring
 - 🚧 **Podcast Sensor**: Configuration needed
+- 🚧 **Notion Sensor**: API integration (performance optimization needed)
 - ✅ **KOI Coordinator**: Event routing at http://localhost:8005
 - ✅ **Dashboard**: Live monitoring at https://regen.gaiaai.xyz/koi
 

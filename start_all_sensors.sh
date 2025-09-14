@@ -13,7 +13,7 @@ export PYTHONPATH="/opt/projects/koi-sensors:$PYTHONPATH"
 
 # Kill any existing sensors
 echo "Stopping existing sensors..."
-pkill -f "website_sensor.py|notion_sensor.py|discourse_sensor.py|medium_sensor.py|twitter_sensor.py" 2>/dev/null || true
+pkill -f "_sensor.py|_sensor_v2.py" 2>/dev/null || true
 sleep 2
 
 # Function to start a sensor
@@ -66,6 +66,23 @@ fi
 echo ""
 echo "Waiting for sensors to stabilize..."
 sleep 3
+
+# 6. GitHub Sensor v2 (KOI protocol)
+if [ -f "sensors/github/github_sensor_v2.py" ]; then
+    start_sensor "GitHub Sensor v2" "sensors/github/github_sensor_v2.py" "github_sensor_v2.log"
+fi
+
+# 7. GitLab Sensor v2 (KOI protocol)
+if [ -f "sensors/gitlab/gitlab_sensor_v2.py" ]; then
+    start_sensor "GitLab Sensor v2" "sensors/gitlab/gitlab_sensor_v2.py" "gitlab_sensor_v2.log"
+fi
+
+# 8. Telegram Sensor v2 (if bot token available)
+if [ -f "sensors/telegram/telegram_sensor_v2.py" ] && [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+    start_sensor "Telegram Sensor v2" "sensors/telegram/telegram_sensor_v2.py" "telegram_sensor_v2.log"
+else
+    echo "Telegram Sensor v2: Skipping (no TELEGRAM_BOT_TOKEN)"
+fi
 
 # Check sensor status
 echo ""

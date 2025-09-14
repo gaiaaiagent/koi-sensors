@@ -31,6 +31,14 @@ class DiscourseSensor:
     def __init__(self):
         """Initialize Discourse sensor"""
         self.client = httpx.AsyncClient(timeout=30.0)
+
+        # Initialize KOI node for real-time event broadcasting
+        self.koi_node = KOIPartialNode(
+            node_name="discourse-sensor",
+            coordinator_url="http://localhost:8005",
+            poll_interval=30
+        )
+
         self.forums = [
             {
                 'name': 'forum.regen.network',
@@ -454,12 +462,67 @@ class DiscourseSensor:
                 }, f, indent=2)
             print(f"   💾 Saved to: {output_file}")
             
-            # Send to KOI (commented out - saved to JSON file instead)
-            # await self.send_to_koi(all_documents)
-            print(f"   ✅ Documents saved locally - ready for processing")
+            # Send to KOI coordinator
+            await self.send_to_koi(all_documents)
+            print(f"   ✅ Documents saved locally and sent to KOI coordinator")
         
         print("=" * 60)
-    
+
+    async def send_to_koi(self, documents: List[Dict]):
+        """Send documents to KOI coordinator as events"""
+        try:
+            # Start KOI node if not started
+            if not hasattr(self, 'koi_started'):
+                await self.koi_node.start()
+                self.koi_started = True
+
+                # Send heartbeat to register
+                await self.send_heartbeat()
+
+            # Send each document as an event
+            for doc in documents:
+                try:
+                    # Create RID for the discourse post
+                    forum = doc.get('source', 'discourse').replace(':', '_').replace('.', '_')
+                    topic_id = doc.get('id', hashlib.md5(doc.get('title', '').encode()).hexdigest()[:8])
+                    rid = RID("orn", f"discourse.{forum}.topic.{topic_id}")
+
+                    # Create bundle from document
+                    bundle = document_to_bundle(doc, source_node="discourse-sensor")
+
+                    # Emit event
+                    await self.koi_node.emit_new_event(bundle)
+
+                except Exception as e:
+                    print(f"   ⚠️ Error sending document to KOI: {e}")
+
+            print(f"   📡 Sent {len(documents)} documents to KOI coordinator")
+
+        except Exception as e:
+            print(f"   ❌ Error connecting to KOI coordinator: {e}")
+
+    async def send_heartbeat(self):
+        """Send heartbeat event to register with coordinator"""
+        try:
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor": "discourse",
+                "node_id": "discourse-sensor",
+                "forums": [f['name'] for f in self.forums],
+                "timestamp": datetime.now().isoformat(),
+                "status": "active"
+            }
+
+            # Create bundle from heartbeat data
+            bundle = document_to_bundle(heartbeat_data, source_node="discourse-sensor")
+
+            # Emit event
+            await self.koi_node.emit_new_event(bundle)
+            print("   💓 Sent heartbeat to KOI coordinator")
+
+        except Exception as e:
+            print(f"   ⚠️ Error sending heartbeat: {e}")
+
     async def __aenter__(self):
         """Async context manager entry"""
         return self

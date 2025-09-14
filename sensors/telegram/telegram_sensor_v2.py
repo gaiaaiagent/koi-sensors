@@ -249,12 +249,46 @@ class TelegramKOISensor:
         except Exception as e:
             self.logger.error(f"Error fetching message history: {e}")
 
+    async def send_heartbeat_event(self):
+        """Send a heartbeat event to register with coordinator"""
+        try:
+            # Create a heartbeat bundle
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor": "telegram",
+                "node_id": self.config.node_name,
+                "channel": self.config.channel_username,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active"
+            }
+
+            # Create RID for heartbeat
+            heartbeat_rid = GenericRID("orn", f"telegram.heartbeat.{self.config.node_name}")
+
+            # Create bundle
+            bundle = document_to_bundle(
+                content=json.dumps(heartbeat_data),
+                source_rid=heartbeat_rid,
+                document_type="heartbeat",
+                metadata={"sensor_type": "telegram"}
+            )
+
+            # Emit event
+            await self.koi_node.emit_new_event(bundle)
+            self.logger.info("Sent heartbeat event to register with coordinator")
+
+        except Exception as e:
+            self.logger.error(f"Error sending heartbeat: {e}")
+
     async def run(self):
         """Main sensor loop"""
         self.logger.info("Starting Telegram KOI Sensor")
 
         # Start KOI node
         await self.koi_node.start()
+
+        # Send startup/heartbeat event to register with coordinator
+        await self.send_heartbeat_event()
 
         # Setup Telegram bot
         if not await self.setup_telegram():
