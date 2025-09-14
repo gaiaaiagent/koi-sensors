@@ -361,6 +361,14 @@ class KOICoordinator:
                     sensor_type = "notion"
                 elif "discord" in node_id.lower():
                     sensor_type = "discord"
+                elif "github" in node_id.lower():
+                    sensor_type = "github"
+                elif "gitlab" in node_id.lower():
+                    sensor_type = "gitlab"
+                elif "telegram" in node_id.lower():
+                    sensor_type = "telegram"
+                elif "podcast" in node_id.lower():
+                    sensor_type = "podcast"
                     
                 # Determine what the sensor is monitoring based on type
                 monitoring = []
@@ -384,6 +392,23 @@ class KOICoordinator:
                     monitoring = ["Notion workspace"]
                 elif sensor_type == "twitter":
                     monitoring = ["@regen_network"]
+                elif sensor_type == "github":
+                    monitoring = [
+                        "regen-network/regen-ledger",
+                        "regen-network/regen-js",
+                        "regen-network/regen-web",
+                        "regen-network/regen-data-standards",
+                        "regen-network/groups-ui"
+                    ]
+                elif sensor_type == "gitlab":
+                    monitoring = [
+                        "regen-public/regen-whitepapers",
+                        "regen-public/regen-public-docs"
+                    ]
+                elif sensor_type == "telegram":
+                    monitoring = ["Telegram channels"]
+                elif sensor_type == "podcast":
+                    monitoring = ["Planetary Regeneration Podcast"]
                     
                 # Clean up the sensor name
                 clean_name = node_id
