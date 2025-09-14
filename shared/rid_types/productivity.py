@@ -4,7 +4,7 @@ Resource Identifiers for Notion and other productivity platforms
 """
 
 from typing import Optional
-from rid_lib import ORN
+from rid_lib.core import ORN
 
 
 class NotionPage(ORN):
@@ -12,15 +12,24 @@ class NotionPage(ORN):
     Format: orn:notion.page:workspace_id/page_id
     """
     namespace = "notion.page"
-    
+
     def __init__(self, workspace_id: str, page_id: str):
         self.workspace_id = workspace_id
         self.page_id = page_id
+        self._reference = f"{workspace_id}/{page_id}"
         super().__init__()
-    
+
+    @classmethod
+    def from_reference(cls, reference: str):
+        """Create instance from reference string"""
+        parts = reference.split('/')
+        if len(parts) != 2:
+            raise ValueError(f"Invalid NotionPage reference: {reference}")
+        return cls(parts[0], parts[1])
+
     @property
     def reference(self) -> str:
-        return f"{self.workspace_id}/{self.page_id}"
+        return self._reference
 
 
 class NotionBlock(ORN):
@@ -28,15 +37,24 @@ class NotionBlock(ORN):
     Format: orn:notion.block:page_id/block_id
     """
     namespace = "notion.block"
-    
+
     def __init__(self, page_id: str, block_id: str):
         self.page_id = page_id
         self.block_id = block_id
+        self._reference = f"{page_id}/{block_id}"
         super().__init__()
-    
+
+    @classmethod
+    def from_reference(cls, reference: str):
+        """Create instance from reference string"""
+        parts = reference.split('/')
+        if len(parts) != 2:
+            raise ValueError(f"Invalid NotionBlock reference: {reference}")
+        return cls(parts[0], parts[1])
+
     @property
     def reference(self) -> str:
-        return f"{self.page_id}/{self.block_id}"
+        return self._reference
 
 
 class NotionDatabase(ORN):
@@ -44,15 +62,24 @@ class NotionDatabase(ORN):
     Format: orn:notion.database:workspace_id/database_id
     """
     namespace = "notion.database"
-    
+
     def __init__(self, workspace_id: str, database_id: str):
         self.workspace_id = workspace_id
         self.database_id = database_id
+        self._reference = f"{workspace_id}/{database_id}"
         super().__init__()
-    
+
+    @classmethod
+    def from_reference(cls, reference: str):
+        """Create instance from reference string"""
+        parts = reference.split('/')
+        if len(parts) != 2:
+            raise ValueError(f"Invalid NotionDatabase reference: {reference}")
+        return cls(parts[0], parts[1])
+
     @property
     def reference(self) -> str:
-        return f"{self.workspace_id}/{self.database_id}"
+        return self._reference
 
 
 class NotionDatabaseRow(ORN):
@@ -60,12 +87,21 @@ class NotionDatabaseRow(ORN):
     Format: orn:notion.row:database_id/page_id
     """
     namespace = "notion.row"
-    
+
     def __init__(self, database_id: str, page_id: str):
         self.database_id = database_id
         self.page_id = page_id
+        self._reference = f"{database_id}/{page_id}"
         super().__init__()
-    
+
+    @classmethod
+    def from_reference(cls, reference: str):
+        """Create instance from reference string"""
+        parts = reference.split('/')
+        if len(parts) != 2:
+            raise ValueError(f"Invalid NotionDatabaseRow reference: {reference}")
+        return cls(parts[0], parts[1])
+
     @property
     def reference(self) -> str:
-        return f"{self.database_id}/{self.page_id}"
+        return self._reference

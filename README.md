@@ -16,10 +16,14 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 
 **Active Sensors in Production**:
 - ✅ **Website Sensor**: 9/9 sites monitored, real-time change detection
-- ✅ **Medium Sensor**: 10 articles indexed, RSS feed monitoring  
+- ✅ **Medium Sensor**: 10 articles indexed, RSS feed monitoring
 - ✅ **Notion Sensor**: 208 pages discovered, API integration complete (performance optimization needed)
-- 🚧 **Twitter Sensor**: Rate limits require strategic implementation
+- ✅ **GitHub Sensor v2**: Repository monitoring with KOI protocol integration
+- ✅ **GitLab Sensor v2**: Whitepaper and documentation monitoring
+- ✅ **Twitter Sensor v2**: KOI protocol ready (requires API credentials)
 - 🚧 **Discord Sensor**: Bot token required for channel monitoring
+- 🚧 **Telegram Sensor**: Bot token required for channel monitoring
+- 🚧 **Podcast Sensor**: Configuration needed
 - ✅ **KOI Coordinator**: Event routing at http://localhost:8005
 - ✅ **Dashboard**: Live monitoring at https://regen.gaiaai.xyz/koi
 

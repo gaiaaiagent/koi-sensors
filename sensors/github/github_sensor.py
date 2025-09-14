@@ -22,7 +22,7 @@ import base64
 class GitHubConfig:
     """GitHub sensor configuration"""
     repos: List[Dict[str, Any]]
-    koi_bridge_url: str = "http://localhost:8100/process-koi-event"
+    koi_bridge_url: str = "http://localhost:8200/process-koi-event"
     source_sensor: str = "github-sensor"
     
     # File patterns to index

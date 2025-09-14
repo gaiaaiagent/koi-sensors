@@ -21,7 +21,7 @@ import subprocess
 class GitLabConfig:
     """GitLab sensor configuration"""
     repos: List[Dict[str, Any]]
-    koi_bridge_url: str = "http://localhost:8100/process-koi-event"
+    koi_bridge_url: str = "http://localhost:8200/process-koi-event"
     source_sensor: str = "gitlab-sensor"
     
     # File patterns to index
