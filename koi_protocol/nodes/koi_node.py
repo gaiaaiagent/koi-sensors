@@ -184,20 +184,25 @@ class KOIPartialNode(KOINodeBase):
     
     async def broadcast_event(self, event: KOIEvent):
         """Send event to coordinator"""
+        self.logger.info(f"broadcast_event called for {event.event_type} event, RID: {event.rid}")
         if not self.session:
             self.logger.error("No active session for broadcasting")
             return
         
+        url = f"{self.coordinator_url}/events/broadcast"
+        self.logger.info(f"POSTing to {url}")
+        
         try:
             async with self.session.post(
-                f"{self.coordinator_url}/events/broadcast",
+                url,
                 json=event.to_dict(),
                 timeout=30
             ) as response:
                 if response.status == 200:
-                    self.logger.debug(f"Broadcast {event.event_type} event for {event.rid}")
+                    self.logger.info(f"Successfully broadcast {event.event_type} event for {event.rid}")
                 else:
-                    self.logger.error(f"Failed to broadcast event: {response.status}")
+                    text = await response.text()
+                    self.logger.error(f"Failed to broadcast event: {response.status} - {text}")
         except Exception as e:
             self.logger.error(f"Error broadcasting event: {e}")
     
@@ -239,9 +244,12 @@ class KOIPartialNode(KOINodeBase):
     
     async def emit_new_event(self, bundle: Bundle):
         """Emit NEW event for a bundle"""
+        self.logger.info(f"emit_new_event called for bundle RID: {bundle.rid}")
         event = KOIEvent.new_event(bundle, self.node_id)
         self.queue_event(event)
+        self.logger.info(f"About to broadcast NEW event for RID: {event.rid}")
         await self.broadcast_event(event)
+        self.logger.info(f"Finished broadcasting NEW event for RID: {event.rid}")
     
     async def emit_update_event(self, bundle: Bundle):
         """Emit UPDATE event for a bundle"""

@@ -143,6 +143,12 @@ class WebsiteKOISensor:
         """Start website monitoring sensor"""
         self.logger.info("Starting Website KOI Sensor")
         
+        # Configure KOI node logging to match sensor logging
+        import logging
+        koi_logger = logging.getLogger(f"koi.node.website-sensor")
+        koi_logger.setLevel(logging.INFO)
+        koi_logger.handlers = self.logger.handlers  # Use same handlers as sensor
+        
         # Start KOI node
         await self.koi_node.start()
         

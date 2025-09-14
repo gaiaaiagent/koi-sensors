@@ -193,6 +193,12 @@ class KOICoordinator:
                 
                 # Process event through KOI node
                 await self.koi_node.handle_event(event)
+                
+                # CRITICAL: Queue the event for other nodes to poll (KOI protocol requirement)
+                self.koi_node.queue_event(event)
+                self.logger.info(f"Queued event for polling: {event.rid}")
+                
+                # Also broadcast to connected nodes
                 await self.koi_node.broadcast_event(event)
                 
                 # Forward to processor bridge
@@ -365,18 +371,18 @@ class KOICoordinator:
     async def _forward_to_processor(self, event: KOIEvent):
         """Forward KOI event to processor bridge"""
         try:
-            # Convert event to format expected by processor
+            # Convert event to KOI protocol format for processor
             event_data = {
                 "event_type": event.event_type,
+                "rid": event.rid,
+                "source_node": event.source_node or self.node_name,
+                "timestamp": event.timestamp or datetime.now(timezone.utc).isoformat(),
                 "bundle": {
                     "rid": event.rid,
-                    "cid": "",  # Bundle doesn't have cid attribute
-                    "content": event.bundle.contents if event.bundle else {},
-                    "metadata": event.bundle.manifest.metadata if event.bundle and event.bundle.manifest else {},
-                    "manifest": event.bundle.manifest.to_dict() if event.bundle and event.bundle.manifest else {}
-                },
-                "timestamp": event.timestamp or datetime.now(timezone.utc).isoformat(),
-                "source_sensor": event.source_node or self.node_name
+                    "manifest": event.bundle.manifest.to_dict() if event.bundle and event.bundle.manifest else {},
+                    "contents": event.bundle.contents if event.bundle else {}
+                } if event.bundle else None,
+                "reason": None  # For FORGET events
             }
             
             # Send to processor bridge

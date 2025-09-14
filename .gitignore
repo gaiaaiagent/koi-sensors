@@ -149,3 +149,5 @@ indexing_log.txt
 sensors/*/storage/
 sensors/*/cache/
 sensors/*/logs/
+sensors/*/output/
+test_outputs/
