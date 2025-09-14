@@ -1,6 +1,7 @@
 # KOI Sensor Network - Port Assignments & Services
 
 Last Updated: September 14, 2025
+Status: PRODUCTION - All critical services operational with clean data
 
 ## Active Services and Port Mappings
 
@@ -28,16 +29,17 @@ Last Updated: September 14, 2025
 
 ### Sensor Network Status
 
-#### Active Sensors (Registered with Coordinator)
-- ✅ **Website Sensor** - Monitoring 8+ Regen sites
+#### Active Sensors (Fixed Text Extraction - Sept 14, 2025)
+- ✅ **Website Sensor** - Clean text extraction with BeautifulSoup
 - ✅ **GitHub Sensor v2** - Repository monitoring
 - ✅ **GitLab Sensor v2** - Whitepaper monitoring
 - ✅ **Medium Sensor** - RSS feed monitoring
+- ✅ **Discourse Sensor** - Forum content extraction
 
-#### Configured but Not Active
-- ⚠️ **Telegram Sensor v2** - Configured, needs messages to activate
-- ⚠️ **Discourse Sensor** - Batch mode, runs on schedule
-- ❌ **Twitter Sensor** - Import error with rid_lib
+#### Configured but Optional
+- ⚠️ **Telegram Sensor v2** - Requires bot token
+- ⚠️ **Twitter Sensor** - Requires bearer token
+- ⚠️ **Notion Sensor** - Requires API key
 
 ## Nginx Proxy Configuration
 

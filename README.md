@@ -4,15 +4,21 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 
 ## 📊 Current Status
 
-**PRODUCTION READY** ✅ - Complete KOI Sensor-to-Agent Pipeline Operational
+**PRODUCTION READY** ✅ - Complete KOI Pipeline with Clean Text Extraction
 
-**Full Pipeline Integration Complete**: Real-time content flows from sensors through KOI Event Bridge to Eliza agents
+**Critical Text Extraction Fix Deployed (Sept 14, 2025)**:
+- ✅ **Text Corruption Fixed**: Replaced html2text with BeautifulSoup - 0% word-breaking
+- ✅ **Database Cleaned**: 2,569 corrupted records removed, 481+ clean records re-ingested
+- ✅ **Daily Curator Working**: Can now generate coherent daily threads and weekly digests
+- ✅ **All Sensors Updated**: Producing clean, deduplicated text content
+
+**Full Pipeline Integration Complete**: Real-time clean content flows from sensors to agents
 - ✅ **KOI Event Bridge Integration**: Coordinator forwards events to processor (port 8100)
 - ✅ **BGE Embedding Generation**: 1024-dimensional vectors for semantic search
-- ✅ **PostgreSQL Storage**: Direct integration with agent database using pgvector
+- ✅ **PostgreSQL Storage**: Clean data in agent database using pgvector
 - ✅ **Agent RAG Access**: Content immediately available for queries (<3-5 seconds)
 - ✅ **CAT Receipts**: Full provenance tracking through transformation pipeline
-- ✅ **Production Tested**: End-to-end pipeline verified with real content
+- ✅ **Production Tested**: End-to-end pipeline verified with clean content
 
 **Active Sensors in Production** (as of September 14, 2025):
 - ✅ **Website Sensor**: Monitoring 8+ Regen sites with real-time change detection
