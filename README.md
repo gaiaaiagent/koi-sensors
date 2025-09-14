@@ -14,14 +14,14 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 - ✅ **CAT Receipts**: Full provenance tracking through transformation pipeline
 - ✅ **Production Tested**: End-to-end pipeline verified with real content
 
-**Website Sensor Results**: 9/9 websites tested successfully (100% success rate)
-- ✅ Core Regen websites: docs, guides, registry, foundation (4/4)
-- ✅ Community forums: forum.regen.network, regencommons (2/2)  
-- ✅ Research sites: researchretreat.org/papers, desci.com, regentokenomics.org (3/3)
-- ✅ **37,394 characters extracted**, 233+ links discovered for expansion
-- ✅ RID generation working: `orn:web.page:domain/hash`
-- ✅ Content change detection operational
-- ✅ Docker deployment ready
+**Active Sensors in Production**:
+- ✅ **Website Sensor**: 9/9 sites monitored, real-time change detection
+- ✅ **Medium Sensor**: 10 articles indexed, RSS feed monitoring  
+- ✅ **Notion Sensor**: 208 pages discovered, API integration complete (performance optimization needed)
+- 🚧 **Twitter Sensor**: Rate limits require strategic implementation
+- 🚧 **Discord Sensor**: Bot token required for channel monitoring
+- ✅ **KOI Coordinator**: Event routing at http://localhost:8005
+- ✅ **Dashboard**: Live monitoring at https://regen.gaiaai.xyz/koi
 
 ## 🔄 Event Bridge v2 Integration
 

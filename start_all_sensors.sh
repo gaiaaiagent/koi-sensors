@@ -47,8 +47,8 @@ if [ -f "sensors/notion/notion_sensor.py" ] && [ -n "$NOTION_API_KEY" ]; then
     start_sensor "Notion Sensor" "sensors/notion/notion_sensor.py" "notion_sensor.log"
 fi
 
-# 3. Discourse Sensor (if configured)
-if [ -f "sensors/discourse/discourse_sensor.py" ] && [ -n "$DISCOURSE_API_KEY" ]; then
+# 3. Discourse Sensor (works with public content even without API key)
+if [ -f "sensors/discourse/discourse_sensor.py" ]; then
     start_sensor "Discourse Sensor" "sensors/discourse/discourse_sensor.py" "discourse_sensor.log"
 fi
 

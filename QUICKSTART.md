@@ -6,6 +6,19 @@
 ```bash
 python3 --version  # Need 3.11+
 pip install -r requirements.txt
+
+# Create .env file for API keys (optional)
+cat > .env << EOF
+# KOI Coordinator
+KOI_COORDINATOR_URL=http://localhost:8005
+KOI_COORDINATOR_PORT=8005
+
+# Notion Integration (optional)
+NOTION_API_KEY=your_notion_integration_secret
+
+# Twitter API (optional)
+TWITTER_BEARER_TOKEN=your_twitter_bearer_token
+EOF
 ```
 
 ### 2. Start the Complete KOI Pipeline
@@ -13,8 +26,8 @@ pip install -r requirements.txt
 #### Terminal 1: KOI Coordinator
 ```bash
 cd koi-sensors
-python koi_protocol/coordinator/run_coordinator.py
-# Runs on port 8000
+KOI_COORDINATOR_PORT=8005 python koi_protocol/coordinator/koi_coordinator.py
+# Runs on port 8005
 ```
 
 #### Terminal 2: KOI Event Bridge (in koi-processor repo)
@@ -31,20 +44,29 @@ python bge_server.py
 # Runs on port 8888
 ```
 
-#### Terminal 4: Website Sensor
+#### Terminal 4: Start All Sensors
 ```bash
-cd ../koi-sensors/sensors/websites
-python run_website_sensor.py
-# Monitors 9 websites for changes
+# Option A: Use the startup script
+./start_all_sensors.sh
+
+# Option B: Start individually
+# Website sensor
+cd sensors/websites && python run_website_sensor.py &
+
+# Medium sensor  
+cd sensors/medium && python run_medium_sensor.py &
+
+# Notion sensor (requires NOTION_API_KEY in .env)
+./start_notion.sh
 ```
 
 ### 3. Verify Pipeline Operation
 ```bash
 # Check coordinator status
-curl http://localhost:8000/status
+curl http://localhost:8005/sensors
 
-# Monitor events
-curl http://localhost:8000/events/poll
+# Check dashboard
+open https://regen.gaiaai.xyz/koi
 
 # Test content injection
 python test_website_sensor.py

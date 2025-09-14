@@ -10,6 +10,11 @@ import sys
 import yaml
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent.parent.parent / '.env'
+load_dotenv(env_path)
 
 # Add parent directories to path
 sys.path.append(str(Path(__file__).parent.parent.parent))

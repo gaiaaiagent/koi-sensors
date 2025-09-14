@@ -105,7 +105,9 @@ class KOICoordinator:
         self.sensor_status: Dict[str, Dict[str, Any]] = {}
         
         # Track broadcast sensors (external sensors that send events)
-        self.broadcast_sensors: Dict[str, Dict[str, Any]] = {}  # node_id -> sensor info
+        # Use sensor type as key to avoid duplicates when sensors reconnect
+        self.broadcast_sensors: Dict[str, Dict[str, Any]] = {}  # sensor_type -> sensor info
+        self.sensor_timeout_seconds = 3600  # Mark sensors inactive after 1 hour (increased from 5 minutes)
         
         # Processor bridge URL (for forwarding events)
         self.processor_bridge_url = "http://localhost:8100/process-koi-event"
@@ -183,13 +185,34 @@ class KOICoordinator:
                 # Track the broadcast sensor
                 if "source_node" in event_data:
                     source_node = event_data["source_node"]
-                    self.broadcast_sensors[source_node] = {
-                        "node_id": source_node,
-                        "last_event": datetime.now(timezone.utc).isoformat(),
-                        "event_count": self.broadcast_sensors.get(source_node, {}).get("event_count", 0) + 1,
-                        "event_type": event_data.get("event_type", "unknown")
-                    }
-                    self.logger.debug(f"Tracked broadcast sensor: {source_node}")
+                    
+                    # Extract sensor type from node_id (e.g., "website-sensor-12345" -> "website-sensor")
+                    import re
+                    sensor_type_match = re.match(r'^([^-]+-sensor)', source_node)
+                    if sensor_type_match:
+                        sensor_type = sensor_type_match.group(1)
+                    else:
+                        # Fallback for sensors without standard naming
+                        sensor_type = source_node.split('-')[0] if '-' in source_node else source_node
+                    
+                    # Update or create sensor entry using type as key
+                    current_time = datetime.now(timezone.utc)
+                    if sensor_type in self.broadcast_sensors:
+                        # Update existing sensor
+                        self.broadcast_sensors[sensor_type]["node_id"] = source_node  # Update to latest node_id
+                        self.broadcast_sensors[sensor_type]["last_event"] = current_time.isoformat()
+                        self.broadcast_sensors[sensor_type]["event_count"] += 1
+                        self.logger.debug(f"Updated existing sensor: {sensor_type} (node: {source_node})")
+                    else:
+                        # New sensor type
+                        self.broadcast_sensors[sensor_type] = {
+                            "node_id": source_node,
+                            "sensor_type": sensor_type,
+                            "last_event": current_time.isoformat(),
+                            "event_count": 1,
+                            "event_type": event_data.get("event_type", "unknown")
+                        }
+                        self.logger.debug(f"Tracked new sensor: {sensor_type} (node: {source_node})")
                 
                 # Process event through KOI node
                 await self.koi_node.handle_event(event)
@@ -306,6 +329,94 @@ class KOICoordinator:
             )
         
         # Additional management endpoints
+        @self.app.get("/sensors")
+        async def get_sensors():
+            """Get list of sensors in format expected by dashboard"""
+            from datetime import datetime, timezone
+            sensors = []
+            
+            # Add broadcast sensors (filter out inactive ones)
+            current_time = datetime.now(timezone.utc)
+            for sensor_key, sensor_info in self.broadcast_sensors.items():
+                # Check if sensor is still active (has sent events recently)
+                last_event_time = datetime.fromisoformat(sensor_info.get("last_event").replace('Z', '+00:00'))
+                time_since_last = (current_time - last_event_time).total_seconds()
+                
+                # Skip inactive sensors (but be generous with timeout - sensors may batch events)
+                # Changed from 5 minutes to 1 hour to show sensors that are still running but not actively sending
+                if time_since_last > self.sensor_timeout_seconds:
+                    continue
+                
+                node_id = sensor_info.get("node_id", sensor_key)
+                
+                # Determine sensor type from node_id
+                sensor_type = "website"  # Default type
+                if "discourse" in node_id.lower():
+                    sensor_type = "discourse"
+                elif "medium" in node_id.lower():
+                    sensor_type = "medium"
+                elif "twitter" in node_id.lower():
+                    sensor_type = "twitter"
+                elif "notion" in node_id.lower():
+                    sensor_type = "notion"
+                elif "discord" in node_id.lower():
+                    sensor_type = "discord"
+                    
+                # Determine what the sensor is monitoring based on type
+                monitoring = []
+                if sensor_type == "website":
+                    # List all websites the sensor is configured to monitor
+                    monitoring = [
+                        "regen.network",
+                        "docs.regen.network", 
+                        "guides.regen.network", 
+                        "registry.regen.network",
+                        "regen.foundation",
+                        "researchretreat.org",
+                        "desci.com",
+                        "regentokenomics.org"
+                    ]
+                elif sensor_type == "medium":
+                    monitoring = ["regen-network.medium.com"]
+                elif sensor_type == "discourse":
+                    monitoring = ["forum.regen.network", "regencommons.discourse.group"]
+                elif sensor_type == "notion":
+                    monitoring = ["Notion workspace"]
+                elif sensor_type == "twitter":
+                    monitoring = ["@regen_network"]
+                    
+                # Clean up the sensor name
+                clean_name = node_id
+                # Remove timestamp suffixes like -1757815850.574878
+                import re
+                clean_name = re.sub(r'-\d{10}\.\d+$', '', clean_name)
+                clean_name = clean_name.replace("-", " ").title()
+                
+                sensors.append({
+                    "id": node_id,
+                    "name": clean_name,
+                    "type": sensor_type,
+                    "status": "active",
+                    "lastActivity": sensor_info.get("last_event"),
+                    "eventsProcessed": sensor_info.get("event_count", 0),
+                    "monitoring": monitoring
+                })
+            
+            # Add managed sensors if any
+            for sensor_name, adapter in self.sensor_adapters.items():
+                metrics = adapter.get_metrics()
+                sensors.append({
+                    "id": f"managed-{sensor_name}",
+                    "name": sensor_name.title(),
+                    "type": sensor_name,
+                    "status": "active" if metrics.get("is_running") else "idle",
+                    "lastActivity": datetime.now(timezone.utc).isoformat(),
+                    "eventsProcessed": metrics.get("events_processed", 0),
+                    "monitoring": metrics.get("monitoring", [])
+                })
+            
+            return {"sensors": sensors}
+        
         @self.app.get("/sensors/status")
         async def get_sensor_status():
             """Get status of all sensor adapters"""

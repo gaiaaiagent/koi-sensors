@@ -22,8 +22,17 @@ from shared.config.base import BaseSensorConfig, APIConfig
 class WebsiteMonitorConfig(BaseSensorConfig):
     """Website monitoring sensor configuration"""
     
-    # Website monitoring settings
+    # Website monitoring settings (excluding forums which are handled by Discourse sensor)
     websites: List[Dict[str, Any]] = [
+        {
+            "name": "regen-network",
+            "url": "https://regen.network",
+            "strategy": "scrape",
+            "max_depth": 2,
+            "check_interval": 3600,  # Check hourly
+            "importance": "high",
+            "notes": "Main Regen Network website"
+        },
         {
             "name": "docs-regen-network",
             "url": "https://docs.regen.network",
@@ -69,6 +78,24 @@ class WebsiteMonitorConfig(BaseSensorConfig):
             "check_interval": 21600,  # Check every 6 hours (academic papers change slowly)
             "importance": "high",
             "notes": "Academic research papers on regenerative topics - high value content"
+        },
+        {
+            "name": "desci-com",
+            "url": "https://desci.com",
+            "strategy": "scrape",
+            "max_depth": 2,
+            "check_interval": 21600,  # Check every 6 hours
+            "importance": "medium",
+            "notes": "Decentralized science platform"
+        },
+        {
+            "name": "regen-tokenomics",
+            "url": "https://regentokenomics.org",
+            "strategy": "scrape",
+            "max_depth": 2,
+            "check_interval": 7200,  # Check every 2 hours
+            "importance": "high",
+            "notes": "Tokenomics research and documentation"
         }
     ]
     

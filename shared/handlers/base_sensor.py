@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Type
 from pathlib import Path
 
-from rid_lib import RID, Bundle, Manifest
+from koi_protocol.core.rid_system import RID
+from koi_protocol.core.bundle_system import Bundle, Manifest
 from shared.config.base import BaseSensorConfig
 
 

@@ -438,10 +438,13 @@ class NotionKOISensor:
                     }
                 
                 pages = await self.query_database(db_id, filter_obj=filter_obj)
+                print(f"   Retrieved {len(pages)} pages from database")
                 
                 for page in pages:
                     page_id = page["id"]
+                    print(f"      Fetching content for page {page_id[:8]}...")
                     content = await self.get_page_content(page_id)
+                    print(f"      Retrieved {len(content)} chars of content")
                     
                     # Generate content hash
                     content_hash = hashlib.sha256(content.encode()).hexdigest()
@@ -473,10 +476,14 @@ class NotionKOISensor:
                         change = {
                             "event_type": event_type,
                             "source": "notion",
+                            "source_type": "notion",  # Required for document_to_rid to work properly
                             "rid": NotionPageRID(self.workspace_id, page_id).to_orn(),
                             "title": title,
                             "content": content,
                             "metadata": {
+                                # Required for document_to_rid
+                                "page_id": page_id,
+                                
                                 # Publication date metadata for Daily Curator
                                 "published_at": created_time,  # Notion provides ISO format timestamps
                                 "published_confidence": 0.85,  # Good confidence for API data
@@ -504,26 +511,35 @@ class NotionKOISensor:
     
     async def send_to_coordinator(self, changes: List[Dict]):
         """Send changes to KOI coordinator"""
-        for change in changes:
+        print(f"📤 Sending {len(changes)} changes to coordinator...")
+        
+        for i, change in enumerate(changes, 1):
             try:
+                print(f"   [{i}/{len(changes)}] Processing {change.get('title', 'Unknown')}...")
+                
                 # Create bundle from document
+                print(f"   Creating bundle for RID: {change.get('rid', 'unknown')}")
                 bundle = document_to_bundle(change)
+                print(f"   Bundle created successfully: {bundle.rid}")
                 
-                # Create KOI event
-                event = {
-                    "event_type": change["event_type"],
-                    "source_sensor": self.node_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "bundle": bundle.to_dict()
-                }
+                # Send to coordinator using the appropriate method based on event type
+                event_type = change["event_type"]
+                print(f"   Emitting {event_type} event...")
                 
-                # Send to coordinator
-                await self.koi_node.emit_event(event)
+                if event_type == "NEW":
+                    await self.koi_node.emit_new_event(bundle)
+                elif event_type == "UPDATE":
+                    await self.koi_node.emit_update_event(bundle)
+                else:
+                    # For other event types like FORGET
+                    await self.koi_node.emit_forget_event(bundle.rid, reason="Content removed")
                 
                 print(f"   ✅ Sent to coordinator: {change['rid']}")
                 
             except Exception as e:
+                import traceback
                 print(f"   ❌ Failed to send event: {e}")
+                print(f"   Traceback: {traceback.format_exc()}")
     
     async def run_monitoring_loop(self):
         """Main monitoring loop"""
