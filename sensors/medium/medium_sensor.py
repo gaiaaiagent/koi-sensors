@@ -167,14 +167,9 @@ class MediumKOISensor:
     async def handle_coordinator_events(self):
         """Listen for ping requests from coordinator"""
         try:
-            # Subscribe to coordinator events
-            async for event in self.koi_node.event_stream():
-                if event.get('type') == 'PING_REQUEST':
-                    # Check if this ping is for us
-                    target = event.get('target')
-                    if target == 'medium-sensor' or target == 'all':
-                        self.logger.info(f"Received ping request, responding...")
-                        await self.send_heartbeat_event(response_to=event.get('id'))
+            # KOIPartialNode doesn't have event_stream, skip this for now
+            # The heartbeat mechanism will keep us registered
+            pass
         except Exception as e:
             self.logger.error(f"Error handling coordinator events: {e}")
 
@@ -581,6 +576,27 @@ class MediumKOISensor:
         time_elem = soup.find('time')
         if time_elem:
             article_data["published_date"] = time_elem.get('datetime', '')
+            self.logger.info(f"Found time element with date: {article_data['published_date']}")
+        else:
+            # Try to find date in the content itself
+            # Medium often has dates like "Jul 3, 2024" in the article
+            import re
+            from datetime import datetime
+            date_pattern = r'([A-Z][a-z]{2} \d{1,2}, \d{4})'
+            date_match = re.search(date_pattern, str(soup))
+            if date_match:
+                date_str = date_match.group(1)
+                # Convert to ISO format
+                try:
+                    parsed_date = datetime.strptime(date_str, '%b %d, %Y')
+                    article_data["published_date"] = parsed_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    self.logger.info(f"Found date in content: {date_str} -> {article_data['published_date']}")
+                except Exception as e:
+                    self.logger.warning(f"Could not parse date {date_str}: {e}")
+                    article_data["published_date"] = None
+            else:
+                self.logger.warning(f"No date found for article: {url}")
+                article_data["published_date"] = None
         
         # Extract description
         desc_meta = soup.find('meta', {'name': 'description'}) or soup.find('meta', {'property': 'og:description'})
@@ -646,6 +662,11 @@ class MediumKOISensor:
                 "title": article_data.get("title", "Untitled"),
                 "content": article_data["content"],
                 "metadata": {
+                    # Publication date metadata for Daily Curator
+                    "published_at": article_data.get("published_date"),
+                    "published_confidence": 0.9 if article_data.get("published_date") else 0.0,
+
+                    # Original metadata
                     "author": article_data.get("author", ""),
                     "published_date": article_data.get("published_date"),
                     "read_time": article_data.get("read_time", ""),

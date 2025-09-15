@@ -104,10 +104,10 @@ class GitLabSensor:
             shutil.rmtree(repo_path)
         
         try:
-            # Try cloning with specified branch
+            # Try cloning with specified branch (full history for git dates)
             self.logger.debug(f"Cloning {repo_url} to {repo_path} (branch: {branch})")
             result = subprocess.run(
-                ['git', 'clone', '--depth', '1', '--branch', branch, repo_url, str(repo_path)],
+                ['git', 'clone', '--branch', branch, repo_url, str(repo_path)],
                 capture_output=True,
                 text=True,
                 timeout=60
@@ -118,7 +118,7 @@ class GitLabSensor:
                 if branch == 'master':
                     self.logger.debug("Retrying with main branch")
                     result = subprocess.run(
-                        ['git', 'clone', '--depth', '1', '--branch', 'main', repo_url, str(repo_path)],
+                        ['git', 'clone', '--branch', 'main', repo_url, str(repo_path)],
                         capture_output=True,
                         text=True,
                         timeout=60
@@ -287,8 +287,37 @@ class GitLabSensor:
                         confidence = 0.8
                     except:
                         pass
-            
-            # For whitepapers, use file modification time
+
+            # Use git log to get last commit info for this file
+            commit_message = None
+            commit_author = None
+            if not published_at:
+                try:
+                    # Get the last commit info for this file
+                    # Format: commit date|author|subject|body
+                    result = subprocess.run(
+                        ['git', 'log', '-1', '--format=%cI|%an|%s|%b', str(file_path)],
+                        cwd=file_path.parent.parent.parent,  # repo root
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        parts = result.stdout.strip().split('|', 3)
+                        if len(parts) >= 1:
+                            commit_date = parts[0]
+                            published_at = datetime.fromisoformat(commit_date.replace('Z', '+00:00'))
+                            confidence = 0.85  # High confidence for git commit dates
+                        if len(parts) >= 2:
+                            commit_author = parts[1]
+                        if len(parts) >= 3:
+                            # Combine subject and body
+                            commit_message = parts[2]
+                            if len(parts) >= 4 and parts[3].strip():
+                                commit_message += "\n" + parts[3]
+                except Exception as e:
+                    self.logger.debug(f"Could not get git info for {file_path}: {e}")
+
+            # Fallback to file modification time
             if not published_at:
                 try:
                     import os
@@ -301,7 +330,11 @@ class GitLabSensor:
             # Add publication date metadata for Daily Curator
             metadata["published_at"] = published_at.isoformat() if published_at else None
             metadata["published_confidence"] = confidence
-            
+
+            # Add git commit metadata for context
+            metadata["commit_message"] = commit_message
+            metadata["commit_author"] = commit_author
+
             # Add collection timestamp
             metadata["collected_at"] = datetime.now(timezone.utc).isoformat()
             

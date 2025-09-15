@@ -258,13 +258,21 @@ def document_to_bundle(document: Dict[str, Any], source_node: str = "regen-colle
         }
     }
     
-    # Bundle metadata
+    # Bundle metadata - include publication date info
     bundle_metadata = {
         "source": document.get("source"),
         "source_type": document.get("source_type"),
         "collection_method": document.get("metadata", {}).get("collection_method"),
         "original_id": document.get("id")
     }
+
+    # CRITICAL: Pass through publication date metadata for digest generation
+    doc_metadata = document.get("metadata", {})
+    if "published_at" in doc_metadata:
+        bundle_metadata["published_at"] = doc_metadata["published_at"]
+        bundle_metadata["published_confidence"] = doc_metadata.get("published_confidence", 0.5)
+    if "last_modified" in doc_metadata:
+        bundle_metadata["last_modified"] = doc_metadata["last_modified"]
     
     return Bundle.generate(
         rid=rid,

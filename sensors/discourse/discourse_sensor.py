@@ -560,21 +560,25 @@ class DiscourseSensor:
         """Listen for and handle coordinator events like ping requests"""
         while True:
             try:
+                # KOIPartialNode doesn't have poll_coordinator_events, skip for now
+                await asyncio.sleep(30)
+                continue
+
                 # Check for coordinator events
-                events = await self.koi_node.poll_coordinator_events()
+                # events = await self.koi_node.poll_coordinator_events()
 
-                for event in events:
-                    event_type = event.get('event_type')
+                # for event in events:
+                #     event_type = event.get('event_type')
 
-                    if event_type == 'PING_REQUEST':
-                        # Check if ping is for this sensor
-                        target_sensor = event.get('target_sensor')
-                        if target_sensor == 'discourse-sensor' or target_sensor == 'discourse':
-                            print(f"📡 Received ping request: {event.get('rid')}")
-                            # Respond with heartbeat
-                            await self.send_heartbeat(response_to=event.get('rid'))
+                #     if event_type == 'PING_REQUEST':
+                #         # Check if ping is for this sensor
+                #         target_sensor = event.get('target_sensor')
+                #         if target_sensor == 'discourse-sensor' or target_sensor == 'discourse':
+                #             print(f"📡 Received ping request: {event.get('rid')}")
+                #             # Respond with heartbeat
+                #             await self.send_heartbeat(response_to=event.get('rid'))
 
-                await asyncio.sleep(30)  # Check every 30 seconds
+                # await asyncio.sleep(30)  # Check every 30 seconds
 
             except asyncio.CancelledError:
                 print("🛑 Coordinator event handler cancelled")
