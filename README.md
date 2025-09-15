@@ -106,38 +106,86 @@ This sensor network is **Phase 1** of the complete 3-repository KOI system, full
 - Python 3.11+
 - Docker & Docker Compose (optional)
 - 2GB+ RAM for sensor operation
+- Playwright (for Twitter sensor)
 
 ### Installation
+
+#### **Unified Setup** (Recommended)
 ```bash
 git clone https://github.com/gaiaaiagent/koi-sensors.git
-cd koi-sensors/sensors/websites
-pip install -r requirements.txt
+cd koi-sensors
+
+# Setup all sensors with isolated virtual environments
+./setup_all.sh
+
+# Start all configured sensors
+./start_all.sh
+
+# Check sensor status
+./status.sh
+
+# Stop all sensors
+./stop_all.sh
+```
+
+#### **Individual Sensor Setup**
+Each sensor has its own isolated environment:
+```bash
+# Setup individual sensor
+cd sensors/<sensor_name>
+./setup.sh
+
+# Start individual sensor
+./start.sh
+# Or in background: ./start.sh --background
+```
+
+### Sensor Management Architecture
+
+The system uses a **microservices architecture** with isolated virtual environments:
+
+- **Individual Isolation**: Each sensor runs in its own `venv` with specific dependencies
+- **Master Orchestration**: Unified scripts for system-wide operations
+- **Replicable Setup**: Anyone cloning the repo can run `./setup_all.sh` to install everything
+
+#### **Available Commands**
+```bash
+# System-wide operations
+./setup_all.sh    # Setup all sensors (interactive: sequential/parallel)
+./start_all.sh    # Start all configured sensors
+./stop_all.sh     # Gracefully stop all sensors
+./status.sh       # Show current status of all sensors
+
+# Individual sensor operations (in sensors/<name>/)
+./setup.sh        # Setup this sensor's environment
+./start.sh        # Start this sensor
+./start.sh -b     # Start in background mode
 ```
 
 ### Running Modes
 
-#### **Standalone Mode** (Testing/Development)
+#### **Production Mode** (All Sensors)
 ```bash
-# Test all configured websites
-python test_all_websites.py
+# One-time setup
+./setup_all.sh
 
-# Show extracted data
-python show_extracted_data.py
+# Start everything
+./start_all.sh
 
-# Run website sensor independently
-python run_website_sensor.py
+# Monitor
+./status.sh
+tail -f sensors/*/\*.log
 ```
 
-#### **Networked Mode** (Production)
+#### **Development Mode** (Individual Sensors)
 ```bash
-# Terminal 1: Start KOI Coordinator
-python ../../koi_protocol/coordinator/run_coordinator.py
+# Work on specific sensor
+cd sensors/github
+./setup.sh
+./start.sh
 
-# Terminal 2: Start Website Sensor
-python run_website_sensor.py
-
-# Terminal 3: Monitor events
-curl http://localhost:8000/events/poll
+# Test changes
+python3 github_sensor_v2.py
 ```
 
 #### **Docker Deployment**

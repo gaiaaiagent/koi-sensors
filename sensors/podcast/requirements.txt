@@ -1,9 +1,14 @@
+# Core dependencies (required)
 aiohttp>=3.8.0
 beautifulsoup4>=4.11.0
 lxml>=4.9.0
 pyyaml>=6.0
-# Optional for audio download/transcription
-yt-dlp>=2023.7.6
-openai-whisper>=20230314
-# From server implementation  
 loguru>=0.7.0
+
+# Audio download (required for full functionality)
+yt-dlp>=2023.7.6
+
+# Optional: Audio transcription
+# Uncomment the line below to enable transcription
+# Note: This will download ~1GB of model files
+# openai-whisper>=20230314

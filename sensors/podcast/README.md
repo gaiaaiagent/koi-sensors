@@ -2,6 +2,39 @@
 
 Real-time monitoring sensor for the Planetary Regeneration Podcast. This sensor monitors SoundCloud for new episodes and transcript updates, building on the proven collection methods from the server implementation.
 
+## 🚀 Quick Setup
+
+### Automated Setup (Recommended)
+```bash
+# Run setup script (installs dependencies in venv)
+./setup.sh
+
+# Start the sensor
+./start_podcast_sensor.sh
+```
+
+### Manual Setup
+```bash
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Optional: Install audio transcription (Whisper)
+# Note: This downloads ~1GB of model files
+pip install openai-whisper
+
+# Run the sensor
+python3 run_podcast_sensor.py
+```
+
+### Running in Background
+```bash
+./start_podcast_sensor.sh --background
+```
+
 ## 📊 Current Status
 
 **✅ Phase 1 Complete** - KOI Protocol Implementation & Testing

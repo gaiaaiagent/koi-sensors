@@ -1,5 +1,35 @@
 # KOI Sensors Changelog
 
+## Unified Sensor Management Architecture - September 15, 2025
+
+### 🏗️ Major Architecture Update
+- **Microservices Pattern**: Implemented isolated virtual environments for each sensor
+- **Unified Management**: Created master orchestration scripts for system-wide operations
+- **Replicable Setup**: Complete dependency management with `setup_all.sh`
+- **Individual Control**: Each sensor has its own `setup.sh` and `start.sh` scripts
+
+### 📦 New Management Scripts
+- **`setup_all.sh`**: Sets up all sensors with option for sequential or parallel installation
+- **`start_all.sh`**: Starts all configured sensors using individual scripts
+- **`stop_all.sh`**: Gracefully stops all running sensors with PID tracking
+- **`status.sh`**: Shows real-time status of all sensors and coordinator
+
+### 🔧 Sensor Script Updates
+Each sensor now has:
+- **`setup.sh`**: Creates isolated venv and installs dependencies
+- **`start.sh`**: Starts sensor with proper environment activation
+- **`requirements.txt`**: Sensor-specific dependency list
+
+### 🐦 Twitter Sensor Enhancement
+- **Playwright Integration**: Added web scraping capability (no API needed)
+- **Browser Automation**: Automatic Chromium installation during setup
+- **Production Ready**: Full venv isolation with dependency management
+
+### 🎙️ Podcast Sensor Improvements
+- **Optional Whisper**: Setup script prompts for transcription library installation
+- **Flexible Configuration**: Supports both monitoring and transcription modes
+- **Background Mode**: Can run as daemon with logging
+
 ## Critical Fixes and Sensor Updates - September 15, 2025
 
 ### 🔧 Discourse Sensor Fix

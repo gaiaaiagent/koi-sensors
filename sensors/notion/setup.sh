@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "================================"
-echo "Twitter Sensor Setup"
+echo "Notion Sensor Setup"
 echo "================================"
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -18,8 +18,5 @@ source venv/bin/activate
 pip install --upgrade pip --quiet
 echo "Installing dependencies..."
 pip install -r requirements.txt --quiet
-
-echo "Installing Playwright browsers..."
-playwright install chromium
 
 echo "✅ Setup complete! Run: ./start.sh"
