@@ -277,7 +277,7 @@ class TwitterPlaywrightScraper:
                 url += "?f=tweets"  # Filter to exclude replies
             
             logger.info(f"Navigating to {url}")
-            await self.page.goto(url, wait_until='networkidle', timeout=30000)
+            await self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
             
             # Wait for content and scroll
             await self._wait_and_scroll(self.page)
@@ -334,7 +334,7 @@ class TwitterPlaywrightScraper:
             # Navigate to user's replies
             url = f"{self.base_url}/{username}/with_replies"
             logger.info(f"Navigating to {url}")
-            await self.page.goto(url, wait_until='networkidle', timeout=30000)
+            await self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
             
             # Wait and scroll
             await self._wait_and_scroll(self.page)
@@ -394,7 +394,7 @@ class TwitterPlaywrightScraper:
             url = f"{self.search_url}?q={encoded_query}&f=live"  # Latest tweets
             
             logger.info(f"Searching for mentions of @{username}")
-            await self.page.goto(url, wait_until='networkidle', timeout=30000)
+            await self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
             
             # Wait and scroll
             await self._wait_and_scroll(self.page)
