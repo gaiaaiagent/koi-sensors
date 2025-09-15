@@ -6,18 +6,24 @@ Website monitoring sensor for the KOI (Knowledge Organization Infrastructure) pr
 
 - **KOI Protocol Compliance**: Full compatibility with KOI-net specification
 - **Content Change Detection**: Hash-based monitoring for efficient updates
+- **Publication Date Extraction**: Site-specific patterns for extracting dates with confidence scoring
 - **Proven Scraping Methods**: Based on successful server patterns (86.4% success rate)
 - **Configurable Monitoring**: YAML-based configuration for flexible website monitoring
 - **Docker Ready**: Complete containerization with health checks and logging
 
 ## Monitored Websites
 
-Based on server configuration at `202.61.196.119:/home/regenai/project`:
+Current configuration includes:
 
+- **regen.network** - Main Regen Network website
 - **docs.regen.network** - Technical documentation
-- **guides.regen.network** - User guides and tutorials  
+- **guides.regen.network** - User guides and tutorials
 - **registry.regen.network** - Credit classes, methodologies, projects
 - **regen.foundation** - Foundation updates and publications
+- **forum.regen.network** - Community governance discussions
+- **regentokenomics.org** - Tokenomics research and documentation
+- **researchretreat.org** - Academic research papers
+- **desci.com** - Decentralized science platform
 
 ## Quick Start
 
@@ -88,13 +94,26 @@ Based on server indexing at `202.61.196.119:/home/regenai/project`:
 This website sensor is part of the KOI sensor network:
 
 ```
-Websites → Website Sensor → KOI Coordinator → Processor → Apache Jena
+Websites → Website Sensor → KOI Coordinator → Processor → PostgreSQL
 ```
 
 - **Emits**: KOI Events (NEW/UPDATE/FORGET)
 - **RID Format**: `orn:web.page:domain/url_hash`
 - **Bundle Format**: KOI-compliant with manifest and content
-- **Coordinator**: Connects to KOI Coordinator at port 8000
+- **Coordinator**: Connects to KOI Coordinator at port 8005
+- **Date Extraction**: Site-specific patterns for accurate publication dates
+
+### Publication Date Extraction
+
+The sensor uses site-specific patterns to extract publication dates:
+
+| Website | Pattern | Confidence |
+|---------|---------|------------|
+| regentokenomics.org | "Month DD, YYYY" in content | 0.8 |
+| regen.foundation/publications | "Published Month DD, YYYY" | 0.9 |
+| forum.regen.network | Discourse date elements | 0.9 |
+| docs/guides.regen.network | Relative dates | 0.3 |
+| Generic fallback | ISO dates, meta tags | 0.6-0.8 |
 
 ## Status
 

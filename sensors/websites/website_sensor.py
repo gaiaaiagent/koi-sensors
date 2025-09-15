@@ -525,33 +525,27 @@ class WebsiteKOISensor:
     
     async def emit_page_event(self, url: str, content: str, soup: BeautifulSoup, event_type: str):
         """Emit KOI event for web page"""
-        
+
         try:
             parsed_url = urlparse(url)
             domain = parsed_url.netloc
-            
+
             # Create RID
             rid = WebPageRID(domain, url)
-            
+
             # Extract page metadata
             metadata = self.extract_page_metadata(soup, url)
-            
-            # Extract publication date for Daily Curator
-            import sys
-            sys.path.append('/Users/darrenzal/projects/RegenAI/koi-processor')
-            try:
-                from utils.date_extractor import extract_publication_date
-                published_at, confidence = extract_publication_date(str(soup), 'website')
-            except:
-                published_at, confidence = None, 0.0
-            
+
+            # Extract publication date with site-specific patterns
+            published_at, confidence = self.extract_publication_date(soup, url, domain)
+
             # Fallback to last-modified if no publication date found
             if not published_at and metadata.get("last_modified"):
                 try:
                     from dateutil import parser
                     published_at = parser.parse(metadata["last_modified"])
                     confidence = 0.6  # Lower confidence for modification date
-                except:
+                except Exception:
                     pass
             
             # Create document in format compatible with existing system
@@ -600,23 +594,126 @@ class WebsiteKOISensor:
         except Exception as e:
             self.logger.error(f"Error emitting event for {url}: {e}")
     
+    def extract_publication_date(self, soup: BeautifulSoup, url: str, domain: str):
+        """Extract publication date using site-specific patterns"""
+        from datetime import datetime
+        import re
+
+        published_at = None
+        confidence = 0.0
+
+        try:
+            # Site-specific extraction patterns
+            if 'regentokenomics.org' in domain:
+                # Look for dates in list items like "September 16, 2025"
+                date_pattern = r'((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})'
+                text = str(soup)
+                match = re.search(date_pattern, text)
+                if match:
+                    date_str = match.group(1)
+                    try:
+                        published_at = datetime.strptime(date_str, '%B %d, %Y')
+                        confidence = 0.8
+                        self.logger.debug(f"Found date on regentokenomics.org: {date_str}")
+                    except Exception as e:
+                        self.logger.debug(f"Failed to parse date {date_str}: {e}")
+
+            elif 'regen.foundation' in domain and '/publications' in url:
+                # Look for "Published May 22, 2025" format
+                date_pattern = r'Published\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}'
+                text = str(soup)
+                match = re.search(date_pattern, text)
+                if match:
+                    date_str = match.group(0).replace('Published ', '')
+                    try:
+                        published_at = datetime.strptime(date_str, '%B %d, %Y')
+                        confidence = 0.9
+                        self.logger.debug(f"Found publication date on regen.foundation: {date_str}")
+                    except:
+                        pass
+
+            elif 'forum.regen.network' in domain or 'discourse' in domain:
+                # Discourse forums have dates like "June 26, 2025"
+                # Look for post dates in specific elements
+                time_elements = soup.find_all(['time', 'span'], attrs={'class': re.compile(r'date|time|post-time')})
+                for elem in time_elements:
+                    date_str = elem.get('datetime', '') or elem.get_text()
+                    if date_str:
+                        try:
+                            from dateutil import parser
+                            published_at = parser.parse(date_str)
+                            confidence = 0.9
+                            self.logger.debug(f"Found Discourse date: {date_str}")
+                            break
+                        except:
+                            pass
+
+            elif 'guides.regen.network' in domain or 'docs.regen.network' in domain:
+                # Documentation sites might have "Last updated" dates
+                # Look for relative dates like "Last updated 1 year ago"
+                text = str(soup)
+                if 'Last updated' in text:
+                    # For now, use current date with low confidence for relative dates
+                    published_at = datetime.now()
+                    confidence = 0.3
+                    self.logger.debug(f"Found relative date on {domain}, using current date with low confidence")
+
+            # Generic date extraction patterns if no site-specific match
+            if not published_at:
+                # ISO date format: 2025-09-16
+                iso_pattern = r'\d{4}-\d{2}-\d{2}'
+                text = str(soup)[:5000]  # Check first 5000 chars
+                match = re.search(iso_pattern, text)
+                if match:
+                    try:
+                        published_at = datetime.strptime(match.group(), '%Y-%m-%d')
+                        confidence = 0.6
+                        self.logger.debug(f"Found ISO date: {match.group()}")
+                    except:
+                        pass
+
+            # Try meta tags as last resort
+            if not published_at:
+                for meta in soup.find_all('meta'):
+                    prop = meta.get('property', '').lower()
+                    name = meta.get('name', '').lower()
+                    content = meta.get('content', '')
+
+                    if any(x in prop or x in name for x in ['article:published_time', 'datePublished', 'date', 'DC.date']):
+                        try:
+                            from dateutil import parser
+                            published_at = parser.parse(content)
+                            confidence = 0.8
+                            self.logger.debug(f"Found date in meta tag: {content}")
+                            break
+                        except:
+                            pass
+
+            if published_at:
+                self.logger.info(f"Extracted date for {domain}: {published_at.isoformat()} (confidence: {confidence})")
+
+        except Exception as e:
+            self.logger.error(f"Error extracting date for {url}: {e}")
+
+        return published_at, confidence
+
     def extract_page_metadata(self, soup: BeautifulSoup, url: str) -> Dict[str, Any]:
         """Extract metadata from HTML page"""
-        
+
         metadata = {}
-        
+
         # Title
         title_tag = soup.find('title')
         if title_tag:
             metadata["title"] = title_tag.get_text().strip()
-        
+
         # Meta tags
         meta_tags = soup.find_all('meta')
         for meta in meta_tags:
             name = meta.get('name', '').lower()
             property_attr = meta.get('property', '').lower()
             content = meta.get('content', '')
-            
+
             if name == 'description' or property_attr == 'og:description':
                 metadata["description"] = content
             elif name == 'keywords':
@@ -627,7 +724,7 @@ class WebsiteKOISensor:
                 metadata["language"] = content.split('-')[0] if '-' in content else content
             elif name == 'last-modified' or name == 'date':
                 metadata["last_modified"] = content
-        
+
         return metadata
 
 

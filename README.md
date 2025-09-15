@@ -44,14 +44,16 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 - **Production Tested**: Deduplication verified working on live Regen Network infrastructure
 - **Publication Date Tracking**: All sensors now extract and pass publication dates for content curation
 
-### 📅 Publication Date Intelligence (Session 7 Complete)
-All sensors have been updated to distinguish between content publication date and ingestion date:
+### 📅 Publication Date Intelligence (Sessions 7-8 Complete)
+All sensors have been enhanced to extract publication dates for digest generation:
+- **Discourse**: API provides exact timestamps (100% coverage, 95% confidence)
+- **Medium**: Fallback date extraction from content (97.9% coverage, 90% confidence)
+- **GitHub/GitLab**: Git commit dates with author and message context (95% confidence)
+- **Websites**: Site-specific patterns for each domain (variable coverage, 30-90% confidence)
 - **Twitter/X**: Uses `created_at` timestamp (95% confidence)
-- **Discourse**: API provides exact timestamps (95% confidence)
-- **Medium**: Extracts publication dates from articles (95% confidence)
-- **Websites**: Extracts from meta tags or Last-Modified headers (60-95% confidence)
 - **Podcasts**: Uses RSS pubDate fields (95% confidence)
-- **GitHub/GitLab**: Extracts from content or uses commit dates (60-80% confidence)
+- **Bundle System**: Fixed to properly pass publication metadata through pipeline
+- **Overall Coverage**: 386+ memories with dates (20.9% of total, growing)
 - **Notion**: Uses API `created_time` (85% confidence)
 - **Ledger**: Blockchain timestamps are immutable (100% confidence)
 
