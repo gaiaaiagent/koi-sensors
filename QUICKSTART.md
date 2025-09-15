@@ -26,7 +26,8 @@ EOF
 #### Terminal 1: KOI Coordinator
 ```bash
 cd koi-sensors
-KOI_COORDINATOR_PORT=8005 python koi_protocol/coordinator/koi_coordinator.py
+source venv/bin/activate
+KOI_COORDINATOR_PORT=8005 python koi_protocol/coordinator/run_coordinator.py
 # Runs on port 8005
 ```
 
@@ -46,18 +47,21 @@ python bge_server.py
 
 #### Terminal 4: Start All Sensors
 ```bash
-# Option A: Use the startup script
-./start_all_sensors.sh
+# Option A: Use the unified startup script
+./start_all.sh
 
-# Option B: Start individually
-# Website sensor
-cd sensors/websites && python run_website_sensor.py &
-
-# Medium sensor  
-cd sensors/medium && python run_medium_sensor.py &
-
-# Notion sensor (requires NOTION_API_KEY in .env)
-./start_notion.sh
+# Option B: Start individually with setup
+cd sensors/discord && ./setup.sh && ./start.sh -b
+cd sensors/twitter && ./setup.sh && ./start.sh -b
+cd sensors/notion && ./setup.sh && ./start.sh -b
+cd sensors/discourse && ./setup.sh && ./start.sh -b
+cd sensors/telegram && ./setup.sh && ./start.sh -b
+cd sensors/websites && ./setup.sh && ./start.sh -b
+cd sensors/github && ./setup.sh && ./start.sh -b
+cd sensors/gitlab && ./setup.sh && ./start.sh -b
+cd sensors/medium && ./setup.sh && ./start.sh -b
+cd sensors/podcast && ./setup.sh && ./start.sh -b
+cd sensors/ledger && ./setup.sh && ./start.sh -b
 ```
 
 ### 3. Verify Pipeline Operation

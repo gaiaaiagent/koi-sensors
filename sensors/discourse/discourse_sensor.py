@@ -300,6 +300,7 @@ class DiscourseSensor:
                 updated_at = created_at
         
         document = {
+            'id': f"{forum_name}_{topic_id}",  # Add id field for RID generation
             'rid': rid,
             'source': f'discourse:{forum_name}',
             'source_type': 'forum',
@@ -540,9 +541,32 @@ class DiscourseSensor:
 
 
 async def main():
-    """Main entry point"""
+    """Main entry point with continuous polling"""
+    import os
+    from dotenv import load_dotenv
+
+    # Load environment variables
+    load_dotenv()
+
+    # Get polling interval (default 1 hour)
+    poll_interval = int(os.getenv('DISCOURSE_POLL_INTERVAL', 3600))
+
     async with DiscourseSensor() as sensor:
-        await sensor.run(limit_per_forum=20)
+        print(f"Starting Discourse sensor with {poll_interval} second polling interval")
+
+        while True:
+            try:
+                await sensor.run(limit_per_forum=20)
+                print(f"\n⏰ Next collection in {poll_interval} seconds ({poll_interval/60:.1f} minutes)")
+                await asyncio.sleep(poll_interval)
+
+            except KeyboardInterrupt:
+                print("\n🛑 Received interrupt signal, shutting down...")
+                break
+            except Exception as e:
+                print(f"❌ Error in collection cycle: {e}")
+                print(f"⏰ Retrying in {poll_interval} seconds...")
+                await asyncio.sleep(poll_interval)
 
 
 if __name__ == "__main__":

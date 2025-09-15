@@ -631,10 +631,18 @@ class MediumKOISensor:
 
 # Example usage and configuration
 async def main():
-    """Example usage of MediumKOISensor"""
-    
+    """Example usage of MediumKOISensor with continuous polling"""
+    import os
+    from dotenv import load_dotenv
+
+    # Load environment variables
+    load_dotenv()
+
+    # Get polling interval from environment (default 1 hour)
+    poll_interval = int(os.getenv('MEDIUM_POLL_INTERVAL', 3600))
+
     from shared.config.base import KoiNetConfig, MonitoringConfig
-    
+
     # Configuration
     config = MediumMonitorConfig(
         sensor_name="medium-monitor",
@@ -652,14 +660,16 @@ async def main():
                 "name": "regen-network-medium",
                 "url": "https://regen-network.medium.com",
                 "rss_url": "https://medium.com/feed/@regen-network",
-                "check_interval": 21600,  # 6 hours
+                "check_interval": poll_interval,  # Use env variable
                 "importance": "high"
             }
         ]
     )
-    
+
     sensor = MediumKOISensor(config)
-    
+
+    print(f"Starting Medium sensor with {poll_interval} second polling interval ({poll_interval/60:.1f} minutes)")
+
     try:
         await sensor.start()
     except KeyboardInterrupt:

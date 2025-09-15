@@ -541,49 +541,67 @@ class NotionKOISensor:
                 print(f"   ❌ Failed to send event: {e}")
                 print(f"   Traceback: {traceback.format_exc()}")
     
-    async def run_monitoring_loop(self):
-        """Main monitoring loop"""
+    async def run_monitoring_loop(self, poll_interval: int = 1800):
+        """Main monitoring loop
+
+        Args:
+            poll_interval: Seconds between polling cycles (default 30 minutes)
+        """
         print(f"🚀 Starting Notion monitoring loop...")
-        
+        print(f"⏰ Polling interval: {poll_interval} seconds ({poll_interval/60:.1f} minutes)")
+
         while True:
             try:
                 # Check for changes
                 changes = await self.check_for_changes()
-                
+
                 if changes:
                     print(f"📊 Found {len(changes)} changes")
                     await self.send_to_coordinator(changes)
-                
+                else:
+                    print(f"✅ No changes found")
+
                 # Wait before next check
-                await asyncio.sleep(60)  # Check every minute
-                
+                print(f"⏰ Next check in {poll_interval} seconds ({poll_interval/60:.1f} minutes)")
+                await asyncio.sleep(poll_interval)
+
+            except KeyboardInterrupt:
+                print("\n🛑 Received interrupt signal, shutting down...")
+                break
             except Exception as e:
                 print(f"❌ Error in monitoring loop: {e}")
-                await asyncio.sleep(60)
+                print(f"⏰ Retrying in {poll_interval} seconds...")
+                await asyncio.sleep(poll_interval)
 
 
 async def main():
-    """Main entry point for standalone testing"""
+    """Main entry point with continuous monitoring"""
     import os
     from dotenv import load_dotenv
-    
+
     # Load environment variables
     load_dotenv()
-    
-    # Get Notion token from environment or use provided one
+
+    # Get Notion token from environment
     notion_token = os.getenv('NOTION_API_KEY')
-    
+    if not notion_token:
+        print("❌ NOTION_API_KEY not found in environment variables")
+        return
+
+    # Get polling interval (default 30 minutes)
+    poll_interval = int(os.getenv('NOTION_POLL_INTERVAL', 1800))
+
     async with NotionKOISensor(notion_token=notion_token) as sensor:
         print("\n🔍 Searching Notion workspace...")
-        
+
         # Search for all content
         all_items = await sensor.search_workspace()
-        
+
         print(f"\n📊 Found {len(all_items)} items in workspace:")
-        
+
         databases = []
         pages = []
-        
+
         for item in all_items:
             if item["object"] == "database":
                 databases.append(item)
@@ -595,28 +613,18 @@ async def main():
                 pages.append(item)
                 # Pages in search results don't have full properties
                 print(f"   📄 Page: {item.get('url', item['id'][:8])}")
-        
+
         print(f"\nSummary: {len(databases)} databases, {len(pages)} pages")
-        
-        # If databases found, monitor the first one as a test
+
+        # Monitor all databases found
         if databases:
-            first_db = databases[0]
-            db_id = first_db["id"]
-            
-            print(f"\n🎯 Testing with first database: {db_id}")
-            
-            # Add to monitoring
-            await sensor.monitor_database(db_id)
-            
-            # Do one check
-            changes = await sensor.check_for_changes()
-            
-            if changes:
-                print(f"\n✅ Successfully collected {len(changes)} documents")
-                for change in changes[:3]:  # Show first 3
-                    print(f"   - {change['title']}: {len(change['content'])} chars")
-            else:
-                print("\n📝 No new content found (database may be empty or unchanged)")
+            for db in databases:
+                await sensor.monitor_database(db["id"])
+
+            # Start continuous monitoring
+            await sensor.run_monitoring_loop(poll_interval)
+        else:
+            print("\n⚠️ No databases found to monitor")
 
 
 if __name__ == "__main__":

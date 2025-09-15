@@ -426,62 +426,114 @@ class TwitterPlaywrightScraper:
 
 async def main():
     """
-    Example usage of the Twitter scraper
+    Continuous Twitter monitoring with periodic polling
     """
+    import os
+    from dotenv import load_dotenv
+
+    # Load environment variables
+    load_dotenv()
+
+    # Get accounts from environment (default to regen_network if not set)
+    accounts_str = os.getenv('TWITTER_ACCOUNTS', 'regen_network')
+    accounts = [acc.strip() for acc in accounts_str.split(',')]
+
+    # Get polling interval (default 30 minutes)
+    poll_interval = int(os.getenv('TWITTER_POLL_INTERVAL', 1800))
+
+    logger.info(f"Configured to monitor accounts: {accounts}")
+    logger.info(f"Polling interval: {poll_interval} seconds")
+
     scraper = TwitterPlaywrightScraper(headless=True)
-    
+
     try:
         # Initialize browser
         await scraper.initialize()
-        
-        # Scrape @regen_network timeline
-        logger.info("Scraping @regen_network timeline...")
-        tweets = await scraper.scrape_user_timeline(
-            username="regen_network",
-            max_tweets=20,
-            include_replies=False
-        )
-        
-        logger.info(f"Collected {len(tweets)} tweets")
-        for tweet in tweets[:5]:  # Show first 5
-            logger.info(f"Tweet: {tweet.get('text', '')[:100]}...")
-        
-        # Scrape replies
-        logger.info("\nScraping @regen_network replies...")
-        replies = await scraper.scrape_user_replies(
-            username="regen_network",
-            max_replies=10
-        )
-        
-        logger.info(f"Collected {len(replies)} replies")
-        
-        # Search for mentions
-        logger.info("\nSearching for mentions of @regen_network...")
-        mentions = await scraper.search_mentions(
-            username="regen_network",
-            max_tweets=10
-        )
-        
-        logger.info(f"Found {len(mentions)} mentions")
-        
-        # Save results
-        output_dir = Path("./output")
-        output_dir.mkdir(exist_ok=True)
-        
-        with open(output_dir / "regen_tweets.json", "w") as f:
-            json.dump({
-                'tweets': tweets,
-                'replies': replies,
-                'mentions': mentions,
-                'scraped_at': datetime.now().isoformat()
-            }, f, indent=2)
-        
-        logger.info(f"Results saved to {output_dir / 'regen_tweets.json'}")
-        
+
+        # Continuous monitoring loop
+        while True:
+            try:
+                logger.info(f"\n{'='*50}")
+                logger.info(f"Starting Twitter collection cycle - {datetime.now().isoformat()}")
+                logger.info(f"{'='*50}")
+
+                all_results = {}
+
+                # Scrape each configured account
+                for account in accounts:
+                    logger.info(f"\n{'='*50}")
+                    logger.info(f"Scraping @{account}...")
+                    logger.info(f"{'='*50}")
+
+                    # Scrape timeline
+                    logger.info(f"Fetching @{account} timeline...")
+                    tweets = await scraper.scrape_user_timeline(
+                        username=account,
+                        max_tweets=20,
+                        include_replies=False
+                    )
+
+                    logger.info(f"Collected {len(tweets)} tweets from @{account}")
+
+                    # Scrape replies
+                    logger.info(f"Fetching @{account} replies...")
+                    replies = await scraper.scrape_user_replies(
+                        username=account,
+                        max_replies=10
+                    )
+                    logger.info(f"Collected {len(replies)} replies")
+
+                    # Search for mentions
+                    logger.info(f"Searching for mentions of @{account}...")
+                    mentions = await scraper.search_mentions(
+                        username=account,
+                        max_tweets=10
+                    )
+                    logger.info(f"Found {len(mentions)} mentions")
+
+                    # Store results for this account
+                    all_results[account] = {
+                        'tweets': tweets,
+                        'replies': replies,
+                        'mentions': mentions,
+                        'scraped_at': datetime.now().isoformat()
+                    }
+
+                    # Small delay between accounts to avoid rate limiting
+                    if account != accounts[-1]:
+                        logger.info(f"Waiting 5 seconds before next account...")
+                        await asyncio.sleep(5)
+
+                # Save all results
+                output_dir = Path("./output")
+                output_dir.mkdir(exist_ok=True)
+
+                output_file = output_dir / f"twitter_scrape_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                with open(output_file, "w") as f:
+                    json.dump(all_results, f, indent=2)
+
+                logger.info(f"\n{'='*50}")
+                logger.info(f"COLLECTION CYCLE COMPLETE")
+                logger.info(f"{'='*50}")
+                logger.info(f"Scraped {len(accounts)} accounts")
+                logger.info(f"Results saved to {output_file}")
+                logger.info(f"Next collection in {poll_interval} seconds ({poll_interval/60:.1f} minutes)")
+
+                # Wait for next poll interval
+                await asyncio.sleep(poll_interval)
+
+            except Exception as e:
+                logger.error(f"Error in collection cycle: {e}")
+                logger.info(f"Retrying in {poll_interval} seconds...")
+                await asyncio.sleep(poll_interval)
+
+    except KeyboardInterrupt:
+        logger.info("\nReceived interrupt signal, shutting down...")
     except Exception as e:
-        logger.error(f"Error in main: {e}")
+        logger.error(f"Fatal error in main: {e}")
     finally:
         await scraper.close()
+        logger.info("Twitter sensor stopped")
 
 
 if __name__ == "__main__":

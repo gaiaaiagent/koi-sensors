@@ -19,6 +19,11 @@ source venv/bin/activate
 # Add parent directories to Python path
 export PYTHONPATH="$SCRIPT_DIR/../..:$PYTHONPATH"
 
+# Source .env file if it exists
+if [ -f "$SCRIPT_DIR/../../.env" ]; then
+    source "$SCRIPT_DIR/../../.env"
+fi
+
 # Check if running in background
 if [ "$1" == "--background" ] || [ "$1" == "-b" ]; then
     echo "Starting Website sensor in background..."

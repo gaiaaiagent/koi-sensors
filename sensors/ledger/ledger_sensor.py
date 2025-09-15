@@ -537,3 +537,92 @@ class LedgerSensor(BaseSensor):
         if self.session:
             await self.session.close()
             self.session = None
+
+
+async def main():
+    """Main entry point with continuous polling"""
+    import os
+    from dotenv import load_dotenv
+
+    # Load environment variables
+    load_dotenv()
+
+    # Get polling interval from environment (default 10 minutes)
+    poll_interval = int(os.getenv('LEDGER_POLL_INTERVAL', 600))
+
+    # Configuration
+    config = LedgerSensorConfig(
+        sensor_name="ledger-sensor",
+        platform="regen-ledger",
+        governance_interval=poll_interval,
+        ecocredit_interval=poll_interval * 2,  # Less frequent
+        consensus_interval=60,  # Keep frequent for consensus
+        stats_interval=3600  # Hourly stats
+    )
+
+    sensor = LedgerSensor(config)
+
+    print(f"Starting Ledger sensor with {poll_interval} second polling interval ({poll_interval/60:.1f} minutes)")
+    print(f"Monitoring Regen Network blockchain...")
+
+    try:
+        # Initialize sensor
+        await sensor.initialize()
+
+        # Continuous monitoring loop
+        while True:
+            try:
+                print(f"\n{'='*50}")
+                print(f"Starting Ledger collection cycle - {datetime.now().isoformat()}")
+                print(f"{'='*50}")
+
+                # Run all queries
+                tasks = []
+
+                # Query governance proposals
+                if hasattr(sensor, 'query_governance'):
+                    tasks.append(sensor.query_governance())
+
+                # Query ecocredit data
+                if hasattr(sensor, 'query_ecocredits'):
+                    tasks.append(sensor.query_ecocredits())
+
+                # Query consensus state
+                if hasattr(sensor, 'query_consensus'):
+                    tasks.append(sensor.query_consensus())
+
+                # Query network stats
+                if hasattr(sensor, 'query_stats'):
+                    tasks.append(sensor.query_stats())
+
+                # Run all queries in parallel
+                if tasks:
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                    # Process results
+                    for result in results:
+                        if isinstance(result, Exception):
+                            print(f"Error in query: {result}")
+
+                print(f"\n✅ Collection cycle complete")
+                print(f"⏰ Next collection in {poll_interval} seconds ({poll_interval/60:.1f} minutes)")
+
+                # Wait for next poll interval
+                await asyncio.sleep(poll_interval)
+
+            except Exception as e:
+                print(f"❌ Error in collection cycle: {e}")
+                print(f"⏰ Retrying in {poll_interval} seconds...")
+                await asyncio.sleep(poll_interval)
+
+    except KeyboardInterrupt:
+        print("\n🛑 Received interrupt signal, shutting down...")
+    except Exception as e:
+        print(f"❌ Fatal error: {e}")
+    finally:
+        await sensor.cleanup()
+        print("Ledger sensor stopped")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

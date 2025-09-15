@@ -562,14 +562,22 @@ class WebsiteKOISensor:
 
 # Example usage and configuration
 async def main():
-    """Example usage of WebsiteKOISensor"""
-    
+    """Example usage of WebsiteKOISensor with continuous polling"""
+    import os
+    from dotenv import load_dotenv
+
+    # Load environment variables
+    load_dotenv()
+
+    # Get polling interval from environment (default 30 minutes)
+    poll_interval = int(os.getenv('WEBSITE_POLL_INTERVAL', 1800))
+
     from shared.config.base import KoiNetConfig, MonitoringConfig
-    
+
     # Configuration matching server patterns
     config = WebsiteMonitorConfig(
         sensor_name="website-monitor",
-        platform="websites", 
+        platform="websites",
         api=APIConfig(),  # No API needed for web scraping
         koi_net=KoiNetConfig(
             node_name="website-monitor-sensor",
@@ -581,18 +589,18 @@ async def main():
         websites=[
             {
                 "name": "docs-regen-network",
-                "url": "https://docs.regen.network", 
+                "url": "https://docs.regen.network",
                 "strategy": "scrape",
                 "max_depth": 3,
-                "check_interval": 3600,
+                "check_interval": poll_interval,  # Use env variable
                 "importance": "high"
             },
             {
                 "name": "guides-regen-network",
                 "url": "https://guides.regen.network",
-                "strategy": "scrape", 
+                "strategy": "scrape",
                 "max_depth": 3,
-                "check_interval": 3600,
+                "check_interval": poll_interval,  # Use env variable
                 "importance": "high"
             },
             {
@@ -600,14 +608,16 @@ async def main():
                 "url": "https://registry.regen.network",
                 "strategy": "hybrid",
                 "max_depth": 2,
-                "check_interval": 1800,  # More frequent for dynamic content
+                "check_interval": poll_interval,  # Use env variable for consistency
                 "importance": "critical"
             }
         ]
     )
-    
+
     sensor = WebsiteKOISensor(config)
-    
+
+    print(f"Starting Website sensor with {poll_interval} second polling interval ({poll_interval/60:.1f} minutes)")
+
     try:
         await sensor.start()
     except KeyboardInterrupt:

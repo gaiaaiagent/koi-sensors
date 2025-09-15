@@ -2,22 +2,41 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 🔧 IMPORTANT: Replicability and Dependency Management
+## 🔧 CRITICAL: Dependency Management Rules
 
-**When developing features for this repository, ALWAYS ensure:**
-1. **All dependencies are explicitly documented** in requirements.txt or package.json
-2. **Installation instructions are complete** - assume nothing is pre-installed
-3. **Build steps are documented** - others cloning the repo must be able to build from scratch
-4. **Local development assumptions are avoided** - what works locally may not work for others
-5. **Platform-specific requirements are noted** (e.g., system packages, OS-specific tools)
-6. **Version requirements are specified** to avoid compatibility issues
-7. **Alternative approaches are provided** when using optional/advanced dependencies
+**ALWAYS follow these rules when installing packages:**
 
-**Example**: Don't assume playwright, Chrome, or system libraries are installed. Always:
-- Add to requirements.txt with version pins
-- Document installation steps in README
-- Provide fallback options if dependencies fail
-- Include troubleshooting for common issues
+1. **NEVER use `pip install --break-system-packages`**
+2. **ALWAYS use the virtual environment**: `source venv/bin/activate`
+3. **ALWAYS update requirements files** after installing:
+   - Main dependencies → `requirements.txt`
+   - Sensor-specific → `sensors/[sensor_name]/requirements.txt`
+   - Dev dependencies → `requirements-dev.txt`
+
+4. **Installation procedure for new packages:**
+```bash
+# First activate venv
+source venv/bin/activate
+
+# Install the package
+pip install package-name
+
+# Update appropriate requirements file
+pip freeze | grep package-name >> requirements.txt
+# OR for sensor-specific:
+echo "package-name>=version" >> sensors/[sensor]/requirements.txt
+```
+
+5. **Sensor-specific dependencies:**
+   - Each sensor has its own `venv` and `requirements.txt`
+   - Dependencies are installed via `./setup.sh` in each sensor directory
+   - NEVER install globally or break system packages
+
+6. **Replicability requirements:**
+   - All dependencies must be in requirements files
+   - Version pins should use `>=` for flexibility
+   - Document any system-level dependencies (e.g., Playwright browsers)
+   - Test setup from clean environment before committing
 
 This ensures the solution can be replicated by anyone cloning the repository, regardless of their local setup.
 

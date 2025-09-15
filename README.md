@@ -20,17 +20,18 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 - ✅ **CAT Receipts**: Full provenance tracking through transformation pipeline
 - ✅ **Production Tested**: End-to-end pipeline verified with clean content
 
-**Active Sensors in Production** (as of September 14, 2025):
-- ✅ **Website Sensor**: Monitoring 8+ Regen sites with real-time change detection
-- ✅ **GitHub Sensor v2**: Repository monitoring with full KOI protocol integration
-- ✅ **GitLab Sensor v2**: Whitepaper and documentation monitoring
-- ✅ **Medium Sensor**: RSS feed monitoring with article extraction
-- ✅ **Discourse Sensor**: Forum monitoring (batch mode with KOI protocol support)
-- ✅ **Telegram Sensor v2**: Channel monitoring configured (requires messages to activate)
-- ⚠️ **Twitter Sensor v2**: KOI protocol ready (RID import error - needs fix)
-- 🚧 **Discord Sensor**: Bot token required for channel monitoring
-- 🚧 **Podcast Sensor**: Configuration needed
-- 🚧 **Notion Sensor**: API integration (performance optimization needed)
+**Active Sensors in Production** (as of September 15, 2025):
+- ✅ **Website Sensor**: Continuous monitoring with configurable polling intervals
+- ✅ **GitHub Sensor v2**: Repository monitoring with continuous polling
+- ✅ **GitLab Sensor v2**: Documentation monitoring with continuous polling
+- ✅ **Medium Sensor**: RSS feed monitoring with continuous polling
+- ✅ **Discourse Sensor**: Forum monitoring with continuous polling
+- ✅ **Telegram Sensor v2**: Real-time channel monitoring
+- ✅ **Twitter Sensor**: Web scraping with Playwright, continuous polling
+- ✅ **Discord Sensor**: Real-time message monitoring (bot token required)
+- ✅ **Podcast Sensor**: RSS feed monitoring with continuous polling
+- ✅ **Notion Sensor**: Database monitoring with continuous polling
+- ✅ **Ledger Sensor**: Blockchain monitoring with continuous polling
 - ✅ **KOI Coordinator**: Event routing at http://localhost:8005
 - ✅ **Dashboard**: Live monitoring at https://regen.gaiaai.xyz/koi
 
@@ -87,6 +88,7 @@ This sensor network is **Phase 1** of the complete 3-repository KOI system, full
 - **Bundle System**: Manifest-based content packaging with SHA-256 integrity
 - **Event System**: NEW/UPDATE/FORGET events for real-time knowledge updates
 - **Full/Partial Nodes**: Complete KOI-net architecture implementation
+- **Continuous Polling**: All sensors follow BlockScience's continuous monitoring pattern
 
 ### **Real-Time Monitoring**
 - **Continuous Website Monitoring**: Hash-based change detection
@@ -357,12 +359,6 @@ async def process_koi_event(event: KOIEventRequest):
     processed_result = await process_document_with_unified_ontology(document)
     await store_in_jena_triplestore(processed_result)  # Not Neo4j
 ```
-
-### **Integration Checklist**
-- [ ] Deploy Apache Jena Fuseki triplestore
-- [ ] Add KOI event processing endpoint
-- [ ] Connect coordinator to processor pipeline
-- [ ] Test full flow: Sensors → Coordinator → Processor → Apache Jena
 
 ## 📄 License
 

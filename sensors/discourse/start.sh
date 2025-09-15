@@ -11,6 +11,11 @@ fi
 source venv/bin/activate
 export PYTHONPATH="$SCRIPT_DIR/../..:$PYTHONPATH"
 
+# Source .env file if it exists
+if [ -f "$SCRIPT_DIR/../../.env" ]; then
+    source "$SCRIPT_DIR/../../.env"
+fi
+
 if [ "$1" == "--background" ] || [ "$1" == "-b" ]; then
     nohup python3 discourse_sensor.py > discourse_sensor.log 2>&1 &
     echo "✅ Discourse sensor started (PID: $!)"
