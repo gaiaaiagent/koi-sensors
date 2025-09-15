@@ -10,6 +10,7 @@ import json
 import logging
 import tempfile
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -18,11 +19,18 @@ import hashlib
 import subprocess
 import base64
 
+# Add parent directories to path for imports
+sys.path.append(str(Path(__file__).parent.parent.parent))
+
+from koi_protocol.nodes.koi_node import KOIPartialNode
+from koi_protocol.core.rid_system import RID
+from koi_protocol.core.bundle_system import Bundle, document_to_bundle
+
 @dataclass
 class GitHubConfig:
     """GitHub sensor configuration"""
     repos: List[Dict[str, Any]]
-    koi_bridge_url: str = "http://localhost:8200/process-koi-event"
+    coordinator_url: str = "http://localhost:8005"
     source_sensor: str = "github-sensor"
     
     # File patterns to index
@@ -58,7 +66,14 @@ class GitHubSensor:
         self.logger = logger or logging.getLogger(__name__)
         self.temp_dir = Path(tempfile.mkdtemp(prefix="github_sensor_"))
         self.logger.info(f"Using temp directory: {self.temp_dir}")
-        
+
+        # Initialize KOI node
+        self.koi_node = KOIPartialNode(
+            node_name="github-sensor",
+            coordinator_url=config.coordinator_url,
+            poll_interval=30
+        )
+
         # Track processed documents
         self.processed_rids = set()
     
@@ -312,69 +327,137 @@ class GitHubSensor:
             self.logger.error(f"Error processing {file_path}: {e}")
             return None
     
-    async def send_to_koi(self, documents: List[Dict[str, Any]]) -> int:
-        """
-        Send documents to KOI Event Bridge
-        
+    async def send_heartbeat_event(self, response_to: Optional[str] = None):
+        """Send a heartbeat event to register with coordinator
+
         Args:
-            documents: List of documents to send
-            
-        Returns:
-            Number of successfully sent documents
+            response_to: Optional RID to respond to for ping requests
         """
+        try:
+            # Create a heartbeat bundle
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor_id": "github-sensor",
+                "sensor_type": "github",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+                "monitoring": [repo['name'] for repo in self.config.repos]
+            }
+
+            # Add response_to if this is a ping response
+            if response_to:
+                heartbeat_data["response_to"] = response_to
+
+            # Create document for heartbeat with required fields
+            heartbeat_document = {
+                'id': f"github_heartbeat_{int(datetime.now().timestamp())}",
+                'title': 'GitHub Sensor Heartbeat',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'github',
+                    'sensor_id': 'github-sensor',
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_document)
+            await self.koi_node.emit_new_event(bundle)
+
+            if response_to:
+                self.logger.info(f"Sent ping response heartbeat to coordinator (responding to {response_to})")
+            else:
+                self.logger.info("Sent heartbeat event to register with coordinator")
+
+        except Exception as e:
+            self.logger.error(f"Error sending heartbeat: {e}")
+
+    async def send_periodic_heartbeats(self):
+        """Send periodic heartbeats every 30 minutes"""
+        while True:
+            try:
+                await asyncio.sleep(1800)  # 30 minutes
+                await self.send_heartbeat_event()
+                self.logger.info("Sent periodic heartbeat")
+            except asyncio.CancelledError:
+                self.logger.info("Periodic heartbeat task cancelled")
+                break
+            except Exception as e:
+                self.logger.error(f"Error in periodic heartbeat: {e}")
+
+    async def handle_coordinator_events(self):
+        """Listen for and handle coordinator events like ping requests"""
+        while True:
+            try:
+                # Check for coordinator events
+                events = await self.koi_node.poll_coordinator_events()
+
+                for event in events:
+                    event_type = event.get('event_type')
+
+                    if event_type == 'PING_REQUEST':
+                        # Check if ping is for this sensor
+                        target_sensor = event.get('target_sensor')
+                        if target_sensor == 'github-sensor' or target_sensor == 'github':
+                            self.logger.info(f"Received ping request: {event.get('rid')}")
+                            # Respond with heartbeat
+                            await self.send_heartbeat_event(response_to=event.get('rid'))
+
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+            except asyncio.CancelledError:
+                self.logger.info("Coordinator event handler cancelled")
+                break
+            except Exception as e:
+                self.logger.error(f"Error handling coordinator events: {e}")
+                await asyncio.sleep(30)
+
+    async def send_to_koi(self, documents: List[Dict[str, Any]]) -> int:
+        """Send documents to KOI coordinator as events"""
         success_count = 0
-        
+
         for doc in documents:
             try:
-                # Generate CID from content
-                content_str = json.dumps(doc, sort_keys=True)
-                cid = hashlib.sha256(content_str.encode()).hexdigest()
-                
-                # Create bundle
-                bundle = {
-                    "rid": doc["rid"],
-                    "cid": cid,
-                    "content": doc,
-                    "metadata": doc.get("metadata", {}),
-                    "manifest": {
-                        "version": "1.0.0",
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "source": self.config.source_sensor
-                    }
-                }
-                
-                # Create event
-                event = {
-                    "event_type": "NEW",
-                    "source_sensor": self.config.source_sensor,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "bundle": bundle
-                }
-                
-                # Send to KOI Event Bridge
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(
-                        self.config.koi_bridge_url,
-                        json=event
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        self.logger.info(
-                            f"Sent document {doc['rid']}: "
-                            f"{result.get('chunks_created')} chunks, "
-                            f"{result.get('embeddings_created')} embeddings"
-                        )
-                        success_count += 1
-                    else:
-                        self.logger.error(f"Failed to send {doc['rid']}: {response.status_code}")
-                        
+                # Create bundle from document
+                bundle = document_to_bundle(doc, source_node="github-sensor")
+
+                # Emit event
+                await self.koi_node.emit_new_event(bundle)
+
+                self.logger.info(f"Sent document {doc.get('rid', 'unknown')} to KOI coordinator")
+                success_count += 1
+
             except Exception as e:
                 self.logger.error(f"Error sending document {doc.get('rid', 'unknown')}: {e}")
                 continue
-        
+
         return success_count
     
+    async def start(self):
+        """Start the GitHub sensor"""
+        self.logger.info("Starting GitHub KOI Sensor")
+
+        # Start KOI node
+        await self.koi_node.start()
+
+        # Send startup heartbeat to register with coordinator
+        await self.send_heartbeat_event()
+
+        # Start background tasks for periodic heartbeats and coordinator event handling
+        heartbeat_task = asyncio.create_task(self.send_periodic_heartbeats())
+        coordinator_task = asyncio.create_task(self.handle_coordinator_events())
+
+        # Initial collection
+        await self.collect_all_repos()
+
+        # Start monitoring loop
+        while True:
+            await asyncio.sleep(3600)  # Check every hour
+            await self.collect_all_repos()
+
     def cleanup(self):
         """Clean up temporary directory"""
         try:
@@ -383,6 +466,16 @@ class GitHubSensor:
                 self.logger.info(f"Cleaned up temp directory: {self.temp_dir}")
         except Exception as e:
             self.logger.warning(f"Failed to clean up temp directory: {e}")
+
+    async def stop(self):
+        """Stop the GitHub sensor and cleanup"""
+        self.logger.info("Stopping GitHub KOI Sensor")
+
+        # Stop KOI node
+        await self.koi_node.stop()
+
+        # Cleanup temp directory
+        self.cleanup()
 
 
 async def main():
@@ -430,31 +523,13 @@ async def main():
     )
     
     sensor = GitHubSensor(config, logger)
-    
+
     try:
-        # Collect documents
-        logger.info("Starting GitHub repository collection...")
-        documents = await sensor.collect_all_repos()
-        
-        # Save to file for inspection
-        output_dir = Path("test_outputs")
-        output_dir.mkdir(exist_ok=True)
-        
-        output_file = output_dir / f"github_docs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(output_file, 'w') as f:
-            json.dump(documents, f, indent=2)
-        
-        logger.info(f"Saved {len(documents)} documents to {output_file}")
-        
-        # Send to KOI if bridge is running
-        try:
-            success_count = await sensor.send_to_koi(documents)
-            logger.info(f"Successfully sent {success_count}/{len(documents)} documents to KOI")
-        except Exception as e:
-            logger.warning(f"Could not send to KOI (bridge may not be running): {e}")
-        
+        await sensor.start()
+    except KeyboardInterrupt:
+        logger.info("Received interrupt signal")
     finally:
-        sensor.cleanup()
+        await sensor.stop()
 
 
 if __name__ == "__main__":

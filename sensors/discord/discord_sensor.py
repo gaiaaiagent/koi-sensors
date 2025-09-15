@@ -82,6 +82,69 @@ class DiscordKOISensor:
         # Setup bot events
         self.setup_events()
 
+    async def send_heartbeat_event(self, response_to: str = None):
+        """Send a heartbeat event to register with coordinator"""
+        try:
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor_id": "discord-sensor",
+                "sensor_type": "discord",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+                "monitoring": [f"{guild.name} ({guild.id})" for guild in self.bot.guilds],
+                "message_count": len(self.processed_messages)
+            }
+
+            if response_to:
+                heartbeat_data["response_to"] = response_to
+
+            # Create document for heartbeat
+            heartbeat_document = {
+                'id': f"discord_heartbeat_{int(datetime.now().timestamp())}",
+                'title': 'Discord Sensor Heartbeat',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'discord',
+                    'sensor_id': 'discord-sensor',
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_document)
+            await self.koi_node.emit_new_event(bundle)
+
+            if not response_to:
+                self.logger.info("Sent heartbeat event to coordinator")
+            else:
+                self.logger.info(f"Responded to ping request {response_to}")
+
+        except Exception as e:
+            self.logger.error(f"Error sending heartbeat: {e}")
+
+    async def send_periodic_heartbeats(self):
+        """Send periodic heartbeats every 30 minutes"""
+        while True:
+            await asyncio.sleep(1800)  # 30 minutes
+            await self.send_heartbeat_event()
+
+    async def handle_coordinator_events(self):
+        """Listen for ping requests from coordinator"""
+        try:
+            # Subscribe to coordinator events
+            async for event in self.koi_node.event_stream():
+                if event.get('type') == 'PING_REQUEST':
+                    # Check if this ping is for us
+                    target = event.get('target')
+                    if target == 'discord-sensor' or target == 'all':
+                        self.logger.info(f"Received ping request, responding...")
+                        await self.send_heartbeat_event(response_to=event.get('id'))
+        except Exception as e:
+            self.logger.error(f"Error handling coordinator events: {e}")
+
     def setup_events(self):
         """Setup Discord bot event handlers"""
 
@@ -93,6 +156,13 @@ class DiscordKOISensor:
 
             # Start KOI node
             await self.koi_node.start()
+
+            # Send initial heartbeat to register
+            await self.send_heartbeat_event()
+
+            # Start background tasks
+            asyncio.create_task(self.send_periodic_heartbeats())
+            asyncio.create_task(self.handle_coordinator_events())
 
             # Do initial collection of recent messages
             await self.collect_recent_messages()

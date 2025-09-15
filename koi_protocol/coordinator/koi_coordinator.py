@@ -538,6 +538,69 @@ class KOICoordinator:
             # Log but don't fail - processor is optional
             self.logger.warning(f"Could not forward to processor: {e}")
     
+    async def _ping_sensors(self, target: Any) -> str:
+        """Send ping request to sensors
+
+        Args:
+            target: "all" to ping all sensors, or list of sensor types to ping specific ones
+
+        Returns:
+            ping_id for tracking responses
+        """
+        ping_id = str(uuid.uuid4())
+
+        # Prepare ping event
+        ping_event = {
+            "type": "PING_REQUEST",
+            "id": ping_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": "coordinator"
+        }
+
+        if target == "all":
+            ping_event["target"] = "all"
+        elif isinstance(target, list):
+            # Ping specific sensors
+            ping_event["target"] = target
+        else:
+            ping_event["target"] = str(target)
+
+        # Clear any old responses for this ping_id
+        self.ping_responses[ping_id] = {}
+
+        # Broadcast ping event through event broadcast
+        try:
+            # Create a bundle for the ping request
+            ping_bundle = {
+                "rid": f"orn:coordinator.ping.{ping_id}",
+                "cid": ping_id,
+                "content": json.dumps(ping_event),
+                "metadata": {"type": "ping_request"},
+                "manifest": {
+                    "version": "1.0.0",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+            }
+
+            # Create event for broadcast
+            from ..core.bundle_system import KOIEvent
+            event = KOIEvent(
+                event_type="NEW",
+                rid=f"orn:coordinator.ping.{ping_id}",
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                source_node="coordinator",
+                bundle=ping_bundle
+            )
+
+            # Broadcast to all connected nodes
+            await self.koi_node.broadcast_event(event)
+            self.logger.info(f"Sent ping request {ping_id} to {target}")
+
+        except Exception as e:
+            self.logger.error(f"Error sending ping request: {e}")
+
+        return ping_id
+
     async def start(self):
         """Start the coordinator"""
         self.logger.info(f"Starting KOI Coordinator on port {self.port}")

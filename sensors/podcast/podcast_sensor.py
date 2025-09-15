@@ -102,21 +102,95 @@ class PodcastKOISensor:
             "episode_count": 0
         }
     
+    async def send_heartbeat_event(self, response_to: str = None):
+        """Send a heartbeat event to register with coordinator"""
+        try:
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor_id": self.node_id,
+                "sensor_type": "podcast",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+                "monitoring": list(self.monitored_podcasts.keys()),
+                "episode_count": sum(p.get('episode_count', 0) for p in self.monitored_podcasts.values())
+            }
+
+            if response_to:
+                heartbeat_data["response_to"] = response_to
+
+            # Create document for heartbeat
+            heartbeat_document = {
+                'id': f"podcast_heartbeat_{int(datetime.now().timestamp())}",
+                'title': 'Podcast Sensor Heartbeat',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'podcast',
+                    'sensor_id': self.node_id,
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_document, self.koi_node.node_id)
+            await self.koi_node.emit_new_event(bundle)
+
+            if not response_to:
+                print("💓 Sent heartbeat event to coordinator")
+            else:
+                print(f"🏓 Responded to ping request {response_to}")
+
+        except Exception as e:
+            print(f"❌ Error sending heartbeat: {e}")
+
+    async def send_periodic_heartbeats(self):
+        """Send periodic heartbeats every 30 minutes"""
+        while True:
+            await asyncio.sleep(1800)  # 30 minutes
+            await self.send_heartbeat_event()
+
+    async def handle_coordinator_events(self):
+        """Listen for ping requests from coordinator"""
+        try:
+            # Subscribe to coordinator events
+            async for event in self.koi_node.event_stream():
+                if event.get('type') == 'PING_REQUEST':
+                    # Check if this ping is for us
+                    target = event.get('target')
+                    if target == self.node_id or target == 'podcast-sensor' or target == 'all':
+                        print(f"🏓 Received ping request, responding...")
+                        await self.send_heartbeat_event(response_to=event.get('id'))
+        except Exception as e:
+            print(f"❌ Error handling coordinator events: {e}")
+
     async def start_monitoring(self):
         """Start podcast monitoring"""
         await self.koi_node.start()
-        
+
+        # Send initial heartbeat to register
+        await self.send_heartbeat_event()
+
         self.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=60),
             headers={'User-Agent': 'KOI-PodcastSensor/1.0'}
         )
-        
-        # Start monitoring loops
+
+        # Start background tasks
         tasks = []
+
+        # Periodic heartbeat task
+        tasks.append(asyncio.create_task(self.send_periodic_heartbeats()))
+
+        # Ping response handler task
+        tasks.append(asyncio.create_task(self.handle_coordinator_events()))
+
+        # Monitoring loops for each podcast
         for podcast_name in self.monitored_podcasts.keys():
             task = asyncio.create_task(self.monitor_podcast(podcast_name))
             tasks.append(task)
-        
+
         await asyncio.gather(*tasks)
     
     async def stop_monitoring(self):

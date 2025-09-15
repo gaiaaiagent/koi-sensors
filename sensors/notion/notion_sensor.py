@@ -547,8 +547,12 @@ class NotionKOISensor:
                 print(f"   ❌ Failed to send event: {e}")
                 print(f"   Traceback: {traceback.format_exc()}")
     
-    async def send_heartbeat_event(self):
-        """Send a heartbeat event to register with coordinator"""
+    async def send_heartbeat_event(self, response_to: Optional[str] = None):
+        """Send a heartbeat event to register with coordinator
+
+        Args:
+            response_to: Optional RID to respond to for ping requests
+        """
         try:
             # Create a heartbeat bundle
             heartbeat_data = {
@@ -559,6 +563,10 @@ class NotionKOISensor:
                 "status": "active",
                 "monitoring": list(self.monitored_databases.keys()) + list(self.monitored_pages.keys())
             }
+
+            # Add response_to if this is a ping response
+            if response_to:
+                heartbeat_data["response_to"] = response_to
 
             # Create document for heartbeat with required fields
             heartbeat_document = {
@@ -579,10 +587,53 @@ class NotionKOISensor:
             bundle = document_to_bundle(heartbeat_document)
             await self.koi_node.emit_new_event(bundle)
 
-            print("📡 Sent heartbeat event to register with coordinator")
+            if response_to:
+                print(f"📡 Sent ping response heartbeat to coordinator (responding to {response_to})")
+            else:
+                print("📡 Sent heartbeat event to register with coordinator")
 
         except Exception as e:
             print(f"❌ Error sending heartbeat: {e}")
+
+    async def send_periodic_heartbeats(self):
+        """Send periodic heartbeats every 30 minutes"""
+        while True:
+            try:
+                await asyncio.sleep(1800)  # 30 minutes
+                await self.send_heartbeat_event()
+                print("💓 Sent periodic heartbeat")
+            except asyncio.CancelledError:
+                print("🛑 Periodic heartbeat task cancelled")
+                break
+            except Exception as e:
+                print(f"❌ Error in periodic heartbeat: {e}")
+
+    async def handle_coordinator_events(self):
+        """Listen for and handle coordinator events like ping requests"""
+        while True:
+            try:
+                # Check for coordinator events
+                events = await self.koi_node.poll_coordinator_events()
+
+                for event in events:
+                    event_type = event.get('event_type')
+
+                    if event_type == 'PING_REQUEST':
+                        # Check if ping is for this sensor
+                        target_sensor = event.get('target_sensor')
+                        if target_sensor == self.node_id or target_sensor == 'notion':
+                            print(f"📡 Received ping request: {event.get('rid')}")
+                            # Respond with heartbeat
+                            await self.send_heartbeat_event(response_to=event.get('rid'))
+
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+            except asyncio.CancelledError:
+                print("🛑 Coordinator event handler cancelled")
+                break
+            except Exception as e:
+                print(f"❌ Error handling coordinator events: {e}")
+                await asyncio.sleep(30)
 
     async def run_monitoring_loop(self, poll_interval: int = 1800):
         """Main monitoring loop
@@ -595,6 +646,10 @@ class NotionKOISensor:
 
         # Send startup heartbeat to register with coordinator
         await self.send_heartbeat_event()
+
+        # Start background tasks for periodic heartbeats and coordinator event handling
+        heartbeat_task = asyncio.create_task(self.send_periodic_heartbeats())
+        coordinator_task = asyncio.create_task(self.handle_coordinator_events())
 
         while True:
             try:

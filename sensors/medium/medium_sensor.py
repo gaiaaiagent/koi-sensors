@@ -114,12 +114,83 @@ class MediumKOISensor:
         
         return logger
     
+    async def send_heartbeat_event(self, response_to: str = None):
+        """Send a heartbeat event to register with coordinator"""
+        try:
+            # Create a heartbeat bundle
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor_id": "medium-sensor",
+                "sensor_type": "medium",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+                "monitoring": [source['name'] for source in self.config.medium_sources],
+                "articles_tracked": len(self.collected_articles)
+            }
+
+            if response_to:
+                heartbeat_data["response_to"] = response_to
+
+            # Create document for heartbeat with required fields
+            heartbeat_document = {
+                'id': f"medium_heartbeat_{int(datetime.now().timestamp())}",
+                'title': 'Medium Sensor Heartbeat',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'medium',
+                    'sensor_id': 'medium-sensor',
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_document)
+            await self.koi_node.emit_new_event(bundle)
+
+            if not response_to:
+                self.logger.info("Sent heartbeat event to register with coordinator")
+            else:
+                self.logger.info(f"Responded to ping request {response_to}")
+
+        except Exception as e:
+            self.logger.error(f"Error sending heartbeat: {e}")
+
+    async def send_periodic_heartbeats(self):
+        """Send periodic heartbeats to stay registered"""
+        while self.koi_node.running:
+            await asyncio.sleep(1800)  # Send heartbeat every 30 minutes
+            await self.send_heartbeat_event()
+
+    async def handle_coordinator_events(self):
+        """Listen for ping requests from coordinator"""
+        try:
+            # Subscribe to coordinator events
+            async for event in self.koi_node.event_stream():
+                if event.get('type') == 'PING_REQUEST':
+                    # Check if this ping is for us
+                    target = event.get('target')
+                    if target == 'medium-sensor' or target == 'all':
+                        self.logger.info(f"Received ping request, responding...")
+                        await self.send_heartbeat_event(response_to=event.get('id'))
+        except Exception as e:
+            self.logger.error(f"Error handling coordinator events: {e}")
+
     async def start(self):
         """Start Medium monitoring sensor"""
         self.logger.info("Starting Medium KOI Sensor")
-        
+
         # Start KOI node
         await self.koi_node.start()
+
+        # Send initial heartbeat to register
+        await self.send_heartbeat_event()
+
+        # Start background tasks
+        asyncio.create_task(self.send_periodic_heartbeats())
+        asyncio.create_task(self.handle_coordinator_events())
         
         # Initialize HTTP session
         connector = aiohttp.TCPConnector(limit=10, limit_per_host=3)

@@ -22,18 +22,18 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 
 **Active Sensors in Production** (as of September 15, 2025):
 - ✅ **Website Sensor**: Continuous monitoring with configurable polling intervals
-- ✅ **GitHub Sensor v2**: Repository monitoring with continuous polling
-- ✅ **GitLab Sensor v2**: Documentation monitoring with continuous polling
-- ✅ **Medium Sensor**: RSS feed monitoring with continuous polling
-- ✅ **Discourse Sensor**: Forum monitoring with continuous polling
-- ✅ **Telegram Sensor v2**: Real-time channel monitoring (see [setup guide](docs/TELEGRAM_SENSOR_SETUP.md))
-- ✅ **Twitter Sensor**: Web scraping with Playwright, continuous polling
-- ✅ **Discord Sensor**: Real-time message monitoring (bot token required)
-- ✅ **Podcast Sensor**: RSS feed monitoring with continuous polling
-- ✅ **Notion Sensor**: Database monitoring with continuous polling
-- ✅ **Ledger Sensor**: Blockchain monitoring with continuous polling
-- ✅ **KOI Coordinator**: Event routing at http://localhost:8005
-- ✅ **Dashboard**: Live monitoring at https://regen.gaiaai.xyz/koi
+- ✅ **GitHub Sensor**: Repository monitoring with heartbeat support
+- ✅ **GitLab Sensor**: Documentation monitoring with heartbeat support
+- ✅ **Medium Sensor**: RSS feed monitoring with heartbeat support
+- ✅ **Discourse Sensor**: Forum monitoring with heartbeat support
+- ✅ **Telegram Sensor**: Real-time channel monitoring with heartbeat support (see [setup guide](docs/TELEGRAM_SENSOR_SETUP.md))
+- ✅ **Twitter Sensor v2**: API-based monitoring with heartbeat support (requires TWITTER_BEARER_TOKEN)
+- ✅ **Discord Sensor**: Real-time message monitoring with heartbeat support (bot token required)
+- ✅ **Podcast Sensor**: RSS feed monitoring with heartbeat support
+- ✅ **Notion Sensor**: Database monitoring with heartbeat support
+- ✅ **Ledger Sensor**: Blockchain monitoring with heartbeat support
+- ✅ **KOI Coordinator**: Event routing with Smart Hybrid health monitoring at http://localhost:8005
+- ✅ **Dashboard**: Live monitoring with real-time status updates at https://regen.gaiaai.xyz/koi
 
 ## 🔄 Event Bridge v2 Integration
 
@@ -80,6 +80,15 @@ This sensor network is **Phase 1** of the complete 3-repository KOI system, full
    │ • Event Emission (NEW/UPDATE/FORGET)   │ • Entity Extraction           │ • Knowledge Queries
    └─ Real-time Monitoring                  └─ Unified Ontology Processing  └─ <2s Response Times
 ```
+
+## 🏥 Health Monitoring System
+
+**Smart Hybrid Architecture** (Implemented September 15, 2025):
+- **Periodic Heartbeats**: All sensors send heartbeats every 30 minutes
+- **On-Demand Ping**: Coordinator can ping specific sensors or all sensors
+- **Smart Refresh**: Dashboard only pings sensors that haven't reported in >10 minutes
+- **Real-Time Status**: Active (< 5 min), Idle (5-30 min), or Offline (> 30 min)
+- **Automatic Registration**: Sensors register on startup via heartbeat event
 
 ## 🌟 Features
 

@@ -11,7 +11,11 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 
-from rid_lib import RID
+import sys
+sys.path.append('/opt/projects/koi-sensors')
+
+from koi_protocol.nodes.koi_node import KOIPartialNode
+from koi_protocol.core.bundle_system import document_to_bundle
 from shared.handlers.base_sensor import BaseSensor
 from shared.config.base import BaseSensorConfig
 
@@ -45,12 +49,19 @@ class LedgerSensorConfig(BaseSensorConfig):
 
 class LedgerSensor(BaseSensor):
     """Sensor for Regen Network blockchain data"""
-    
+
     def __init__(self, config: LedgerSensorConfig):
         super().__init__(config)
         self.config: LedgerSensorConfig = config
         self.session: Optional[aiohttp.ClientSession] = None
-        
+
+        # Initialize KOI node
+        self.koi_node = KOIPartialNode(
+            node_name="ledger-sensor",
+            coordinator_url="http://localhost:8005",
+            poll_interval=30
+        )
+
         # Track last query times
         self.last_queries = {
             "governance": None,
@@ -58,10 +69,15 @@ class LedgerSensor(BaseSensor):
             "consensus": None,
             "stats": None
         }
-        
+
         # Active endpoints (selected from fallbacks)
         self.active_rpc_endpoint = None
         self.active_rest_endpoint = None
+
+        # Track data for heartbeat
+        self.total_proposals = 0
+        self.total_credits = 0
+        self.last_block_height = 0
     
     async def initialize(self):
         """Initialize HTTP session and test endpoints"""
@@ -69,9 +85,87 @@ class LedgerSensor(BaseSensor):
             self.session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=30)
             )
-        
+
+        # Start KOI node
+        await self.koi_node.start()
+
+        # Send initial heartbeat
+        await self.send_heartbeat_event()
+
+        # Start background tasks
+        asyncio.create_task(self.send_periodic_heartbeats())
+        asyncio.create_task(self.handle_coordinator_events())
+
         # Test and select working endpoints
         await self._select_active_endpoints()
+
+    async def send_heartbeat_event(self, response_to: str = None):
+        """Send a heartbeat event to register with coordinator"""
+        try:
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor_id": "ledger-sensor",
+                "sensor_type": "ledger",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+                "monitoring": {
+                    "rpc_endpoint": self.active_rpc_endpoint,
+                    "rest_endpoint": self.active_rest_endpoint,
+                    "proposals_tracked": self.total_proposals,
+                    "credits_tracked": self.total_credits,
+                    "last_block": self.last_block_height
+                }
+            }
+
+            if response_to:
+                heartbeat_data["response_to"] = response_to
+
+            # Create document for heartbeat
+            heartbeat_document = {
+                'id': f"ledger_heartbeat_{int(datetime.now().timestamp())}",
+                'title': 'Ledger Sensor Heartbeat',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'ledger',
+                    'sensor_id': 'ledger-sensor',
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_document)
+            await self.koi_node.emit_new_event(bundle)
+
+            if not response_to:
+                self.logger.info("Sent heartbeat event to coordinator")
+            else:
+                self.logger.info(f"Responded to ping request {response_to}")
+
+        except Exception as e:
+            self.logger.error(f"Error sending heartbeat: {e}")
+
+    async def send_periodic_heartbeats(self):
+        """Send periodic heartbeats every 30 minutes"""
+        while True:
+            await asyncio.sleep(1800)  # 30 minutes
+            await self.send_heartbeat_event()
+
+    async def handle_coordinator_events(self):
+        """Listen for ping requests from coordinator"""
+        try:
+            # Subscribe to coordinator events
+            async for event in self.koi_node.event_stream():
+                if event.get('type') == 'PING_REQUEST':
+                    # Check if this ping is for us
+                    target = event.get('target')
+                    if target == 'ledger-sensor' or target == 'all':
+                        self.logger.info(f"Received ping request, responding...")
+                        await self.send_heartbeat_event(response_to=event.get('id'))
+        except Exception as e:
+            self.logger.error(f"Error handling coordinator events: {e}")
     
     async def _select_active_endpoints(self):
         """Test endpoints and select working ones"""
@@ -536,6 +630,8 @@ class LedgerSensor(BaseSensor):
         """Cleanup resources"""
         if self.session:
             await self.session.close()
+        if self.koi_node:
+            await self.koi_node.stop()
             self.session = None
 
 

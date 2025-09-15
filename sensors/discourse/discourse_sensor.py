@@ -484,6 +484,10 @@ class DiscourseSensor:
                 # Send heartbeat to register
                 await self.send_heartbeat()
 
+                # Start background tasks for periodic heartbeats and coordinator event handling
+                heartbeat_task = asyncio.create_task(self.send_periodic_heartbeats())
+                coordinator_task = asyncio.create_task(self.handle_coordinator_events())
+
             # Send each document as an event
             for doc in documents:
                 try:
@@ -506,8 +510,12 @@ class DiscourseSensor:
         except Exception as e:
             print(f"   ❌ Error connecting to KOI coordinator: {e}")
 
-    async def send_heartbeat(self):
-        """Send heartbeat event to register with coordinator"""
+    async def send_heartbeat(self, response_to: Optional[str] = None):
+        """Send heartbeat event to register with coordinator
+
+        Args:
+            response_to: Optional RID to respond to for ping requests
+        """
         try:
             heartbeat_data = {
                 "type": "sensor_heartbeat",
@@ -518,15 +526,62 @@ class DiscourseSensor:
                 "status": "active"
             }
 
+            # Add response_to if this is a ping response
+            if response_to:
+                heartbeat_data["response_to"] = response_to
+
             # Create bundle from heartbeat data
             bundle = document_to_bundle(heartbeat_data, source_node="discourse-sensor")
 
             # Emit event
             await self.koi_node.emit_new_event(bundle)
-            print("   💓 Sent heartbeat to KOI coordinator")
+            if response_to:
+                print(f"   💓 Sent ping response heartbeat to KOI coordinator (responding to {response_to})")
+            else:
+                print("   💓 Sent heartbeat to KOI coordinator")
 
         except Exception as e:
             print(f"   ⚠️ Error sending heartbeat: {e}")
+
+    async def send_periodic_heartbeats(self):
+        """Send periodic heartbeats every 30 minutes"""
+        while True:
+            try:
+                await asyncio.sleep(1800)  # 30 minutes
+                await self.send_heartbeat()
+                print("💓 Sent periodic heartbeat")
+            except asyncio.CancelledError:
+                print("🛑 Periodic heartbeat task cancelled")
+                break
+            except Exception as e:
+                print(f"❌ Error in periodic heartbeat: {e}")
+
+    async def handle_coordinator_events(self):
+        """Listen for and handle coordinator events like ping requests"""
+        while True:
+            try:
+                # Check for coordinator events
+                events = await self.koi_node.poll_coordinator_events()
+
+                for event in events:
+                    event_type = event.get('event_type')
+
+                    if event_type == 'PING_REQUEST':
+                        # Check if ping is for this sensor
+                        target_sensor = event.get('target_sensor')
+                        if target_sensor == 'discourse-sensor' or target_sensor == 'discourse':
+                            print(f"📡 Received ping request: {event.get('rid')}")
+                            # Respond with heartbeat
+                            await self.send_heartbeat(response_to=event.get('rid'))
+
+                await asyncio.sleep(30)  # Check every 30 seconds
+
+            except asyncio.CancelledError:
+                print("🛑 Coordinator event handler cancelled")
+                break
+            except Exception as e:
+                print(f"❌ Error handling coordinator events: {e}")
+                await asyncio.sleep(30)
 
     async def __aenter__(self):
         """Async context manager entry"""

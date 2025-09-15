@@ -12,6 +12,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 import html2text
 import re
+import json
 
 from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.rid_system import RID
@@ -167,18 +168,88 @@ class WebsiteKOISensor:
         
         return logger
     
+    async def send_heartbeat_event(self, response_to: str = None):
+        """Send a heartbeat event to register with coordinator"""
+        try:
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor_id": self.config.node_name,
+                "sensor_type": "websites",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+                "monitoring": [site['name'] for site in self.config.websites],
+                "pages_tracked": len(self.page_hashes)
+            }
+
+            if response_to:
+                heartbeat_data["response_to"] = response_to
+
+            # Create document for heartbeat
+            heartbeat_document = {
+                'id': f"websites_heartbeat_{int(datetime.now().timestamp())}",
+                'title': 'Websites Sensor Heartbeat',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'websites',
+                    'sensor_id': self.config.node_name,
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_document)
+            await self.koi_node.emit_new_event(bundle)
+
+            if not response_to:
+                self.logger.info("Sent heartbeat event to coordinator")
+            else:
+                self.logger.info(f"Responded to ping request {response_to}")
+
+        except Exception as e:
+            self.logger.error(f"Error sending heartbeat: {e}")
+
+    async def send_periodic_heartbeats(self):
+        """Send periodic heartbeats every 30 minutes"""
+        while self.koi_node.running:
+            await asyncio.sleep(1800)  # 30 minutes
+            await self.send_heartbeat_event()
+
+    async def handle_coordinator_events(self):
+        """Listen for ping requests from coordinator"""
+        try:
+            # Subscribe to coordinator events
+            async for event in self.koi_node.event_stream():
+                if event.get('type') == 'PING_REQUEST':
+                    # Check if this ping is for us
+                    target = event.get('target')
+                    if target == self.config.node_name or target == 'websites-sensor' or target == 'all':
+                        self.logger.info(f"Received ping request, responding...")
+                        await self.send_heartbeat_event(response_to=event.get('id'))
+        except Exception as e:
+            self.logger.error(f"Error handling coordinator events: {e}")
+
     async def start(self):
         """Start website monitoring sensor"""
         self.logger.info("Starting Website KOI Sensor")
-        
+
         # Configure KOI node logging to match sensor logging
         import logging
         koi_logger = logging.getLogger(f"koi.node.website-sensor")
         koi_logger.setLevel(logging.INFO)
         koi_logger.handlers = self.logger.handlers  # Use same handlers as sensor
-        
+
         # Start KOI node
         await self.koi_node.start()
+
+        # Send initial heartbeat to register
+        await self.send_heartbeat_event()
+
+        # Start background tasks
+        asyncio.create_task(self.send_periodic_heartbeats())
+        asyncio.create_task(self.handle_coordinator_events())
         
         # Initialize HTTP session
         connector = aiohttp.TCPConnector(limit=10, limit_per_host=3)
