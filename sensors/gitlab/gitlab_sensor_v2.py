@@ -88,12 +88,52 @@ class GitLabSensor:
         self.processed_rids = set()
         self.repo_states = {}  # Track repo commit hashes
 
+    async def send_heartbeat_event(self):
+        """Send a heartbeat event to register with coordinator"""
+        try:
+            # Create a heartbeat bundle
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor_id": "gitlab-sensor",
+                "sensor_type": "gitlab",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+                "monitoring": [repo['name'] for repo in self.config.repos]
+            }
+
+            # Create document for heartbeat with required fields
+            heartbeat_document = {
+                'id': f"gitlab_heartbeat_{int(datetime.now().timestamp())}",
+                'title': 'GitLab Sensor Heartbeat',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'gitlab',
+                    'sensor_id': 'gitlab-sensor',
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_document)
+            await self.koi_node.emit_new_event(bundle)
+
+            self.logger.info("Sent heartbeat event to register with coordinator")
+
+        except Exception as e:
+            self.logger.error(f"Error sending heartbeat: {e}")
+
     async def start(self):
         """Start the GitLab sensor"""
         self.logger.info("Starting GitLab KOI Sensor")
 
         # Start KOI node
         await self.koi_node.start()
+
+        # Send startup heartbeat to register with coordinator
+        await self.send_heartbeat_event()
 
         # Initial collection
         await self.collect_all_repos()
