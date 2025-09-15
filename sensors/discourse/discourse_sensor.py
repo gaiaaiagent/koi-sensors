@@ -471,9 +471,13 @@ class DiscourseSensor:
     async def send_to_koi(self, documents: List[Dict]):
         """Send documents to KOI coordinator as events"""
         try:
-            # Start KOI node if not started
+            # Initialize session for KOI node if not started
             if not hasattr(self, 'koi_started'):
-                await self.koi_node.start()
+                # Don't call start() which creates infinite polling loop
+                # Just initialize the session for sending events
+                import aiohttp
+                self.koi_node.session = aiohttp.ClientSession()
+                self.koi_node.running = True
                 self.koi_started = True
 
                 # Send heartbeat to register
@@ -530,6 +534,9 @@ class DiscourseSensor:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
         await self.client.aclose()
+        # Close KOI node session if initialized
+        if hasattr(self, 'koi_started') and self.koi_node.session:
+            await self.koi_node.session.close()
 
 
 async def main():

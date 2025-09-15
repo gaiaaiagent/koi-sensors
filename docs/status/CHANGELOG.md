@@ -1,5 +1,26 @@
 # KOI Sensors Changelog
 
+## Critical Fixes and Sensor Updates - September 15, 2025
+
+### 🔧 Discourse Sensor Fix
+- **Issue**: Sensor was hanging on startup due to infinite KOI node polling loop
+- **Fix**: Modified to initialize KOI node session directly without calling start()
+- **Result**: Successfully collecting 27 topics from both forums
+- **Status**: ✅ Fully operational
+
+### 📊 Sensor Status Investigation
+- **Working Sensors**: Website (with CAT receipts), GitHub, GitLab, Medium, Notion, Telegram
+- **Key Finding**: Sensors appear "inactive" but are actually running - they've indexed all existing content and are waiting for new data
+- **CAT Receipts**: Only website sensor generating provenance receipts (586 total)
+- **Knowledge Graph**: Code exists but not integrated with Event Bridge v2
+
+### 🔄 Active Sensors
+- Website: Continuously crawling, finding new pages
+- GitHub/GitLab/Medium: Checking hourly for new content (0 new documents as all indexed)
+- Notion: Successfully discovering and indexing pages
+- Telegram: Monitoring messages (minor bugs but operational)
+- Discourse: Fixed and collecting forum discussions
+
 ## Event Bridge v2 Integration - September 10, 2025
 
 ### 🔄 Major Update - Deduplication and Versioning

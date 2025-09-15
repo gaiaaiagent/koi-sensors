@@ -9,6 +9,7 @@ The Discourse Forum Sensor collects discussions, proposals, and community conten
 - 🏷️ Automatic tagging (governance, ecocredits, marketplace, etc.)
 - 🔄 KOI Event Bridge integration
 - 📝 No API key required (uses public endpoints)
+- ✅ Fixed: Sensor no longer hangs on startup (resolved KOI node polling loop issue)
 
 ## Forums Monitored
 1. **forum.regen.network** - Main governance and discussion forum
