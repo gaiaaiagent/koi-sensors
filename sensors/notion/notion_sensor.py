@@ -98,12 +98,18 @@ class NotionKOISensor:
             "Content-Type": "application/json"
         }
         self.session = aiohttp.ClientSession(headers=headers)
+
+        # Start the KOI node to initialize its session
+        await self.koi_node.start()
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
         if self.session:
             await self.session.close()
+
+        # Stop the KOI node
+        await self.koi_node.stop()
     
     async def search_workspace(self, query: str = None, filter_type: str = None) -> List[Dict]:
         """
