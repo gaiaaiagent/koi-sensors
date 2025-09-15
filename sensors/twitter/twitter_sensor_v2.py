@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import time
+import asyncio
 import tweepy
 import logging
 import hashlib
@@ -275,10 +276,50 @@ class TwitterKOISensor:
             if tweets:
                 self.logger.info(f"Processed {len(tweets)} tweets from @{handle}")
 
+    async def send_heartbeat_event(self):
+        """Send a heartbeat event to register with coordinator"""
+        try:
+            # Create a heartbeat bundle
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor_id": self.config.node_name,
+                "sensor_type": "twitter",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+                "monitoring": self.config.user_handles + self.config.hashtags
+            }
+
+            # Create document for heartbeat with required fields
+            heartbeat_document = {
+                'id': f"twitter_heartbeat_{self.config.node_name}_{int(datetime.now().timestamp())}",
+                'title': f'Twitter Sensor Heartbeat - {self.config.node_name}',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'twitter',
+                    'sensor_id': self.config.node_name,
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_document)
+            await self.koi_node.emit_new_event(bundle)
+
+            self.logger.info("Sent heartbeat event to register with coordinator")
+
+        except Exception as e:
+            self.logger.error(f"Error sending heartbeat: {e}")
+
     async def run(self):
         """Main sensor loop"""
         self.logger.info("Starting Twitter KOI Sensor")
         await self.koi_node.start()
+
+        # Send startup/heartbeat event to register with coordinator
+        await self.send_heartbeat_event()
 
         if not self.client:
             self.logger.error("Twitter client not configured. Please set TWITTER_BEARER_TOKEN environment variable.")
@@ -296,7 +337,7 @@ class TwitterKOISensor:
 
                     self.logger.info(f"Monitoring cycle complete. Sleeping for {self.config.check_interval} seconds")
 
-                time.sleep(self.config.check_interval)
+                await asyncio.sleep(self.config.check_interval)
 
         except KeyboardInterrupt:
             self.logger.info("Shutting down Twitter sensor")
@@ -304,7 +345,7 @@ class TwitterKOISensor:
             self.logger.error(f"Sensor error: {e}")
             raise
         finally:
-            self.koi_node.stop()
+            await self.koi_node.stop()
 
 
 async def main():

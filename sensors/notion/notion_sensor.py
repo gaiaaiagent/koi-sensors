@@ -59,7 +59,7 @@ class NotionKOISensor:
     
     def __init__(self, 
                  node_id: str = "koi-notion-sensor",
-                 coordinator_url: str = "http://localhost:8200",
+                 coordinator_url: str = "http://localhost:8005",
                  notion_token: str = None):
         self.node_id = node_id
         self.coordinator_url = coordinator_url
@@ -547,6 +547,43 @@ class NotionKOISensor:
                 print(f"   ❌ Failed to send event: {e}")
                 print(f"   Traceback: {traceback.format_exc()}")
     
+    async def send_heartbeat_event(self):
+        """Send a heartbeat event to register with coordinator"""
+        try:
+            # Create a heartbeat bundle
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor_id": self.node_id,
+                "sensor_type": "notion",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+                "monitoring": list(self.monitored_databases.keys()) + list(self.monitored_pages.keys())
+            }
+
+            # Create document for heartbeat with required fields
+            heartbeat_document = {
+                'id': f"notion_heartbeat_{self.node_id}_{int(datetime.now().timestamp())}",
+                'title': f'Notion Sensor Heartbeat - {self.node_id}',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'notion',
+                    'sensor_id': self.node_id,
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_document)
+            await self.koi_node.emit_new_event(bundle)
+
+            print("📡 Sent heartbeat event to register with coordinator")
+
+        except Exception as e:
+            print(f"❌ Error sending heartbeat: {e}")
+
     async def run_monitoring_loop(self, poll_interval: int = 1800):
         """Main monitoring loop
 
@@ -555,6 +592,9 @@ class NotionKOISensor:
         """
         print(f"🚀 Starting Notion monitoring loop...")
         print(f"⏰ Polling interval: {poll_interval} seconds ({poll_interval/60:.1f} minutes)")
+
+        # Send startup heartbeat to register with coordinator
+        await self.send_heartbeat_event()
 
         while True:
             try:
