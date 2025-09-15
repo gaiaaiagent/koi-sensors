@@ -200,21 +200,27 @@ class TelegramKOISensor:
                     content['media_caption'] = message.caption
 
             # Add forward info if present
-            if self.config.include_forwards and message.forward_from:
+            if self.config.include_forwards and hasattr(message, 'forward_from') and message.forward_from:
                 content['forwarded_from'] = {
                     'id': message.forward_from.id,
-                    'username': message.forward_from.username,
-                    'first_name': message.forward_from.first_name,
+                    'username': getattr(message.forward_from, 'username', None),
+                    'first_name': getattr(message.forward_from, 'first_name', None),
                 }
 
-            # Create document
+            # Create document with required fields for RID generation
             document = {
-                'rid': rid_str,
+                'id': rid_str,  # Required for document_to_rid
+                'source': 'telegram',  # Required for source_type detection
+                'source_type': 'telegram',  # Required for RID generation
                 'type': 'telegram_message',
+                'title': f"Message from {message.from_user.first_name if message.from_user else 'Unknown'}",
                 'content': content,
+                'url': f"telegram://chat/{self.chat_id}/{message.message_id}",
                 'metadata': {
                     'source': 'telegram',
                     'channel': self.config.channel_username,
+                    'chat_id': self.chat_id,
+                    'message_id': message.message_id,
                     'collected_at': datetime.now(timezone.utc).isoformat(),
                     'sensor': self.config.node_name
                 }
@@ -262,16 +268,24 @@ class TelegramKOISensor:
                 "status": "active"
             }
 
-            # Create RID for heartbeat
-            heartbeat_rid = GenericRID("orn", f"telegram.heartbeat.{self.config.node_name}")
+            # Create document for heartbeat with required fields
+            heartbeat_document = {
+                'id': f"telegram_heartbeat_{self.config.node_name}_{int(datetime.now().timestamp())}",
+                'source': 'telegram',
+                'source_type': 'telegram',
+                'type': 'heartbeat',
+                'title': f'Telegram Sensor Heartbeat - {self.config.node_name}',
+                'content': json.dumps(heartbeat_data),
+                'url': f"telegram://{self.config.channel_username}",
+                'metadata': {
+                    "sensor_type": "telegram",
+                    "node_name": self.config.node_name,
+                    "channel": self.config.channel_username
+                }
+            }
 
-            # Create bundle
-            bundle = document_to_bundle(
-                content=json.dumps(heartbeat_data),
-                source_rid=heartbeat_rid,
-                document_type="heartbeat",
-                metadata={"sensor_type": "telegram"}
-            )
+            # Create bundle - this will auto-generate the RID
+            bundle = document_to_bundle(heartbeat_document)
 
             # Emit event
             await self.koi_node.emit_new_event(bundle)

@@ -26,7 +26,7 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 - ✅ **GitLab Sensor v2**: Documentation monitoring with continuous polling
 - ✅ **Medium Sensor**: RSS feed monitoring with continuous polling
 - ✅ **Discourse Sensor**: Forum monitoring with continuous polling
-- ✅ **Telegram Sensor v2**: Real-time channel monitoring
+- ✅ **Telegram Sensor v2**: Real-time channel monitoring (see [setup guide](docs/TELEGRAM_SENSOR_SETUP.md))
 - ✅ **Twitter Sensor**: Web scraping with Playwright, continuous polling
 - ✅ **Discord Sensor**: Real-time message monitoring (bot token required)
 - ✅ **Podcast Sensor**: RSS feed monitoring with continuous polling
@@ -260,6 +260,14 @@ koi-sensors/
 - **Integration**: Complete KOI Event Bridge support with RID generation
 - **Status**: Ready for production with provided integration secret
 
+### 💬 **Telegram Sensor v2** ✅ COMPLETE
+- **Coverage**: Real-time Telegram channel/group monitoring
+- **Features**: Message content extraction, media attachment handling, forward tracking
+- **Bot Integration**: Uses Telegram Bot API with dedicated bot token
+- **RID Generation**: Full support for telegram source_type with proper document fields
+- **Setup Guide**: [Complete documentation](docs/TELEGRAM_SENSOR_SETUP.md)
+- **Status**: Production-ready, monitoring Regen Network public channel
+
 ### 🐦 **Additional Sensors** 📋 PLANNED
 - **Twitter Sensor**: Real-time tweet monitoring (files exist, needs completion)
 - **Discord Sensor**: Message monitoring (waiting for bot channel approval)
@@ -326,27 +334,6 @@ websites:
 - **Research expansion**: Successfully added 3 new research sites
 - **Podcast integration**: Aligned with existing 52 transcripts (428,113+ words)
 - **Historical Episode Analysis**: Episode 22 (2020) exists but not in current feeds - expected behavior
-
-## 🎯 Roadmap
-
-### **Phase 1** ✅ COMPLETE
-- [x] KOI protocol core implementation (100% compliant)
-- [x] Website sensor with comprehensive testing (9/9 websites, 100% success)
-- [x] Podcast sensor with SoundCloud integration (67/70 episodes, 95.7% success)
-- [x] Docker deployment ready for both sensors
-- [x] Server integration alignment (proven collection methods preserved)
-
-### **Phase 2** 🔄 READY FOR INTEGRATION
-- [ ] Coordinator-Processor bridge (`/process-koi-event` endpoint)
-- [ ] Apache Jena integration (replace Neo4j references)
-- [ ] Production deployment testing
-- [ ] Deep crawling implementation (233+ URLs → hundreds of documents)
-
-### **Phase 3** 🎯 PLANNED
-- [ ] Twitter sensor implementation
-- [ ] Discord sensor with bot permissions
-- [ ] Notion sensor with API integration
-- [ ] Full multi-sensor orchestration
 
 ## 🤝 Integration Requirements
 
