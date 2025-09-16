@@ -8,6 +8,8 @@ import asyncio
 import httpx
 import json
 import hashlib
+import logging
+import traceback
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +23,16 @@ from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.rid_system import RID
 from koi_protocol.core.bundle_system import Bundle, document_to_bundle
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('discourse_sensor.log', mode='a'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger('discourse_sensor')
 
 class DiscourseSensor:
     """
@@ -96,7 +108,8 @@ class DiscourseSensor:
                 return []
                 
         except Exception as e:
-            print(f"Error fetching categories: {e}")
+            logger.error(f"Error fetching categories from {forum_url}: {e}")
+            logger.debug(traceback.format_exc())
             return []
     
     async def fetch_topics(self, forum_url: str, category: Optional[str] = None, page: int = 0) -> List[Dict]:
@@ -136,7 +149,8 @@ class DiscourseSensor:
                 return []
                 
         except Exception as e:
-            print(f"Error fetching topics: {e}")
+            logger.error(f"Error fetching topics from {forum_url}: {e}")
+            logger.debug(traceback.format_exc())
             return []
     
     async def fetch_topic_content(self, forum_url: str, topic_id: int) -> Optional[Dict]:
@@ -163,7 +177,8 @@ class DiscourseSensor:
                 return None
                 
         except Exception as e:
-            print(f"Error fetching topic {topic_id}: {e}")
+            logger.error(f"Error fetching topic {topic_id} from {forum_url}: {e}")
+            logger.debug(traceback.format_exc())
             return None
     
     def extract_text_from_html(self, html: str) -> str:
@@ -445,6 +460,8 @@ class DiscourseSensor:
                 docs = await self.collect_forum(forum_config, limit_per_forum)
                 all_documents.extend(docs)
             except Exception as e:
+                logger.error(f"Error collecting from {forum_config['name']}: {e}")
+                logger.debug(traceback.format_exc())
                 print(f"❌ Error collecting from {forum_config['name']}: {e}")
         
         print("\n" + "=" * 60)
@@ -503,11 +520,15 @@ class DiscourseSensor:
                     await self.koi_node.emit_new_event(bundle)
 
                 except Exception as e:
+                    logger.error(f"Error sending document to KOI: {e}")
+                    logger.debug(traceback.format_exc())
                     print(f"   ⚠️ Error sending document to KOI: {e}")
 
             print(f"   📡 Sent {len(documents)} documents to KOI coordinator")
 
         except Exception as e:
+            logger.error(f"Error connecting to KOI coordinator: {e}")
+            logger.debug(traceback.format_exc())
             print(f"   ❌ Error connecting to KOI coordinator: {e}")
 
     async def send_heartbeat(self, response_to: Optional[str] = None):
@@ -557,6 +578,8 @@ class DiscourseSensor:
                 print("   💓 Sent heartbeat to KOI coordinator")
 
         except Exception as e:
+            logger.error(f"Error sending heartbeat: {e}")
+            logger.debug(traceback.format_exc())
             print(f"   ⚠️ Error sending heartbeat: {e}")
 
     async def send_periodic_heartbeats(self):
@@ -570,6 +593,8 @@ class DiscourseSensor:
                 print("🛑 Periodic heartbeat task cancelled")
                 break
             except Exception as e:
+                logger.error(f"Error in periodic heartbeat: {e}")
+                logger.debug(traceback.format_exc())
                 print(f"❌ Error in periodic heartbeat: {e}")
 
     async def handle_coordinator_events(self):
@@ -600,6 +625,8 @@ class DiscourseSensor:
                 print("🛑 Coordinator event handler cancelled")
                 break
             except Exception as e:
+                logger.error(f"Error handling coordinator events: {e}")
+                logger.debug(traceback.format_exc())
                 print(f"❌ Error handling coordinator events: {e}")
                 await asyncio.sleep(30)
 
@@ -639,10 +666,18 @@ async def main():
                 print("\n🛑 Received interrupt signal, shutting down...")
                 break
             except Exception as e:
+                logger.error(f"Error in collection cycle: {e}")
+                logger.error(f"Full traceback: {traceback.format_exc()}")
                 print(f"❌ Error in collection cycle: {e}")
                 print(f"⏰ Retrying in {poll_interval} seconds...")
                 await asyncio.sleep(poll_interval)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        logger.info("Starting Discourse Sensor")
+        asyncio.run(main())
+    except Exception as e:
+        logger.critical(f"Fatal error in discourse sensor: {e}")
+        logger.critical(traceback.format_exc())
+        sys.exit(1)

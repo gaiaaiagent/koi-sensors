@@ -137,7 +137,7 @@ class WebsiteKOISensor:
                 'content': json.dumps(heartbeat_data),
                 'metadata': {
                     'sensor_type': 'websites',
-                    'sensor_id': self.config.node_name,
+                    'sensor_id': self.config.koi_net.node_name,
                     'event_type': 'HEARTBEAT'
                 }
             }

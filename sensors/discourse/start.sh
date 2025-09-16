@@ -17,7 +17,7 @@ if [ -f "$SCRIPT_DIR/../../.env" ]; then
 fi
 
 if [ "$1" == "--background" ] || [ "$1" == "-b" ]; then
-    nohup python3 discourse_sensor.py > discourse_sensor.log 2>&1 &
+    nohup python3 discourse_sensor.py >> discourse_sensor.log 2>&1 &
     echo "✅ Discourse sensor started (PID: $!)"
 else
     echo "Starting Discourse Sensor..."

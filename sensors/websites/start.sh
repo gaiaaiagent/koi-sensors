@@ -27,7 +27,7 @@ fi
 # Check if running in background
 if [ "$1" == "--background" ] || [ "$1" == "-b" ]; then
     echo "Starting Website sensor in background..."
-    nohup python3 website_sensor.py > website_sensor.log 2>&1 &
+    nohup python3 website_sensor.py >> website_sensor.log 2>&1 &
     PID=$!
     echo "✅ Website sensor started (PID: $PID)"
     echo "   Log: $SCRIPT_DIR/website_sensor.log"

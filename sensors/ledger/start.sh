@@ -26,7 +26,7 @@ done
 echo "🚀 Starting Ledger sensor..."
 
 if [ "$BACKGROUND" = true ]; then
-    nohup python3 ledger_sensor.py > ledger_sensor.log 2>&1 &
+    nohup python3 ledger_sensor.py >> ledger_sensor.log 2>&1 &
     echo "✅ Ledger sensor started in background (PID: $!)"
     echo "📝 Logs: tail -f ledger_sensor.log"
 else

@@ -33,7 +33,7 @@ done
 echo "🚀 Starting Discord sensor..."
 
 if [ "$BACKGROUND" = true ]; then
-    nohup python3 discord_sensor.py > discord_sensor.log 2>&1 &
+    nohup python3 discord_sensor.py >> discord_sensor.log 2>&1 &
     echo "✅ Discord sensor started in background (PID: $!)"
     echo "📝 Logs: tail -f discord_sensor.log"
 else
