@@ -8,7 +8,7 @@ This file provides guidance to Claude Code when working specifically in the koi-
 - **Health Monitoring**: Smart Hybrid system with 30-min heartbeats and on-demand ping
 - **Coordinator**: Running on port 8005 with event routing and sensor tracking
 - **Dashboard**: Live at https://regen.gaiaai.xyz/koi showing real-time sensor status
-- **Twitter Sensor**: Uses `twitter_sensor_v2.py` (NOT the playwright scraper)
+- **Twitter Sensor**: Uses `twitter_sensor_koi.py` (Playwright-based, no auth required)
 
 ## 🔧 CRITICAL: Dependency Management Rules
 

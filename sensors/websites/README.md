@@ -7,6 +7,9 @@ Website monitoring sensor for the KOI (Knowledge Organization Infrastructure) pr
 - **KOI Protocol Compliance**: Full compatibility with KOI-net specification
 - **Content Change Detection**: Hash-based monitoring for efficient updates
 - **Publication Date Extraction**: Site-specific patterns for extracting dates with confidence scoring
+- **Comprehensive Crawling**: Automatic link discovery with configurable max_pages limit (no depth restrictions)
+- **Video Transcription**: Automatic detection and transcription of embedded videos using Whisper AI
+- **Modern Content Extraction**: Enhanced support for div-based sites and JavaScript-rendered content
 - **Proven Scraping Methods**: Based on successful server patterns (86.4% success rate)
 - **Configurable Monitoring**: YAML-based configuration for flexible website monitoring
 - **Docker Ready**: Complete containerization with health checks and logging
@@ -62,7 +65,7 @@ websites:
   - name: docs-regen-network          # Config identifier
     url: https://docs.regen.network   # Base URL
     check_interval: 3600              # Check every hour
-    max_depth: 3                      # Crawl depth
+    max_pages: 1000                  # Maximum pages to crawl (no depth limit)
     priority: high                    # Processing priority
 ```
 

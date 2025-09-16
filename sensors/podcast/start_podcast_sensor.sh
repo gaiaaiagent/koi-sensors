@@ -22,7 +22,7 @@ export PYTHONPATH="$SCRIPT_DIR/../..:$PYTHONPATH"
 # Check if running in background
 if [ "$1" == "--background" ]; then
     echo "Starting Podcast sensor in background..."
-    nohup python3 run_podcast_sensor.py > podcast_sensor.log 2>&1 &
+    nohup python3 podcast_sensor.py > podcast_sensor.log 2>&1 &
     PID=$!
     echo "✅ Podcast sensor started (PID: $PID)"
     echo "   Log file: $SCRIPT_DIR/podcast_sensor.log"
@@ -31,5 +31,5 @@ else
     echo "================================"
     echo "Starting Podcast Sensor"
     echo "================================"
-    python3 run_podcast_sensor.py
+    python3 podcast_sensor.py
 fi

@@ -17,9 +17,9 @@ if [ -f "$SCRIPT_DIR/../../.env" ]; then
 fi
 
 if [ "$1" == "--background" ] || [ "$1" == "-b" ]; then
-    nohup python3 telegram_sensor_v2.py > telegram_sensor_v2.log 2>&1 &
+    nohup python3 telegram_sensor_fixed.py > telegram_sensor.log 2>&1 &
     echo "✅ Telegram sensor started (PID: $!)"
 else
     echo "Starting Telegram Sensor..."
-    python3 telegram_sensor_v2.py
+    python3 telegram_sensor_fixed.py
 fi

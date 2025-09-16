@@ -551,3 +551,35 @@ PODCAST_CONFIG = {
         "notes": "Full transcription available via server implementation"
     }
 }
+
+
+async def main():
+    """Main entry point for podcast sensor"""
+    import logging
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    
+    # Initialize sensor
+    sensor = PodcastKOISensor(
+        node_id="podcast-sensor-001",
+        coordinator_url="http://localhost:8005"
+    )
+    
+    # Start monitoring
+    await sensor.start_monitoring()
+    
+    try:
+        # Run continuous monitoring
+        while True:
+            await asyncio.sleep(3600)  # Check every hour
+    except KeyboardInterrupt:
+        print("\\nShutting down podcast sensor...")
+    finally:
+        await sensor.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

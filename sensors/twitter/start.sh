@@ -17,9 +17,9 @@ if [ -f "$SCRIPT_DIR/../../.env" ]; then
 fi
 
 if [ "$1" == "--background" ] || [ "$1" == "-b" ]; then
-    nohup python3 twitter_sensor_v2.py > twitter_sensor.log 2>&1 &
-    echo "✅ Twitter sensor started (PID: $!)"
+    nohup python3 twitter_sensor_koi.py > twitter_sensor.log 2>&1 &
+    echo "✅ Twitter sensor (Playwright KOI - no auth required) started (PID: $!)"
 else
-    echo "Starting Twitter Sensor (KOI v2)..."
-    python3 twitter_sensor_v2.py
+    echo "Starting Twitter Sensor (Playwright KOI - no auth required)..."
+    python3 twitter_sensor_koi.py
 fi

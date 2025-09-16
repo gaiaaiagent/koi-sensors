@@ -19,86 +19,18 @@ from koi_protocol.core.rid_system import RID
 from koi_protocol.core.bundle_system import Bundle, document_to_bundle
 from shared.config.base import BaseSensorConfig, APIConfig
 
+try:
+    from video_transcriber import VideoTranscriber
+except ImportError:
+    # Video transcriber is optional
+    VideoTranscriber = None
+
 
 class WebsiteMonitorConfig(BaseSensorConfig):
     """Website monitoring sensor configuration"""
-    
+
     # Website monitoring settings (excluding forums which are handled by Discourse sensor)
-    websites: List[Dict[str, Any]] = [
-        {
-            "name": "regen-network",
-            "url": "https://regen.network",
-            "strategy": "scrape",
-            "max_depth": 2,
-            "check_interval": 3600,  # Check hourly
-            "importance": "high",
-            "notes": "Main Regen Network website"
-        },
-        {
-            "name": "docs-regen-network",
-            "url": "https://docs.regen.network",
-            "strategy": "scrape",
-            "max_depth": 3,
-            "check_interval": 3600,  # Check hourly
-            "importance": "high",
-            "notes": "Technical documentation"
-        },
-        {
-            "name": "guides-regen-network", 
-            "url": "https://guides.regen.network",
-            "strategy": "scrape",
-            "max_depth": 3,
-            "check_interval": 3600,
-            "importance": "high",
-            "notes": "User guides and tutorials"
-        },
-        {
-            "name": "registry-regen-network",
-            "url": "https://registry.regen.network",
-            "strategy": "hybrid",
-            "max_depth": 2,
-            "check_interval": 1800,  # Check every 30 mins (more dynamic)
-            "importance": "critical",
-            "notes": "Credit classes, methodologies, projects"
-        },
-        {
-            "name": "regen-foundation",
-            "url": "https://www.regen.foundation",
-            "strategy": "scrape",
-            "max_depth": 2,
-            "paths": ["/publications", "/initiatives", "/"],
-            "check_interval": 7200,  # Check every 2 hours
-            "importance": "medium",
-            "notes": "Foundation updates, curated documents"
-        },
-        {
-            "name": "research-retreat-papers",
-            "url": "https://www.researchretreat.org/papers",
-            "strategy": "scrape",
-            "max_depth": 2,
-            "check_interval": 21600,  # Check every 6 hours (academic papers change slowly)
-            "importance": "high",
-            "notes": "Academic research papers on regenerative topics - high value content"
-        },
-        {
-            "name": "desci-com",
-            "url": "https://desci.com",
-            "strategy": "scrape",
-            "max_depth": 2,
-            "check_interval": 21600,  # Check every 6 hours
-            "importance": "medium",
-            "notes": "Decentralized science platform"
-        },
-        {
-            "name": "regen-tokenomics",
-            "url": "https://regentokenomics.org",
-            "strategy": "scrape",
-            "max_depth": 2,
-            "check_interval": 7200,  # Check every 2 hours
-            "importance": "high",
-            "notes": "Tokenomics research and documentation"
-        }
-    ]
+    websites: List[Dict[str, Any]] = []  # Will be loaded from config.yaml or passed in __init__
     
     # Scraping behavior
     max_concurrent: int = 3
@@ -108,7 +40,7 @@ class WebsiteMonitorConfig(BaseSensorConfig):
     
     # Content filtering
     min_content_length: int = 200
-    exclude_extensions: List[str] = ['.pdf', '.jpg', '.png', '.gif', '.zip', '.mp4', '.mp3']
+    exclude_extensions: List[str] = ['.pdf', '.jpg', '.png', '.gif', '.zip', '.mp3']  # Removed .mp4 for video processing
     include_content_types: List[str] = ['text/html', 'application/xhtml+xml']
 
 
@@ -141,6 +73,17 @@ class WebsiteKOISensor:
         self.monitored_pages: Dict[str, Dict[str, Any]] = {}
         self.page_hashes: Dict[str, str] = {}  # URL -> content hash
         self.crawl_queues: Dict[str, Set[str]] = {}  # domain -> URLs to crawl
+        self.pages_crawled: Dict[str, int] = {}  # domain -> count of pages crawled
+        self.video_queue: List[Dict[str, Any]] = []  # Queue for videos to transcribe
+
+        # Initialize video transcriber if available
+        self.video_transcriber = None
+        if VideoTranscriber:
+            try:
+                self.video_transcriber = VideoTranscriber()
+                self.logger.info("Video transcription enabled")
+            except Exception as e:
+                self.logger.warning(f"Could not initialize video transcriber: {e}")
         
         # HTTP session
         self.session: Optional[aiohttp.ClientSession] = None
@@ -173,7 +116,7 @@ class WebsiteKOISensor:
         try:
             heartbeat_data = {
                 "type": "sensor_heartbeat",
-                "sensor_id": self.config.node_name,
+                "sensor_id": "website-sensor",
                 "sensor_type": "websites",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "status": "active",
@@ -225,7 +168,7 @@ class WebsiteKOISensor:
                 if event.get('type') == 'PING_REQUEST':
                     # Check if this ping is for us
                     target = event.get('target')
-                    if target == self.config.node_name or target == 'websites-sensor' or target == 'all':
+                    if target == 'website-sensor' or target == 'websites-sensor' or target == 'all':
                         self.logger.info(f"Received ping request, responding...")
                         await self.send_heartbeat_event(response_to=event.get('id'))
         except Exception as e:
@@ -266,6 +209,7 @@ class WebsiteKOISensor:
         for website in self.config.websites:
             domain = urlparse(website["url"]).netloc
             self.crawl_queues[domain] = set()
+            self.pages_crawled[domain] = 0
             
             # Add initial URLs to queue
             if "paths" in website:
@@ -284,12 +228,71 @@ class WebsiteKOISensor:
         # Wait for all monitoring tasks
         await asyncio.gather(*tasks)
     
+    async def process_video_queue(self):
+        """Process videos in the queue"""
+        if not self.video_transcriber or not self.video_queue:
+            return
+
+        while self.video_queue:
+            video_info = self.video_queue.pop(0)
+            try:
+                self.logger.info(f"Processing video from {video_info['source_page']}")
+                result = await self.video_transcriber.process_video(video_info)
+
+                if result and result.get('transcript'):
+                    # Create a document for the transcript
+                    doc = {
+                        'id': f"video_transcript_{hashlib.sha256(video_info['url'].encode()).hexdigest()[:16]}",
+                        'source': video_info['source_page'],
+                        'source_type': 'video_transcript',
+                        'url': video_info['url'],
+                        'title': f"Video Transcript: {video_info.get('title', 'Video')}",
+                        'content': result['transcript'],
+                        'author': 'Video Transcription',
+                        'tags': ['video', 'transcript', urlparse(video_info['source_page']).netloc],
+                        'collected_at': datetime.now(timezone.utc).isoformat(),
+                        'last_modified': datetime.now(timezone.utc).isoformat(),
+                        'metadata': {
+                            'video_type': video_info['type'],
+                            'source_page': video_info['source_page'],
+                            'transcribed_at': result.get('transcribed_at')
+                        }
+                    }
+
+                    # Emit as KOI event
+                    await self.emit_video_transcript_event(doc)
+
+            except Exception as e:
+                self.logger.error(f"Error processing video {video_info.get('url')}: {e}")
+
+    async def emit_video_transcript_event(self, doc: Dict[str, Any]):
+        """Emit KOI event for video transcript"""
+        try:
+            # Create bundle
+            bundle = document_to_bundle(doc)
+
+            # Emit event
+            await self.emit_new_event(bundle)
+            self.logger.info(f"Emitted video transcript event for {doc['url']}")
+
+        except Exception as e:
+            self.logger.error(f"Error emitting video transcript event: {e}")
+
     async def stop(self):
         """Stop website monitoring sensor"""
         self.logger.info("Stopping Website KOI Sensor")
-        
+
+        # Process remaining videos
+        if self.video_queue:
+            self.logger.info(f"Processing {len(self.video_queue)} remaining videos...")
+            await self.process_video_queue()
+
         if self.session:
             await self.session.close()
+
+        # Cleanup video transcriber
+        if self.video_transcriber:
+            self.video_transcriber.cleanup()
         
         await self.koi_node.stop()
     
@@ -304,7 +307,12 @@ class WebsiteKOISensor:
             try:
                 # Crawl and check for changes
                 await self.crawl_website(website_config)
-                
+
+                # Process any queued videos after crawling
+                if self.video_queue and self.video_transcriber:
+                    self.logger.info(f"Processing {len(self.video_queue)} videos from {domain}")
+                    await self.process_video_queue()
+
                 self.logger.debug(f"Completed crawl cycle for {domain}")
                 
                 # Wait for next check
@@ -317,13 +325,17 @@ class WebsiteKOISensor:
     async def crawl_website(self, website_config: Dict[str, Any]):
         """Crawl a website and detect changes"""
         domain = urlparse(website_config["url"]).netloc
-        max_depth = website_config.get("max_depth", 2)
+        max_depth = website_config.get("max_depth", 2)  # Still passed but not used for limiting
+        max_pages = website_config.get("max_pages", 1000)  # Default to 1000 pages
         strategy = website_config.get("strategy", "scrape")
-        
+
         # Get URLs to process
         urls_to_process = list(self.crawl_queues[domain])
         if not urls_to_process:
             urls_to_process = [website_config["url"]]
+            self.logger.info(f"No URLs in queue for {domain}, using initial URL: {website_config['url']}")
+        else:
+            self.logger.info(f"Processing {len(urls_to_process)} URLs from queue for {domain}")
         
         processed_count = 0
         new_urls = set()
@@ -342,13 +354,16 @@ class WebsiteKOISensor:
                         # Add discovered URLs
                         if result.get("discovered_urls"):
                             new_urls.update(result["discovered_urls"])
-                    
+                            self.logger.debug(f"Discovered {len(result['discovered_urls'])} URLs from {url}")
+                    else:
+                        self.logger.warning(f"No result from processing {url}")
+
                     # Rate limiting
                     if self.config.request_delay > 0:
                         await asyncio.sleep(self.config.request_delay)
                         
                 except Exception as e:
-                    self.logger.error(f"Error processing {url}: {e}")
+                    self.logger.error(f"Error processing {url}: {e}", exc_info=True)
         
         # Process initial URLs
         tasks = []
@@ -362,13 +377,17 @@ class WebsiteKOISensor:
         # Update crawl queue with new URLs for next cycle
         if new_urls and len(self.crawl_queues[domain]) < 100:  # Limit queue size
             self.crawl_queues[domain].update(new_urls)
-        
+            self.logger.info(f"Added {len(new_urls)} new URLs to queue for {domain}, queue now has {len(self.crawl_queues[domain])} URLs")
+
         self.logger.info(f"Crawled {domain}: {processed_count} pages processed, {len(new_urls)} new URLs discovered")
     
     async def process_page(self, url: str, depth: int, max_depth: int, strategy: str) -> Optional[Dict[str, Any]]:
         """Process a single web page"""
-        
-        if depth > max_depth:
+
+        # Check if we've reached the page limit
+        domain = urlparse(url).netloc
+        if domain in self.pages_crawled and self.pages_crawled[domain] >= 1000:  # Hard limit at 1000 for now
+            self.logger.debug(f"Reached page limit for {domain}, skipping {url}")
             return None
         
         if not self.session:
@@ -412,19 +431,29 @@ class WebsiteKOISensor:
             await self.emit_page_event(url, text_content, soup, 
                                      "NEW" if previous_hash is None else "UPDATE")
             
-            # Update hash
+            # Update hash and increment page count
             self.page_hashes[url] = content_hash
+            if domain in self.pages_crawled:
+                self.pages_crawled[domain] += 1
         
-        # Discover new URLs if within depth limit
-        discovered_urls = set()
-        if depth < max_depth:
-            discovered_urls = self.extract_internal_urls(soup, url)
-        
+        # Always discover internal URLs (no depth limit)
+        discovered_urls = self.extract_internal_urls(soup, url)
+
+        # Extract video URLs if enabled for this site
+        video_urls = []
+        if strategy != 'discourse_api':  # Don't extract videos from discourse API
+            video_urls = self.extract_video_urls(soup, url)
+            if video_urls:
+                self.logger.info(f"Found {len(video_urls)} videos on {url}")
+                # Add to video queue for processing
+                self.video_queue.extend(video_urls)
+
         return {
             "url": url,
             "content_length": len(text_content),
             "content_changed": content_changed,
-            "discovered_urls": discovered_urls
+            "discovered_urls": discovered_urls,
+            "video_urls": video_urls
         }
     
     def extract_clean_content(self, soup: BeautifulSoup, url: str) -> str:
@@ -446,8 +475,8 @@ class WebsiteKOISensor:
         paragraphs = []
 
         # Process only direct text-containing elements, not nested ones
-        # Start with headers and paragraphs
-        for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p']):
+        # Start with headers, paragraphs, and divs with meaningful content
+        for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'article', 'section', 'main']):
             text = element.get_text(separator=' ', strip=True)
             if text and len(text) > 5:  # Keep most content, skip only tiny fragments
                 # Clean up the text
@@ -502,17 +531,17 @@ class WebsiteKOISensor:
     
     def extract_internal_urls(self, soup: BeautifulSoup, base_url: str) -> Set[str]:
         """Extract internal URLs from page"""
-        
+
         base_domain = urlparse(base_url).netloc
         discovered_urls = set()
-        
+
         for link in soup.find_all('a', href=True):
             href = link['href']
-            
+
             # Convert relative URLs to absolute
             full_url = urljoin(base_url, href)
             parsed = urlparse(full_url)
-            
+
             # Only include same-domain URLs
             if parsed.netloc == base_domain:
                 # Filter out unwanted extensions
@@ -520,8 +549,67 @@ class WebsiteKOISensor:
                     # Remove fragment and query parameters for cleaner URLs
                     clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
                     discovered_urls.add(clean_url)
-        
+
         return discovered_urls
+
+    def extract_video_urls(self, soup: BeautifulSoup, base_url: str) -> List[Dict[str, str]]:
+        """Extract video URLs from page including YouTube/Vimeo embeds and direct mp4 links"""
+        videos = []
+
+        # Look for direct video links
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            if href.lower().endswith('.mp4'):
+                full_url = urljoin(base_url, href)
+                videos.append({
+                    'type': 'direct',
+                    'url': full_url,
+                    'source_page': base_url,
+                    'title': link.get_text(strip=True) or 'Video'
+                })
+
+        # Look for video tags
+        for video in soup.find_all('video'):
+            src = video.get('src')
+            if src:
+                full_url = urljoin(base_url, src)
+                videos.append({
+                    'type': 'embedded',
+                    'url': full_url,
+                    'source_page': base_url,
+                    'title': 'Embedded Video'
+                })
+            # Check source tags within video
+            for source in video.find_all('source'):
+                src = source.get('src')
+                if src and src.lower().endswith('.mp4'):
+                    full_url = urljoin(base_url, src)
+                    videos.append({
+                        'type': 'embedded',
+                        'url': full_url,
+                        'source_page': base_url,
+                        'title': 'Embedded Video'
+                    })
+
+        # Look for YouTube iframes
+        for iframe in soup.find_all('iframe'):
+            src = iframe.get('src', '')
+            if 'youtube.com' in src or 'youtu.be' in src:
+                videos.append({
+                    'type': 'youtube',
+                    'url': src,
+                    'source_page': base_url,
+                    'title': iframe.get('title', 'YouTube Video')
+                })
+            elif 'vimeo.com' in src:
+                videos.append({
+                    'type': 'vimeo',
+                    'url': src,
+                    'source_page': base_url,
+                    'title': iframe.get('title', 'Vimeo Video')
+                })
+
+        return videos
     
     async def emit_page_event(self, url: str, content: str, soup: BeautifulSoup, event_type: str):
         """Emit KOI event for web page"""
@@ -741,6 +829,52 @@ async def main():
     poll_interval = int(os.getenv('WEBSITE_POLL_INTERVAL', 1800))
 
     from shared.config.base import KoiNetConfig, MonitoringConfig
+    from pathlib import Path
+    import yaml
+
+    # Load configuration from YAML file
+    config_path = Path(__file__).parent / "config.yaml"
+    websites_config = []
+
+    if config_path.exists():
+        print(f"Loading websites from config.yaml at {config_path}")
+        with open(config_path, 'r') as f:
+            yaml_config = yaml.safe_load(f)
+            websites_config = yaml_config.get('websites', [])
+            print(f"Loaded {len(websites_config)} websites from config.yaml")
+            # Convert to expected format
+            for site in websites_config:
+                site['check_interval'] = site.get('check_interval', poll_interval)
+                print(f"  - {site.get('name', 'unknown')}: {site.get('url', 'no-url')}")
+    else:
+        print(f"WARNING: Config file not found at {config_path}, using fallback")
+        # Fallback to hardcoded config
+        websites_config = [
+            {
+                "name": "docs-regen-network",
+                "url": "https://docs.regen.network",
+                "strategy": "scrape",
+                "max_depth": 3,
+                "check_interval": poll_interval,
+                "importance": "high"
+            },
+            {
+                "name": "guides-regen-network",
+                "url": "https://guides.regen.network",
+                "strategy": "scrape",
+                "max_depth": 3,
+                "check_interval": poll_interval,
+                "importance": "high"
+            },
+            {
+                "name": "registry-regen-network",
+                "url": "https://registry.regen.network",
+                "strategy": "hybrid",
+                "max_depth": 2,
+                "check_interval": poll_interval,
+                "importance": "critical"
+            }
+        ]
 
     # Configuration matching server patterns
     config = WebsiteMonitorConfig(
@@ -754,32 +888,7 @@ async def main():
         monitoring=MonitoringConfig(
             log_level="INFO"
         ),
-        websites=[
-            {
-                "name": "docs-regen-network",
-                "url": "https://docs.regen.network",
-                "strategy": "scrape",
-                "max_depth": 3,
-                "check_interval": poll_interval,  # Use env variable
-                "importance": "high"
-            },
-            {
-                "name": "guides-regen-network",
-                "url": "https://guides.regen.network",
-                "strategy": "scrape",
-                "max_depth": 3,
-                "check_interval": poll_interval,  # Use env variable
-                "importance": "high"
-            },
-            {
-                "name": "registry-regen-network",
-                "url": "https://registry.regen.network",
-                "strategy": "hybrid",
-                "max_depth": 2,
-                "check_interval": poll_interval,  # Use env variable for consistency
-                "importance": "critical"
-            }
-        ]
+        websites=websites_config
     )
 
     sensor = WebsiteKOISensor(config)

@@ -1,14 +1,14 @@
 # Twitter Sensor for KOI Network
 
-Twitter/X monitoring sensor using the Twitter API v2 with KOI protocol integration.
+Twitter/X monitoring sensor using Playwright browser automation (no authentication required) with KOI protocol integration.
 
 ## Current Implementation
 
-**Active File**: `twitter_sensor_v2.py` - KOI-compliant sensor with heartbeat support
+**Active File**: `twitter_sensor_koi.py` - KOI-compliant sensor using Playwright for scraping without API authentication
 
 ## Features
 
-- ✅ **Twitter API v2 Integration** - Uses official API with bearer token authentication
+- ✅ **No Authentication Required** - Uses Playwright browser automation instead of API
 - ✅ **KOI Protocol Compliance** - Full event emission with RID support
 - ✅ **Smart Health Monitoring** - 30-minute heartbeats with ping response capability
 - ✅ **Multiple Collection Modes**:
@@ -16,12 +16,14 @@ Twitter/X monitoring sensor using the Twitter API v2 with KOI protocol integrati
   - Hashtag monitoring
   - User timeline monitoring
 - ✅ **Automatic Registration** - Registers with coordinator on startup
-- ✅ **Passive Mode Support** - Runs without API token for heartbeat/ping only
+- ✅ **Date Extraction** - Extracts tweet timestamps for temporal filtering
+- ✅ **No Rate Limits** - Browser automation bypasses API rate limiting
 
 ## Prerequisites
 
 - Python 3.8+
-- Twitter API Bearer Token (optional, but required for data collection)
+- Playwright browser drivers (installed automatically by setup.sh)
+- No API keys or authentication required
 
 ## Installation
 
@@ -29,11 +31,10 @@ Twitter/X monitoring sensor using the Twitter API v2 with KOI protocol integrati
 # Navigate to sensor directory
 cd sensors/twitter
 
-# Run setup script
+# Run setup script (installs Playwright browsers)
 ./setup.sh
 
-# Configure environment variables
-export TWITTER_BEARER_TOKEN="your-bearer-token-here"
+# No API tokens needed!
 ```
 
 ## Configuration
@@ -45,8 +46,8 @@ The sensor monitors these by default:
 
 Configure via environment variables:
 ```bash
-TWITTER_BEARER_TOKEN=your-token-here
 KOI_COORDINATOR_URL=http://localhost:8005
+# No Twitter API token needed
 ```
 
 ## Usage
@@ -72,24 +73,40 @@ The sensor implements the Smart Hybrid health monitoring system:
 
 ## Output Format
 
-Emits KOI events with Twitter-specific RIDs:
-```
-orn:twitter.tweet.{user_id}.{tweet_id}
-orn:twitter.user.{user_id}
+Emits KOI events with Twitter-specific RIDs and includes publication dates:
+```json
+{
+  "rid": "orn:twitter.tweet.{user_id}.{tweet_id}",
+  "metadata": {
+    "published_at": "2025-09-15T12:00:00Z",
+    "published_confidence": 0.95
+  }
+}
 ```
 
-## Limitations
+## Advantages over API approach
 
-- Requires Twitter API Bearer Token for data collection
-- Subject to Twitter API rate limits
-- Can only access public tweets
+- **No Authentication** - Works without Twitter API keys
+- **No Rate Limits** - Browser automation isn't subject to API quotas
+- **Always Available** - Continues working even if API access is restricted
+- **Real-time Dates** - Extracts exact timestamps from tweet elements
 
 ## Files
 
-- `twitter_sensor_v2.py` - Main sensor implementation
-- `start.sh` - Startup script
-- `setup.sh` - Environment setup
+- `twitter_sensor_koi.py` - Main Playwright-based sensor implementation
+- `twitter_sensor_v2.py` - Alternative API-based implementation (requires auth)
+- `twitter_scraper_playwright.py` - Standalone Playwright scraper library
+- `start.sh` - Startup script (launches twitter_sensor_koi.py)
+- `setup.sh` - Environment setup including Playwright browser installation
 - `requirements.txt` - Python dependencies
+
+## Troubleshooting
+
+If tweets aren't being collected:
+1. Check Playwright browsers are installed: `playwright install chromium`
+2. Verify the sensor is running: `ps aux | grep twitter_sensor_koi`
+3. Check logs for errors: `tail -f twitter_sensor.log`
+4. Ensure network connectivity to twitter.com
 
 ## Support
 

@@ -9,11 +9,16 @@ import asyncio
 import json
 import hashlib
 import re
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from urllib.parse import quote
 import sys
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Add parent directories to path for imports
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -44,23 +49,38 @@ class TwitterKOISensor:
         self.browser = None
         self.context = None
         self.page = None
-        
-        # Twitter accounts to monitor
-        self.accounts = [
-            "regen_network",
-            "RegenFoundation",
-            "RegenProposed",
-            "RNDRegistry"
-        ]
-        
-        # Search queries for relevant content
-        self.search_queries = [
-            "regen network",
-            "regen registry",
-            "#RegenNetwork",
-            "carbon credits blockchain",
-            "eco credits"
-        ]
+
+        # Twitter accounts to monitor - read from environment or use defaults
+        env_accounts = os.getenv("TWITTER_ACCOUNTS", "")
+        if env_accounts:
+            self.accounts = [acc.strip() for acc in env_accounts.split(",")]
+        else:
+            self.accounts = [
+                "regen_network",
+                "RegenFoundation",
+                "RegenProposed",
+                "RNDRegistry"
+            ]
+
+        # Search queries for relevant content - read from environment or use defaults
+        env_hashtags = os.getenv("TWITTER_HASHTAGS", "")
+        if env_hashtags:
+            # Convert hashtags to search queries
+            self.search_queries = [tag.strip() for tag in env_hashtags.split(",")]
+            # Add some default search queries
+            self.search_queries.extend([
+                "regen network",
+                "regen registry",
+                "carbon credits blockchain"
+            ])
+        else:
+            self.search_queries = [
+                "regen network",
+                "regen registry",
+                "#RegenNetwork",
+                "carbon credits blockchain",
+                "eco credits"
+            ]
         
         # Initialize KOI node for sending events
         self.koi_node = KOIPartialNode(
@@ -81,7 +101,58 @@ class TwitterKOISensor:
         """Generate RID for content using SHA-256 hash"""
         hash_obj = hashlib.sha256(content.encode('utf-8'))
         return hash_obj.hexdigest()[:16]
-    
+
+    async def send_heartbeat_event(self, response_to: str = None):
+        """Send a heartbeat event to register with coordinator"""
+        try:
+            # Create a heartbeat data
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor": "twitter",
+                "node_id": "twitter-sensor",
+                "timestamp": datetime.now().isoformat(),
+                "status": "active",
+                "monitoring": self.accounts + [f"search:{q}" for q in self.search_queries],
+                "tweets_processed": len(self.processed_tweets)
+            }
+
+            # Add response_to if this is a ping response
+            if response_to:
+                heartbeat_data["response_to"] = response_to
+
+            # Create document for heartbeat
+            heartbeat_doc = {
+                'id': f"twitter_heartbeat_{int(datetime.now().timestamp())}",
+                'title': 'Twitter Sensor Heartbeat',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now().isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'twitter',
+                    'sensor_id': 'twitter-sensor',
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_doc)
+            await self.koi_node.emit_new_event(bundle)
+
+            if not response_to:
+                print(f"💓 Sent heartbeat event to coordinator")
+            else:
+                print(f"📡 Responded to ping request {response_to}")
+
+        except Exception as e:
+            print(f"❌ Error sending heartbeat: {e}")
+
+    async def send_periodic_heartbeats(self):
+        """Send periodic heartbeats to stay registered"""
+        while True:
+            await asyncio.sleep(1800)  # Send heartbeat every 30 minutes
+            await self.send_heartbeat_event()
+
     async def initialize_browser(self):
         """Initialize Playwright browser and context"""
         try:
@@ -351,7 +422,10 @@ class TwitterKOISensor:
                 'metrics': tweet.get('metrics', {}),
                 'source_type': tweet.get('source_type'),
                 'source_user': tweet.get('source_user'),
-                'search_query': tweet.get('search_query')
+                'search_query': tweet.get('search_query'),
+                # Publication date for daily/weekly digests
+                'published_at': created_at,
+                'published_confidence': 0.95  # High confidence from Twitter timestamps
             }
         }
         
@@ -415,7 +489,13 @@ class TwitterKOISensor:
         
         # Start KOI node
         await self.koi_node.start()
-        
+
+        # Send initial heartbeat to register
+        await self.send_heartbeat_event()
+
+        # Start background heartbeat task
+        asyncio.create_task(self.send_periodic_heartbeats())
+
         # Initialize browser
         await self.initialize_browser()
         

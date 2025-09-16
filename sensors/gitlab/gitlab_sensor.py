@@ -22,6 +22,7 @@ class GitLabConfig:
     """GitLab sensor configuration"""
     repos: List[Dict[str, Any]]
     koi_bridge_url: str = "http://localhost:8200/process-koi-event"
+    koi_coordinator_url: str = "http://localhost:8005"
     source_sensor: str = "gitlab-sensor"
     
     # File patterns to index
@@ -57,9 +58,10 @@ class GitLabSensor:
         self.logger = logger or logging.getLogger(__name__)
         self.temp_dir = Path(tempfile.mkdtemp(prefix="gitlab_sensor_"))
         self.logger.info(f"Using temp directory: {self.temp_dir}")
-        
+
         # Track processed documents
         self.processed_rids = set()
+        self.documents_sent = 0
     
     async def collect_all_repos(self) -> List[Dict[str, Any]]:
         """
@@ -415,15 +417,95 @@ class GitLabSensor:
                             f"{result.get('embeddings_created')} embeddings"
                         )
                         success_count += 1
+                        self.documents_sent += 1
                     else:
                         self.logger.error(f"Failed to send {doc['rid']}: {response.status_code}")
-                        
+
             except Exception as e:
                 self.logger.error(f"Error sending document {doc.get('rid', 'unknown')}: {e}")
                 continue
-        
+
         return success_count
-    
+
+    async def send_heartbeat_event(self, response_to: str = None):
+        """Send a heartbeat event to register with coordinator"""
+        heartbeat_data = {
+            "type": "sensor_heartbeat",
+            "sensor_id": "gitlab-sensor",
+            "sensor_type": "gitlab",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "status": "active",
+            "monitoring": [repo["name"] for repo in self.config.repos],
+            "documents_sent": self.documents_sent
+        }
+
+        if response_to:
+            heartbeat_data["response_to"] = response_to
+
+        # Create bundle
+        bundle = {
+            "rid": f"gitlab:heartbeat:{datetime.now().timestamp()}",
+            "cid": hashlib.sha256(json.dumps(heartbeat_data).encode()).hexdigest(),
+            "content": heartbeat_data,
+            "metadata": {"type": "heartbeat"},
+            "manifest": {
+                "version": "1.0.0",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "source": "gitlab-sensor"
+            }
+        }
+
+        # Create event
+        event = {
+            "event_type": "HEARTBEAT",
+            "source_sensor": "gitlab-sensor",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "bundle": bundle
+        }
+
+        # Send to coordinator
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{self.config.koi_coordinator_url}/events/broadcast",
+                    json=event
+                )
+                if response.status_code == 200:
+                    self.logger.info(f"Sent heartbeat to coordinator (response_to: {response_to})")
+                else:
+                    self.logger.error(f"Failed to send heartbeat: {response.status_code}")
+        except Exception as e:
+            self.logger.error(f"Error sending heartbeat: {e}")
+
+    async def register_with_coordinator(self):
+        """Register with coordinator on startup"""
+        await self.send_heartbeat_event()
+        self.logger.info("Registered with coordinator")
+
+    async def send_periodic_heartbeats(self):
+        """Send periodic heartbeats to stay registered"""
+        while True:
+            await asyncio.sleep(1800)  # Every 30 minutes
+            await self.send_heartbeat_event()
+
+    async def handle_coordinator_events(self):
+        """Handle events from coordinator (ping requests)"""
+        async with httpx.AsyncClient() as client:
+            sse_url = f"{self.config.koi_coordinator_url}/events/stream?sensor_id=gitlab-sensor"
+            try:
+                async with client.stream('GET', sse_url) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith('data: '):
+                            try:
+                                event_data = json.loads(line[6:])
+                                if event_data.get('event_type') == 'PING':
+                                    self.logger.info("Received ping from coordinator")
+                                    await self.send_heartbeat_event(response_to=event_data.get('ping_id'))
+                            except json.JSONDecodeError:
+                                continue
+            except Exception as e:
+                self.logger.error(f"Error handling coordinator events: {e}")
+
     def cleanup(self):
         """Clean up temporary directory"""
         try:
@@ -434,14 +516,49 @@ class GitLabSensor:
             self.logger.warning(f"Failed to clean up temp directory: {e}")
 
 
+async def run_sensor_continuous(sensor):
+    """Run sensor with continuous monitoring and heartbeats"""
+    try:
+        # Register with coordinator
+        await sensor.register_with_coordinator()
+
+        # Start background tasks
+        heartbeat_task = asyncio.create_task(sensor.send_periodic_heartbeats())
+        events_task = asyncio.create_task(sensor.handle_coordinator_events())
+
+        while True:
+            # Collect and send documents
+            sensor.logger.info("Starting GitLab repository collection...")
+            documents = await sensor.collect_all_repos()
+
+            if documents:
+                try:
+                    success_count = await sensor.send_to_koi(documents)
+                    sensor.logger.info(f"Successfully sent {success_count}/{len(documents)} documents to KOI")
+                except Exception as e:
+                    sensor.logger.warning(f"Could not send to KOI: {e}")
+
+            # Wait before next collection (1 hour)
+            await asyncio.sleep(3600)
+
+    except KeyboardInterrupt:
+        sensor.logger.info("Shutting down GitLab sensor...")
+        heartbeat_task.cancel()
+        events_task.cancel()
+    except Exception as e:
+        sensor.logger.error(f"Sensor error: {e}")
+    finally:
+        sensor.cleanup()
+
+
 async def main():
-    """Test the GitLab sensor"""
+    """Run the GitLab sensor"""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     logger = logging.getLogger(__name__)
-    
+
     # Configure repositories
     config = GitLabConfig(
         repos=[
@@ -453,40 +570,11 @@ async def main():
             }
         ]
     )
-    
+
     sensor = GitLabSensor(config, logger)
-    
-    try:
-        # Collect documents
-        logger.info("Starting GitLab repository collection...")
-        documents = await sensor.collect_all_repos()
-        
-        # Save to file for inspection
-        output_dir = Path("test_outputs")
-        output_dir.mkdir(exist_ok=True)
-        
-        output_file = output_dir / f"gitlab_docs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(output_file, 'w') as f:
-            json.dump(documents, f, indent=2)
-        
-        logger.info(f"Saved {len(documents)} documents to {output_file}")
-        
-        # List whitepapers found
-        whitepapers = [d for d in documents if d.get("metadata", {}).get("document_type") == "whitepaper"]
-        if whitepapers:
-            logger.info(f"Found {len(whitepapers)} whitepapers:")
-            for wp in whitepapers:
-                logger.info(f"  - {wp['file_path']}")
-        
-        # Send to KOI if bridge is running
-        try:
-            success_count = await sensor.send_to_koi(documents)
-            logger.info(f"Successfully sent {success_count}/{len(documents)} documents to KOI")
-        except Exception as e:
-            logger.warning(f"Could not send to KOI (bridge may not be running): {e}")
-        
-    finally:
-        sensor.cleanup()
+
+    # Run continuous monitoring with heartbeats
+    await run_sensor_continuous(sensor)
 
 
 if __name__ == "__main__":
