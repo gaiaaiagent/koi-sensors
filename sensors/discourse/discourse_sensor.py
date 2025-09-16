@@ -530,8 +530,24 @@ class DiscourseSensor:
             if response_to:
                 heartbeat_data["response_to"] = response_to
 
-            # Create bundle from heartbeat data
-            bundle = document_to_bundle(heartbeat_data, source_node="discourse-sensor")
+            # Create proper document structure for heartbeat
+            heartbeat_document = {
+                'id': f"discourse_heartbeat_{int(datetime.now().timestamp())}",
+                'source': 'discourse_sensor',
+                'source_type': 'heartbeat',
+                'title': 'Discourse Sensor Heartbeat',
+                'url': '',
+                'content': json.dumps(heartbeat_data),
+                'timestamp': datetime.now().isoformat(),
+                'metadata': {
+                    'sensor_type': 'discourse',
+                    'sensor_id': 'discourse-sensor',
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Create bundle from heartbeat document
+            bundle = document_to_bundle(heartbeat_document, source_node="discourse-sensor")
 
             # Emit event
             await self.koi_node.emit_new_event(bundle)
