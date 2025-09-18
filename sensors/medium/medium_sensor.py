@@ -562,15 +562,55 @@ class MediumKOISensor:
         if title_tag:
             article_data["title"] = title_tag.get_text().strip()
         
-        # Extract author
+        # Extract author - Medium has multiple patterns
         author_meta = soup.find('meta', {'name': 'author'}) or soup.find('meta', {'property': 'article:author'})
         if author_meta:
             article_data["author"] = author_meta.get('content', '')
         else:
-            # Try to find author in page structure
-            author_elem = soup.find('a', {'rel': 'author'}) or soup.find('span', class_=re.compile('author'))
+            # Try various Medium-specific patterns
+            # Pattern 1: Look for author link with data-testid
+            author_elem = soup.find('a', {'data-testid': 'authorName'})
             if author_elem:
                 article_data["author"] = author_elem.get_text().strip()
+            else:
+                # Pattern 2: Look for author in rel="author"
+                author_elem = soup.find('a', {'rel': 'author'})
+                if author_elem:
+                    article_data["author"] = author_elem.get_text().strip()
+                else:
+                    # Pattern 3: Look for author class patterns
+                    author_elem = soup.find('span', class_=re.compile('author|byline'))
+                    if author_elem:
+                        article_data["author"] = author_elem.get_text().strip()
+                    else:
+                        # Pattern 4: Extract from JSON-LD structured data
+                        json_ld = soup.find('script', {'type': 'application/ld+json'})
+                        if json_ld:
+                            try:
+                                import json
+                                data = json.loads(json_ld.string)
+                                if isinstance(data, dict):
+                                    if 'author' in data:
+                                        if isinstance(data['author'], dict):
+                                            article_data["author"] = data['author'].get('name', '')
+                                        elif isinstance(data['author'], str):
+                                            article_data["author"] = data['author']
+                                    elif '@graph' in data:
+                                        # Sometimes Medium uses @graph structure
+                                        for item in data['@graph']:
+                                            if item.get('@type') == 'Person':
+                                                article_data["author"] = item.get('name', '')
+                                                break
+                            except:
+                                pass
+
+                        # Pattern 5: Last resort - look for "Written by" text
+                        if not article_data["author"]:
+                            written_by = soup.find(text=re.compile(r'Written by'))
+                            if written_by and written_by.parent:
+                                next_elem = written_by.parent.find_next_sibling()
+                                if next_elem:
+                                    article_data["author"] = next_elem.get_text().strip()
         
         # Extract published date
         time_elem = soup.find('time')
@@ -662,13 +702,19 @@ class MediumKOISensor:
                 "title": article_data.get("title", "Untitled"),
                 "content": article_data["content"],
                 "metadata": {
+                    # Core metadata fields for provenance
+                    "title": article_data.get("title", "Untitled"),
+                    "author": article_data.get("author", "Unknown"),
+                    "url": url,
+                    "source_name": source_name,
+                    "source_type": "blog",
+
                     # Publication date metadata for Daily Curator
                     "published_at": article_data.get("published_date"),
+                    "published_date": article_data.get("published_date"),
                     "published_confidence": 0.9 if article_data.get("published_date") else 0.0,
 
-                    # Original metadata
-                    "author": article_data.get("author", ""),
-                    "published_date": article_data.get("published_date"),
+                    # Additional metadata
                     "read_time": article_data.get("read_time", ""),
                     "description": article_data.get("description", ""),
                     "tags": all_tags,
@@ -678,7 +724,6 @@ class MediumKOISensor:
                 },
                 "collected_at": datetime.now(timezone.utc).isoformat(),
                 "last_modified": article_data.get("published_date"),
-                "author": article_data.get("author"),
                 "tags": all_tags
             }
             

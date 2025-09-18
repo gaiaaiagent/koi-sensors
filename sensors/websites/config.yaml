@@ -126,6 +126,16 @@ websites:
     current_status: "crawling successfully - automatic link discovery working"
     notes: "Tokenomics research and documentation - weekly meetup notes with videos"
 
+  - name: regen-handbook
+    url: https://handbook.regen.network/
+    strategy: scrape
+    max_depth: 2
+    max_pages: 1000
+    check_interval: 7200
+    priority: high
+    current_status: "not yet crawled"
+    notes: "Handbook / Docs for Regen Registry"
+
 # Processing settings
 processing:
   user_agent: "KOI-Sensor-WebsiteMonitor/1.0"

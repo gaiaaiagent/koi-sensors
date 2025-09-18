@@ -39,8 +39,15 @@ class EventBroadcastRequest(BaseModel):
     data: Optional[Dict[str, Any]] = None
 
 
+class DeliveryConfirmationRequest(BaseModel):
+    node_id: str
+    event_ids: List[str]
+    timestamp: str
+
+
 class EventPollResponse(BaseModel):
     events: List[Dict[str, Any]]
+    event_ids: List[str]  # IDs of the events for delivery confirmation
     node_id: str
     timestamp: str
 
@@ -60,6 +67,12 @@ class RIDSFetchResponse(BaseModel):
     count: int
 
 
+class DeliveryConfirmationResponse(BaseModel):
+    confirmed_count: int
+    node_id: str
+    timestamp: str
+
+
 class HealthResponse(BaseModel):
     status: str
     node_id: str
@@ -68,6 +81,7 @@ class HealthResponse(BaseModel):
     cache_size: int
     event_queue_size: int
     connected_sensors: int
+    delivery_stats: Optional[Dict[str, Any]] = None
 
 
 class KOICoordinator:
@@ -223,10 +237,10 @@ class KOICoordinator:
                 
                 # Also broadcast to connected nodes
                 await self.koi_node.broadcast_event(event)
-                
-                # Forward to processor bridge
-                self.logger.debug(f"Forwarding event to processor bridge")
-                await self._forward_to_processor(event)
+
+                # Note: Processor forwarding is now handled via polling pattern
+                # The forwarder polls /events/poll and forwards to semantic bridge
+                # await self._forward_to_processor(event)
                 
                 self.logger.info(f"Broadcast {event.event_type} event for {event.rid}")
                 
@@ -245,26 +259,49 @@ class KOICoordinator:
         ):
             """Poll for new events (KOI-net endpoint)"""
             try:
-                # Get queued events
-                events = self.koi_node.get_queued_events(max_events)
-                
+                # Get queued events for this specific node (tracks delivery)
+                events, event_ids = self.koi_node.get_queued_events_for_delivery(node_id, max_events)
+
                 # Convert events to dict format
                 event_dicts = [event.to_dict() for event in events]
-                
-                # Clear processed events
-                self.koi_node.clear_event_queue(len(events))
-                
+
+                # Log delivery (but don't clear - events only cleared on confirmation)
+                if events:
+                    self.logger.info(f"Delivering {len(events)} events to {node_id} (IDs: {event_ids[:3]}...)")
+
                 # Add node as subscriber
                 self.koi_node.add_event_subscriber(node_id)
-                
+
                 return EventPollResponse(
                     events=event_dicts,
+                    event_ids=event_ids,  # Return event IDs for confirmation
                     node_id=self.koi_node.node_id,
                     timestamp=datetime.now(timezone.utc).isoformat()
                 )
-                
+
             except Exception as e:
                 self.logger.error(f"Error polling events: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/events/confirm", response_model=DeliveryConfirmationResponse)
+        async def confirm_delivery(
+            request: DeliveryConfirmationRequest
+        ):
+            """Confirm delivery of events by a node (KOI-net endpoint)"""
+            try:
+                # Confirm delivery of events
+                confirmed_count = self.koi_node.confirm_delivery(request.node_id, request.event_ids)
+
+                self.logger.info(f"Node {request.node_id} confirmed {confirmed_count} events")
+
+                return DeliveryConfirmationResponse(
+                    confirmed_count=confirmed_count,
+                    node_id=self.koi_node.node_id,
+                    timestamp=datetime.now(timezone.utc).isoformat()
+                )
+
+            except Exception as e:
+                self.logger.error(f"Error confirming delivery: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.get("/bundles/fetch/{rid}", response_model=BundleFetchResponse)
@@ -325,7 +362,8 @@ class KOICoordinator:
                 uptime_seconds=uptime,
                 cache_size=len(self.koi_node.cache),
                 event_queue_size=len(self.koi_node.event_queue),
-                connected_sensors=len(self.sensor_adapters) + len(self.broadcast_sensors)
+                connected_sensors=len(self.sensor_adapters) + len(self.broadcast_sensors),
+                delivery_stats=self.koi_node.get_delivery_stats()
             )
         
         # Additional management endpoints

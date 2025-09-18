@@ -322,64 +322,92 @@ class TwitterKOISensor:
                 return 0
     
     async def scrape_user_timeline(self, username: str, max_tweets: int = 10) -> List[Dict]:
-        """Scrape tweets from a user's timeline"""
+        """Scrape tweets from a user's timeline with retry logic"""
         tweets = []
-        
-        try:
-            # Navigate to user profile
-            url = f"https://twitter.com/{username}"
-            print(f"   📍 Navigating to {url}")
-            await self.page.goto(url, wait_until='networkidle')
-            
-            # Wait and scroll to load tweets
-            await self.wait_and_scroll(self.page)
-            
-            # Extract tweets
-            tweet_elements = await self.page.query_selector_all('article[data-testid="tweet"]')
-            
-            for element in tweet_elements[:max_tweets]:
-                tweet_data = await self.extract_tweet_data(element)
-                if tweet_data:
-                    tweet_data['source_type'] = 'timeline'
-                    tweet_data['source_user'] = username
-                    tweets.append(tweet_data)
-            
-            print(f"   ✅ Collected {len(tweets)} tweets from @{username}")
-            
-        except Exception as e:
-            print(f"   ❌ Error scraping @{username}: {e}")
-        
+        max_retries = 2
+
+        for attempt in range(max_retries):
+            try:
+                # Navigate to user profile
+                url = f"https://twitter.com/{username}"
+                print(f"   📍 Navigating to {url} (attempt {attempt + 1}/{max_retries})")
+                await self.page.goto(url, wait_until='domcontentloaded', timeout=60000)
+
+                # Wait a bit for dynamic content
+                await asyncio.sleep(3)
+
+                # Wait and scroll to load tweets
+                await self.wait_and_scroll(self.page)
+
+                # Extract tweets
+                tweet_elements = await self.page.query_selector_all('article[data-testid="tweet"]')
+
+                for element in tweet_elements[:max_tweets]:
+                    tweet_data = await self.extract_tweet_data(element)
+                    if tweet_data:
+                        tweet_data['source_type'] = 'timeline'
+                        tweet_data['source_user'] = username
+                        tweets.append(tweet_data)
+
+                if tweets:
+                    print(f"   ✅ Collected {len(tweets)} tweets from @{username}")
+                    break
+                elif attempt < max_retries - 1:
+                    print(f"   ⚠️ No tweets found, retrying...")
+                    await asyncio.sleep(5)
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"   ⚠️ Error on attempt {attempt + 1}, retrying: {e}")
+                    await asyncio.sleep(5)
+                else:
+                    print(f"   ❌ Error scraping @{username} after {max_retries} attempts: {e}")
+
         return tweets
     
     async def scrape_search(self, query: str, max_tweets: int = 10) -> List[Dict]:
-        """Scrape tweets from search results"""
+        """Scrape tweets from search results with retry logic"""
         tweets = []
-        
-        try:
-            # Build search URL
-            encoded_query = quote(query)
-            url = f"https://twitter.com/search?q={encoded_query}&src=typed_query&f=live"
-            print(f"   🔍 Searching for: {query}")
-            await self.page.goto(url, wait_until='networkidle')
-            
-            # Wait and scroll to load tweets
-            await self.wait_and_scroll(self.page)
-            
-            # Extract tweets
-            tweet_elements = await self.page.query_selector_all('article[data-testid="tweet"]')
-            
-            for element in tweet_elements[:max_tweets]:
-                tweet_data = await self.extract_tweet_data(element)
-                if tweet_data:
-                    tweet_data['source_type'] = 'search'
-                    tweet_data['search_query'] = query
-                    tweets.append(tweet_data)
-            
-            print(f"   ✅ Found {len(tweets)} tweets for query: {query}")
-            
-        except Exception as e:
-            print(f"   ❌ Error searching for '{query}': {e}")
-        
+        max_retries = 2
+
+        for attempt in range(max_retries):
+            try:
+                # Build search URL
+                encoded_query = quote(query)
+                url = f"https://twitter.com/search?q={encoded_query}&src=typed_query&f=live"
+                print(f"   🔍 Searching for: {query} (attempt {attempt + 1}/{max_retries})")
+                await self.page.goto(url, wait_until='domcontentloaded', timeout=60000)
+
+                # Wait a bit for dynamic content
+                await asyncio.sleep(3)
+
+                # Wait and scroll to load tweets
+                await self.wait_and_scroll(self.page)
+
+                # Extract tweets
+                tweet_elements = await self.page.query_selector_all('article[data-testid="tweet"]')
+
+                for element in tweet_elements[:max_tweets]:
+                    tweet_data = await self.extract_tweet_data(element)
+                    if tweet_data:
+                        tweet_data['source_type'] = 'search'
+                        tweet_data['search_query'] = query
+                        tweets.append(tweet_data)
+
+                if tweets:
+                    print(f"   ✅ Found {len(tweets)} tweets for query: {query}")
+                    break
+                elif attempt < max_retries - 1:
+                    print(f"   ⚠️ No tweets found, retrying...")
+                    await asyncio.sleep(5)
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"   ⚠️ Error on attempt {attempt + 1}, retrying: {e}")
+                    await asyncio.sleep(5)
+                else:
+                    print(f"   ❌ Error searching for '{query}' after {max_retries} attempts: {e}")
+
         return tweets
     
     def process_tweet_to_document(self, tweet: Dict) -> Optional[Dict]:

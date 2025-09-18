@@ -11,10 +11,11 @@ import hashlib
 import logging
 import traceback
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 import sys
+import time
 
 # Add parent directories to path for imports
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -51,6 +52,10 @@ class DiscourseSensor:
             poll_interval=30
         )
 
+        # Rate limiting to avoid 429 errors
+        self.last_request_time = 0
+        self.min_request_interval = 1.0  # Minimum 1 second between requests
+
         self.forums = [
             {
                 'name': 'forum.regen.network',
@@ -72,15 +77,23 @@ class DiscourseSensor:
     def generate_rid(self, content: str) -> str:
         """
         Generate RID for content using SHA-256 hash
-        
+
         Args:
             content: Content to hash
-            
+
         Returns:
             RID string (first 16 chars of hex hash)
         """
         hash_obj = hashlib.sha256(content.encode('utf-8'))
         return hash_obj.hexdigest()[:16]
+
+    async def rate_limit(self):
+        """Enforce rate limiting to avoid 429 errors"""
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        if time_since_last < self.min_request_interval:
+            await asyncio.sleep(self.min_request_interval - time_since_last)
+        self.last_request_time = time.time()
     
     async def fetch_categories(self, forum_url: str) -> List[Dict]:
         """
@@ -93,6 +106,7 @@ class DiscourseSensor:
             List of category objects
         """
         try:
+            await self.rate_limit()  # Apply rate limiting
             response = await self.client.get(
                 f"{forum_url}/categories.json",
                 headers={'User-Agent': 'Regen-KOI-Sensor/1.0'}
@@ -134,7 +148,8 @@ class DiscourseSensor:
             # Add pagination
             if page > 0:
                 endpoint += f"?page={page}"
-            
+
+            await self.rate_limit()  # Apply rate limiting
             response = await self.client.get(
                 endpoint,
                 headers={'User-Agent': 'Regen-KOI-Sensor/1.0'}
@@ -155,27 +170,73 @@ class DiscourseSensor:
     
     async def fetch_topic_content(self, forum_url: str, topic_id: int) -> Optional[Dict]:
         """
-        Fetch full topic content including all posts
-        
+        Fetch full topic content including ALL posts using pagination
+
         Args:
             forum_url: Base forum URL
             topic_id: Topic ID
-            
+
         Returns:
-            Topic data with posts
+            Topic data with all posts
         """
         try:
+            # First fetch to get initial posts and metadata
+            await self.rate_limit()  # Apply rate limiting
             response = await self.client.get(
                 f"{forum_url}/t/{topic_id}.json",
                 headers={'User-Agent': 'Regen-KOI-Sensor/1.0'}
             )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
+
+            if response.status_code != 200:
                 print(f"Failed to fetch topic {topic_id}: {response.status_code}")
                 return None
-                
+
+            topic_data = response.json()
+            posts_count = topic_data.get('posts_count', 0)
+            current_posts = topic_data.get('post_stream', {}).get('posts', [])
+
+            # If we have all posts already, return
+            if len(current_posts) >= posts_count:
+                return topic_data
+
+            # Fetch remaining posts in batches
+            # The API returns ~20 posts at a time when using /t/{id}/{post_number}.json
+            while len(current_posts) < posts_count:
+                # Start from the next post after what we have
+                next_post_num = len(current_posts) + 1
+
+                await self.rate_limit()  # Apply rate limiting
+                response = await self.client.get(
+                    f"{forum_url}/t/{topic_id}/{next_post_num}.json",
+                    headers={'User-Agent': 'Regen-KOI-Sensor/1.0'}
+                )
+
+                if response.status_code != 200:
+                    # No more posts available
+                    break
+
+                batch_data = response.json()
+                new_posts = batch_data.get('post_stream', {}).get('posts', [])
+
+                if not new_posts:
+                    break
+
+                # Add new posts that we don't have yet
+                existing_ids = {p['id'] for p in current_posts}
+                for post in new_posts:
+                    if post['id'] not in existing_ids:
+                        current_posts.append(post)
+
+                # If we didn't get any new posts, avoid infinite loop
+                if len(new_posts) == 0:
+                    break
+
+            # Update the topic data with all posts
+            topic_data['post_stream']['posts'] = current_posts
+            print(f"        Fetched {len(current_posts)}/{posts_count} posts for topic {topic_id}")
+
+            return topic_data
+
         except Exception as e:
             logger.error(f"Error fetching topic {topic_id} from {forum_url}: {e}")
             logger.debug(traceback.format_exc())
@@ -237,15 +298,122 @@ class DiscourseSensor:
         
         return list(set(tags))
     
-    async def process_topic(self, forum_name: str, forum_url: str, topic: Dict) -> Optional[Dict]:
+    async def process_posts_as_documents(self, forum_name: str, forum_url: str, topic: Dict) -> List[Dict]:
         """
-        Process a single topic and create KOI document
-        
+        Process a topic and create individual documents for each post
+
         Args:
             forum_name: Name of the forum
             forum_url: Base forum URL
             topic: Topic metadata
-            
+
+        Returns:
+            List of KOI documents (one per post)
+        """
+        topic_id = topic['id']
+        topic_slug = topic.get('slug', '')
+        topic_url_full = f"{forum_url}/t/{topic_slug}/{topic_id}"
+
+        # Fetch full topic content
+        topic_data = await self.fetch_topic_content(forum_url, topic_id)
+        if not topic_data:
+            return []
+
+        # Extract posts
+        posts = topic_data.get('post_stream', {}).get('posts', [])
+        if not posts:
+            return []
+
+        topic_title = topic_data.get('title', 'Untitled')
+        topic_tags = self.extract_tags(topic_data, "")  # Get topic-level tags
+
+        documents = []
+
+        # Create a document for each post
+        for post in posts:
+            post_id = post.get('id')
+            post_number = post.get('post_number', 0)
+
+            # Skip if already processed
+            post_key = f"{forum_name}:{topic_id}:post_{post_number}"
+            if post_key in self.processed_topics:
+                continue
+
+            # Extract post data
+            username = post.get('username', 'anonymous')
+            created = post.get('created_at', '')
+            html_content = post.get('cooked', '')
+
+            # Parse post date
+            post_date = None
+            if created:
+                try:
+                    post_date = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                except:
+                    post_date = datetime.now(timezone.utc)
+            else:
+                post_date = datetime.now(timezone.utc)
+
+            # Convert HTML to text
+            text = self.extract_text_from_html(html_content)
+
+            # Generate unique RID for this post
+            rid = self.generate_rid(f"{forum_name}:{topic_id}:post_{post_number}:{username}:{created}")
+
+            # Create document for this individual post
+            document = {
+                'id': f"{forum_name}_{topic_id}_post_{post_number}",
+                'rid': rid,
+                'source': f'discourse:{forum_name}',
+                'source_type': 'forum-post',
+                'url': f"{topic_url_full}/{post_number}",
+                'title': f"Re: {topic_title}" if post_number > 1 else topic_title,
+                'content': text,
+                'author': username,
+                'timestamp': post_date.isoformat(),
+                'metadata': {
+                    # Publication date for this specific post
+                    'published_at': post_date.isoformat(),
+                    'published_confidence': 0.95,
+
+                    # Topic context
+                    'forum': forum_name,
+                    'topic_id': topic_id,
+                    'topic_title': topic_title,
+                    'topic_url': topic_url_full,
+                    'post_id': post_id,
+                    'post_number': post_number,
+                    'is_first_post': post_number == 1,
+
+                    # Post metadata
+                    'reply_to_post_number': post.get('reply_to_post_number'),
+                    'reply_count': post.get('reply_count', 0),
+                    'reads': post.get('reads', 0),
+                    'readers_count': post.get('readers_count', 0),
+                    'score': post.get('score', 0),
+                    'like_count': post.get('like_count', 0),
+
+                    # Inherit topic tags
+                    'tags': topic_tags,
+                    'category': topic_data.get('category_id')
+                }
+            }
+
+            documents.append(document)
+            self.processed_topics.add(post_key)
+
+        return documents
+
+    async def process_topic(self, forum_name: str, forum_url: str, topic: Dict) -> Optional[Dict]:
+        """
+        Process a single topic and create KOI document
+        (Legacy method kept for backwards compatibility)
+
+        Args:
+            forum_name: Name of the forum
+            forum_url: Base forum URL
+            topic: Topic metadata
+
         Returns:
             KOI document or None
         """
@@ -270,19 +438,31 @@ class DiscourseSensor:
         # Build content
         title = topic_data.get('title', 'Untitled')
         content_parts = [f"# {title}\n"]
-        
-        # Process posts (limit to first 30 for reasonable size)
-        for post in posts[:30]:
+
+        # Track the latest post date for published_at
+        latest_post_date = None
+
+        # Process all posts (no limit - we want complete discussion threads)
+        for post in posts:
             username = post.get('username', 'anonymous')
             created = post.get('created_at', '')
             html_content = post.get('cooked', '')
-            
+
+            # Track latest post date
+            if created:
+                try:
+                    post_date = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                    if not latest_post_date or post_date > latest_post_date:
+                        latest_post_date = post_date
+                except:
+                    pass
+
             # Convert HTML to text
             text = self.extract_text_from_html(html_content)
-            
+
             # Format post
             content_parts.append(f"\n## Post by {username} ({created})\n{text}\n")
-        
+
         content = '\n'.join(content_parts)
         
         # Create document
@@ -294,7 +474,7 @@ class DiscourseSensor:
         # Extract tags
         tags = self.extract_tags(topic_data, content)
         
-        # Parse date
+        # Parse dates
         created_at = None
         if topic_data.get('created_at'):
             try:
@@ -303,17 +483,22 @@ class DiscourseSensor:
                 ).isoformat()
             except:
                 created_at = datetime.now().isoformat()
-        
-        # Extract updated_at if available
-        updated_at = None
-        if topic_data.get('updated_at'):
+
+        # Use the latest post date as the published_at date
+        # This ensures recent activity is captured in daily digests
+        published_at = None
+        if latest_post_date:
+            published_at = latest_post_date.isoformat()
+        elif topic_data.get('last_posted_at'):
             try:
-                updated_at = datetime.fromisoformat(
-                    topic_data['updated_at'].replace('Z', '+00:00')
+                published_at = datetime.fromisoformat(
+                    topic_data['last_posted_at'].replace('Z', '+00:00')
                 ).isoformat()
             except:
-                updated_at = created_at
-        
+                published_at = created_at
+        else:
+            published_at = created_at
+
         document = {
             'id': f"{forum_name}_{topic_id}",  # Add id field for RID generation
             'rid': rid,
@@ -323,12 +508,13 @@ class DiscourseSensor:
             'title': title,
             'content': content,
             'author': posts[0].get('username') if posts else 'anonymous',
-            'timestamp': created_at or datetime.now().isoformat(),
+            'timestamp': published_at or datetime.now().isoformat(),  # Use latest activity
             'metadata': {
                 # Publication date metadata for Daily Curator
-                'published_at': created_at,  # Discourse API provides exact timestamps
+                'published_at': published_at,  # Latest post date for recent activity
                 'published_confidence': 0.95,  # High confidence for API data
-                'last_modified': updated_at,
+                'topic_created_at': created_at,  # Original topic creation
+                'last_modified': published_at,
                 
                 'forum': forum_name,
                 'topic_id': topic_id,
@@ -400,46 +586,17 @@ class DiscourseSensor:
                 for topic in topics:
                     if topics_collected >= limit:
                         break
-                    
-                    doc = await self.process_topic(forum_name, forum_url, topic)
-                    if doc:
-                        documents.append(doc)
+
+                    # Get individual post documents for this topic
+                    post_docs = await self.process_posts_as_documents(forum_name, forum_url, topic)
+                    if post_docs:
+                        documents.extend(post_docs)
                         topics_collected += 1
-                        print(f"      ✅ Collected: {doc['title'][:50]}...")
+                        print(f"      ✅ Collected {len(post_docs)} posts from: {topic.get('title', 'Untitled')[:50]}...")
         
-        print(f"   📊 Total topics collected: {len(documents)}")
+        print(f"   📊 Total posts collected: {len(documents)} from {topics_collected} topics")
         return documents
     
-    async def send_to_koi(self, documents: List[Dict]) -> bool:
-        """
-        Send documents to KOI Event Bridge
-        
-        Args:
-            documents: List of documents to send
-            
-        Returns:
-            True if successful
-        """
-        success_count = 0
-        
-        for doc in documents:
-            event_data = {
-                'event_type': 'discourse_topic',
-                'source': doc['source'],
-                'timestamp': doc['timestamp'],
-                'data': doc
-            }
-            
-            success = await self.koi_client.send_event(
-                event_type='discourse_topic',
-                data=event_data
-            )
-            
-            if success:
-                success_count += 1
-        
-        print(f"\n📤 Sent {success_count}/{len(documents)} documents to KOI Event Bridge")
-        return success_count == len(documents)
     
     async def run(self, limit_per_forum: int = 20):
         """
@@ -508,21 +665,42 @@ class DiscourseSensor:
             # Send each document as an event
             for doc in documents:
                 try:
-                    # Create RID for the discourse post
-                    forum = doc.get('source', 'discourse').replace(':', '_').replace('.', '_')
-                    topic_id = doc.get('id', hashlib.md5(doc.get('title', '').encode()).hexdigest()[:8])
-                    rid = RID("orn", f"discourse.{forum}.topic.{topic_id}")
+                    # Use the RID from the document if available
+                    if 'rid' in doc:
+                        rid_str = doc['rid']
+                    else:
+                        # Create RID for the discourse post using document ID
+                        doc_id = doc.get('id', '').replace(':', '_').replace('.', '_')
+                        rid_str = f"discourse_{doc_id}"
 
-                    # Create bundle from document
-                    bundle = document_to_bundle(doc, source_node="discourse-sensor")
+                    # Ensure required fields for KOI bundle
+                    if 'content' not in doc or not doc['content']:
+                        doc['content'] = doc.get('title', 'No content')
+
+                    # Ensure content is a string
+                    if not isinstance(doc['content'], str):
+                        doc['content'] = str(doc['content'])
+
+                    # Ensure rid field exists
+                    if 'rid' not in doc or not doc['rid']:
+                        doc['rid'] = rid_str
+
+                    try:
+                        bundle = document_to_bundle(doc, source_node="discourse-sensor")
+                    except Exception as bundle_error:
+                        logger.error(f"Bundle creation failed for {doc.get('id')}: {bundle_error}")
+                        logger.error(f"Document structure: {list(doc.keys())}")
+                        continue
 
                     # Emit event
                     await self.koi_node.emit_new_event(bundle)
 
                 except Exception as e:
                     logger.error(f"Error sending document to KOI: {e}")
+                    logger.error(f"Document ID: {doc.get('id', 'NO_ID')}")
+                    logger.error(f"Document keys: {list(doc.keys())}")
                     logger.debug(traceback.format_exc())
-                    print(f"   ⚠️ Error sending document to KOI: {e}")
+                    print(f"   ⚠️ Error sending document {doc.get('id', 'NO_ID')} to KOI: {e}")
 
             print(f"   📡 Sent {len(documents)} documents to KOI coordinator")
 

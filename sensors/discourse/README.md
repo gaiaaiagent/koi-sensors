@@ -60,13 +60,13 @@ python test_discourse_sensor.py
 - Technical discussions
 
 ### Document Structure
-Each collected topic becomes a KOI document with:
-- **RID**: Unique identifier for the topic
-- **Title**: Topic title
-- **Content**: Combined posts from the topic
-- **Author**: Original poster
+Each forum post is stored as an individual KOI document with:
+- **RID**: Unique identifier (deterministic: `forum:topic:post:author:created`)
+- **Title**: Topic title (or "Re: {title}" for replies)
+- **Content**: Individual post content
+- **Author**: Post author username
 - **Tags**: Auto-extracted based on content
-- **Metadata**: Views, replies, likes, category, etc.
+- **Metadata**: Post number, published date, likes, reply info, etc.
 
 ### Example Output
 ```json
@@ -92,6 +92,17 @@ Each collected topic becomes a KOI document with:
 
 ## Features
 
+### Individual Post Storage (Enhanced)
+- **Post-level documents**: Each forum post becomes a separate KOI document
+- **Pagination support**: Fetches all posts in a topic using Discourse API pagination
+- **Granular tracking**: Individual post updates can be tracked and versioned
+- **Enhanced metadata**: Post number, author, likes, reply relationships preserved
+
+### Deduplication
+- **In-memory cache**: Tracks processed posts within a session (clears on restart)
+- **Database-level**: Uses RID-based `ON CONFLICT` to prevent duplicates in database
+- **RID generation**: Deterministic based on `forum:topic:post:author:created`
+
 ### Automatic Tagging
 The sensor automatically tags content based on keywords:
 - **governance**: Proposals, voting, DAO discussions
@@ -110,8 +121,9 @@ The sensor automatically tags content based on keywords:
 ### Content Processing
 - Converts HTML to plain text
 - Preserves post structure
-- Combines multiple posts into single document
-- Limits to first 30 posts per topic for size
+- **Stores each post as individual document** (NEW: post-level granularity)
+- Implements pagination to fetch all posts in a topic
+- Generates unique RID for each post: `forum:topic:post:author:created`
 
 ## Output
 
@@ -171,9 +183,10 @@ python test_discourse_sensor.py
 
 ## Performance
 - Async/await for concurrent requests
-- Efficient pagination
-- Caches processed topics
-- Typical collection: ~50 topics in 2-3 minutes
+- Efficient pagination for complete topic coverage
+- Caches processed posts for deduplication
+- Enhanced throughput: Individual post processing with full topic pagination
+- Typical collection: ~50 topics with all posts in 2-3 minutes
 
 ## Limitations
 - No authentication (public data only)

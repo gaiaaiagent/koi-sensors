@@ -7,10 +7,11 @@ import asyncio
 import json
 import aiohttp
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any, Set
+from typing import Dict, List, Optional, Any, Set, Tuple
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 import logging
+import uuid
 
 from ..core.rid_system import RID
 from ..core.bundle_system import Bundle, KOIEvent, Manifest
@@ -37,24 +38,38 @@ class NodeContact:
     status: str = "unknown"
 
 
+@dataclass
+class QueuedEvent:
+    """Represents an event in the queue with delivery tracking"""
+    event: KOIEvent
+    event_id: str
+    queued_at: datetime
+    delivered_to: Set[str]  # Set of node_ids that have received this event
+    confirmed_by: Set[str]  # Set of node_ids that have confirmed receipt
+
+
 class KOINodeBase(ABC):
     """Base class for KOI nodes"""
-    
+
     def __init__(self, node_name: str, node_type: str, port: int = None):
         self.node_name = node_name
         self.node_type = node_type
         self.port = port
         self.node_id = f"{node_name}-{datetime.now().timestamp()}"
-        
+
         # Node state
         self.running = False
         self.cache: Dict[str, Bundle] = {}
-        self.event_queue: List[KOIEvent] = []
+        self.event_queue: List[QueuedEvent] = []  # Changed to use QueuedEvent
         self.known_nodes: Dict[str, NodeContact] = {}
-        
+
+        # Event delivery tracking
+        self.pending_deliveries: Dict[str, QueuedEvent] = {}  # event_id -> QueuedEvent
+        self.delivery_timeout_seconds = 300  # 5 minutes
+
         # Logging
         self.logger = logging.getLogger(f"koi.node.{node_name}")
-        
+
         # HTTP session
         self.session: Optional[aiohttp.ClientSession] = None
     
@@ -63,16 +78,27 @@ class KOINodeBase(ABC):
         self.logger.info(f"Starting {self.node_type} node: {self.node_name}")
         self.running = True
         self.session = aiohttp.ClientSession()
-        
+
         if self.node_type == "PARTIAL":
             # Partial nodes start polling loop
             asyncio.create_task(self.polling_loop())
+        elif self.node_type == "FULL":
+            # Full nodes start cleanup loop
+            self.cleanup_task = asyncio.create_task(self._cleanup_loop())
     
     async def stop(self):
         """Stop the node"""
         self.logger.info(f"Stopping node: {self.node_name}")
         self.running = False
-        
+
+        # Cancel cleanup task for full nodes
+        if hasattr(self, 'cleanup_task') and self.cleanup_task:
+            self.cleanup_task.cancel()
+            try:
+                await self.cleanup_task
+            except asyncio.CancelledError:
+                pass
+
         if self.session:
             await self.session.close()
     
@@ -102,7 +128,8 @@ class KOINodeBase(ABC):
             metadata={
                 "started_at": datetime.now(timezone.utc).isoformat(),
                 "cache_size": len(self.cache),
-                "event_queue_size": len(self.event_queue)
+                "event_queue_size": len(self.event_queue),
+                "pending_deliveries": len(self.pending_deliveries)
             }
         )
     
@@ -133,23 +160,109 @@ class KOINodeBase(ABC):
         return list(self.cache.keys())
     
     # Event operations
-    def queue_event(self, event: KOIEvent):
+    def queue_event(self, event: KOIEvent) -> str:
         """Queue an event for processing"""
-        self.event_queue.append(event)
-        self.logger.debug(f"Queued {event.event_type} event for {event.rid}")
+        event_id = str(uuid.uuid4())
+        queued_event = QueuedEvent(
+            event=event,
+            event_id=event_id,
+            queued_at=datetime.now(timezone.utc),
+            delivered_to=set(),
+            confirmed_by=set()
+        )
+        self.event_queue.append(queued_event)
+        self.pending_deliveries[event_id] = queued_event
+        self.logger.debug(f"Queued {event.event_type} event for {event.rid} with ID {event_id}")
+        return event_id
     
     def get_queued_events(self, max_events: int = None) -> List[KOIEvent]:
         """Get queued events"""
+        events = [qe.event for qe in self.event_queue]
         if max_events:
-            return self.event_queue[:max_events]
-        return self.event_queue.copy()
+            return events[:max_events]
+        return events
+
+    def get_queued_events_for_delivery(self, node_id: str, max_events: int = None) -> Tuple[List[KOIEvent], List[str]]:
+        """Get queued events for a specific node, returning events and their IDs"""
+        events = []
+        event_ids = []
+
+        count = 0
+        for queued_event in self.event_queue:
+            if max_events and count >= max_events:
+                break
+
+            # Only include events that haven't been delivered to this node yet
+            if node_id not in queued_event.delivered_to:
+                events.append(queued_event.event)
+                event_ids.append(queued_event.event_id)
+                # Mark as delivered to this node
+                queued_event.delivered_to.add(node_id)
+                count += 1
+
+        self.logger.debug(f"Delivering {len(events)} events to {node_id}")
+        return events, event_ids
     
     def clear_event_queue(self, max_events: int = None):
-        """Clear processed events from queue"""
+        """Clear processed events from queue (legacy method - use confirm_delivery instead)"""
         if max_events:
             self.event_queue = self.event_queue[max_events:]
         else:
             self.event_queue.clear()
+
+    def confirm_delivery(self, node_id: str, event_ids: List[str]) -> int:
+        """Confirm delivery of events by a node"""
+        confirmed_count = 0
+
+        for event_id in event_ids:
+            queued_event = self.pending_deliveries.get(event_id)
+            if queued_event:
+                queued_event.confirmed_by.add(node_id)
+                confirmed_count += 1
+                self.logger.debug(f"Node {node_id} confirmed receipt of event {event_id}")
+
+        # Clean up fully confirmed events
+        self._cleanup_confirmed_events()
+
+        return confirmed_count
+
+    def _cleanup_confirmed_events(self):
+        """Remove events that have been confirmed by all nodes that received them"""
+        events_to_remove = []
+
+        for queued_event in self.event_queue:
+            # An event can be removed if:
+            # 1. It has been delivered to at least one node, AND
+            # 2. All nodes that received it have confirmed receipt
+            if (queued_event.delivered_to and
+                queued_event.delivered_to.issubset(queued_event.confirmed_by)):
+                events_to_remove.append(queued_event)
+
+        for event_to_remove in events_to_remove:
+            self.event_queue.remove(event_to_remove)
+            self.pending_deliveries.pop(event_to_remove.event_id, None)
+            self.logger.debug(f"Removed confirmed event {event_to_remove.event_id} from queue")
+
+        if events_to_remove:
+            self.logger.info(f"Cleaned up {len(events_to_remove)} confirmed events")
+
+    def _cleanup_expired_events(self):
+        """Remove events that have exceeded the delivery timeout"""
+        current_time = datetime.now(timezone.utc)
+        events_to_remove = []
+
+        for queued_event in self.event_queue:
+            age_seconds = (current_time - queued_event.queued_at).total_seconds()
+            if age_seconds > self.delivery_timeout_seconds:
+                events_to_remove.append(queued_event)
+                self.logger.warning(f"Event {queued_event.event_id} expired after {age_seconds}s")
+
+        for event_to_remove in events_to_remove:
+            self.event_queue.remove(event_to_remove)
+            self.pending_deliveries.pop(event_to_remove.event_id, None)
+
+        if events_to_remove:
+            self.logger.info(f"Cleaned up {len(events_to_remove)} expired events")
     
     # Abstract methods for node-specific behavior
     @abstractmethod
@@ -266,14 +379,17 @@ class KOIPartialNode(KOINodeBase):
 
 class KOIFullNode(KOINodeBase):
     """Full KOI Node - implements complete KOI-net protocol"""
-    
+
     def __init__(self, node_name: str, port: int = 8000):
         super().__init__(node_name, "FULL", port)
         self.app = None  # Will be set when starting web server
-        
+
         # Network state
         self.connected_nodes: Set[str] = set()
         self.event_subscribers: Set[str] = set()
+
+        # Cleanup task
+        self.cleanup_task: Optional[asyncio.Task] = None
     
     async def handle_event(self, event: KOIEvent):
         """Handle event from another node"""
@@ -318,9 +434,37 @@ class KOIFullNode(KOINodeBase):
         """Remove node as event subscriber"""
         self.event_subscribers.discard(node_id)
         self.logger.info(f"Removed event subscriber: {node_id}")
+
+    async def _cleanup_loop(self):
+        """Periodic cleanup of expired and confirmed events"""
+        while self.running:
+            try:
+                self._cleanup_confirmed_events()
+                self._cleanup_expired_events()
+                await asyncio.sleep(60)  # Run cleanup every minute
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Error in cleanup loop: {e}")
+                await asyncio.sleep(60)
     
     # Web server methods (to be implemented with FastAPI or similar)
     async def start_web_server(self):
         """Start web server for KOI-net endpoints"""
         # Implementation depends on web framework choice
         pass
+
+    def get_delivery_stats(self) -> Dict[str, Any]:
+        """Get statistics about event delivery"""
+        total_events = len(self.event_queue)
+        pending_events = len(self.pending_deliveries)
+        delivered_events = sum(1 for qe in self.event_queue if qe.delivered_to)
+        confirmed_events = sum(1 for qe in self.event_queue if qe.confirmed_by)
+
+        return {
+            "total_queued_events": total_events,
+            "pending_deliveries": pending_events,
+            "delivered_events": delivered_events,
+            "confirmed_events": confirmed_events,
+            "subscribers": list(self.event_subscribers)
+        }

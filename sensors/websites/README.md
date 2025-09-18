@@ -106,17 +106,22 @@ Websites → Website Sensor → KOI Coordinator → Processor → PostgreSQL
 - **Coordinator**: Connects to KOI Coordinator at port 8005
 - **Date Extraction**: Site-specific patterns for accurate publication dates
 
-### Publication Date Extraction
+### Publication Date Extraction (Enhanced)
 
-The sensor uses site-specific patterns to extract publication dates:
+The sensor uses site-specific patterns to extract publication dates with improved accuracy:
 
-| Website | Pattern | Confidence |
-|---------|---------|------------|
-| regentokenomics.org | "Month DD, YYYY" in content | 0.8 |
-| regen.foundation/publications | "Published Month DD, YYYY" | 0.9 |
-| forum.regen.network | Discourse date elements | 0.9 |
-| docs/guides.regen.network | Relative dates | 0.3 |
-| Generic fallback | ISO dates, meta tags | 0.6-0.8 |
+| Website | Pattern | Confidence | Status |
+|---------|---------|------------|--------|
+| regentokenomics.org | "Month DD, YYYY" in content | 0.8 | ✅ Enhanced |
+| regen.foundation/publications | "Published Month DD, YYYY" | 0.9 | ✅ Working |
+| forum.regen.network | Discourse date elements | 0.9 | ✅ Working |
+| docs/guides.regen.network | Relative dates | 0.3 | Working |
+| Generic fallback | ISO dates, meta tags | 0.6-0.8 | Working |
+
+**Recent Improvements**:
+- Enhanced regentokenomics.org date extraction with multiple pattern matching
+- Improved content parsing for date detection in article body text
+- Added fallback patterns for various date formats found on research pages
 
 ## Status
 

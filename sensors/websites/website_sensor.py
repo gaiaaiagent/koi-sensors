@@ -18,6 +18,7 @@ from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.rid_system import RID
 from koi_protocol.core.bundle_system import Bundle, document_to_bundle
 from shared.config.base import BaseSensorConfig, APIConfig
+from sites import SITE_HANDLERS
 
 try:
     from video_transcriber import VideoTranscriber
@@ -641,15 +642,25 @@ class WebsiteKOISensor:
                 "id": f"web_{rid.url_hash}",
                 "source": f"web:{domain}",
                 "source_type": "website",
-                "url": url,
+                "url": url,  # CRITICAL: URL at root level for provenance
+                "source_url": url,  # Additional field to ensure preservation
                 "title": metadata.get("title", ""),
                 "content": content,
                 "metadata": {
+                    # Core metadata fields for provenance
+                    "title": metadata.get("title", ""),
+                    "url": url,  # Also in metadata for redundancy
+                    "source_url": url,  # Extra safeguard
+                    "author": metadata.get("author", ""),
+                    "source_name": domain,
+                    "source_type": "website",
+
                     # Publication date metadata for Daily Curator
                     "published_at": published_at.isoformat() if published_at else None,
+                    "published_date": published_at.strftime('%Y-%m-%d') if published_at else None,  # Date-only format for compatibility
                     "published_confidence": confidence,
                     "extracted_from": "meta_tags" if confidence > 0.8 else "last_modified" if confidence > 0.5 else "unknown",
-                    
+
                     # Original metadata
                     "domain": domain,
                     "path": parsed_url.path,
@@ -691,6 +702,19 @@ class WebsiteKOISensor:
         confidence = 0.0
 
         try:
+            # Check if we have a site-specific handler
+            site_handler_class = SITE_HANDLERS.get(domain)
+            if site_handler_class:
+                # Use site-specific handler
+                site_handler = site_handler_class(domain, self.logger)
+                published_at, confidence = site_handler.extract_publication_date(soup, url)
+                if published_at:
+                    self.logger.info(f"Used site-specific handler for {domain}: {published_at} (confidence: {confidence})")
+                    return published_at, confidence
+                else:
+                    self.logger.debug(f"Site-specific handler for {domain} returned no date")
+
+            # Fallback to generic extraction if no handler or no date found
             # Site-specific extraction patterns
             if 'regentokenomics.org' in domain:
                 # Look for dates in list items like "September 16, 2025"
@@ -721,20 +745,65 @@ class WebsiteKOISensor:
                         pass
 
             elif 'forum.regen.network' in domain or 'discourse' in domain:
-                # Discourse forums have dates like "June 26, 2025"
-                # Look for post dates in specific elements
-                time_elements = soup.find_all(['time', 'span'], attrs={'class': re.compile(r'date|time|post-time')})
+                # Enhanced Discourse forum date extraction
+                # Priority 1: Look for time elements with datetime attributes
+                time_elements = soup.find_all(['time', 'relative-time'])
                 for elem in time_elements:
-                    date_str = elem.get('datetime', '') or elem.get_text()
-                    if date_str:
+                    datetime_attr = elem.get('datetime')
+                    if datetime_attr:
                         try:
                             from dateutil import parser
-                            published_at = parser.parse(date_str)
-                            confidence = 0.9
-                            self.logger.debug(f"Found Discourse date: {date_str}")
+                            published_at = parser.parse(datetime_attr)
+                            confidence = 0.95
+                            self.logger.debug(f"Found Discourse datetime attribute: {datetime_attr}")
                             break
                         except:
                             pass
+
+                # Priority 2: Look for date in specific class patterns
+                if not published_at:
+                    date_elements = soup.find_all(['span', 'div', 'time'], attrs={'class': re.compile(r'date|time|post-time|relative-time|cooked-date')})
+                    for elem in date_elements:
+                        date_str = elem.get_text(strip=True)
+                        if date_str:
+                            try:
+                                from dateutil import parser
+                                published_at = parser.parse(date_str, fuzzy=True)
+                                confidence = 0.85
+                                self.logger.debug(f"Found Discourse date text: {date_str}")
+                                break
+                            except:
+                                pass
+
+                # Priority 3: Look for relative date patterns
+                if not published_at:
+                    relative_patterns = [
+                        (r'(\d+)\s*min(?:ute)?s?\s+ago', 'minutes'),
+                        (r'(\d+)\s*h(?:ou)?rs?\s+ago', 'hours'),
+                        (r'(\d+)\s*d(?:ay)?s?\s+ago', 'days'),
+                        (r'yesterday', 'yesterday'),
+                        (r'(\d+)\s*w(?:ee)?ks?\s+ago', 'weeks')
+                    ]
+                    page_text = soup.get_text()[:5000]
+                    for pattern, unit in relative_patterns:
+                        match = re.search(pattern, page_text, re.IGNORECASE)
+                        if match:
+                            from datetime import timedelta
+                            if unit == 'yesterday':
+                                published_at = datetime.now() - timedelta(days=1)
+                            else:
+                                amount = int(match.group(1))
+                                if unit == 'minutes':
+                                    published_at = datetime.now() - timedelta(minutes=amount)
+                                elif unit == 'hours':
+                                    published_at = datetime.now() - timedelta(hours=amount)
+                                elif unit == 'days':
+                                    published_at = datetime.now() - timedelta(days=amount)
+                                elif unit == 'weeks':
+                                    published_at = datetime.now() - timedelta(weeks=amount)
+                            confidence = 0.75
+                            self.logger.debug(f"Found relative date: {match.group(0) if unit != 'yesterday' else 'yesterday'}")
+                            break
 
             elif 'guides.regen.network' in domain or 'docs.regen.network' in domain:
                 # Documentation sites might have "Last updated" dates
@@ -746,19 +815,8 @@ class WebsiteKOISensor:
                     confidence = 0.3
                     self.logger.debug(f"Found relative date on {domain}, using current date with low confidence")
 
-            # Generic date extraction patterns if no site-specific match
-            if not published_at:
-                # ISO date format: 2025-09-16
-                iso_pattern = r'\d{4}-\d{2}-\d{2}'
-                text = str(soup)[:5000]  # Check first 5000 chars
-                match = re.search(iso_pattern, text)
-                if match:
-                    try:
-                        published_at = datetime.strptime(match.group(), '%Y-%m-%d')
-                        confidence = 0.6
-                        self.logger.debug(f"Found ISO date: {match.group()}")
-                    except:
-                        pass
+            # Skip generic ISO date extraction - it causes too many false positives
+            # Only use structured data and meta tags for generic extraction
 
             # Try meta tags as last resort
             if not published_at:
@@ -787,12 +845,25 @@ class WebsiteKOISensor:
 
     def extract_page_metadata(self, soup: BeautifulSoup, url: str) -> Dict[str, Any]:
         """Extract metadata from HTML page"""
+        from urllib.parse import urlparse
 
         metadata = {}
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc
 
+        # Check if we have a site-specific handler for enhanced metadata
+        site_handler_class = SITE_HANDLERS.get(domain)
+        if site_handler_class:
+            # Use site-specific handler for metadata
+            site_handler = site_handler_class(domain, self.logger)
+            site_metadata = site_handler.extract_metadata(soup, url)
+            metadata.update(site_metadata)
+            self.logger.debug(f"Extracted site-specific metadata for {domain}: {list(site_metadata.keys())}")
+
+        # Always extract basic metadata regardless
         # Title
         title_tag = soup.find('title')
-        if title_tag:
+        if title_tag and 'title' not in metadata:
             metadata["title"] = title_tag.get_text().strip()
 
         # Meta tags
@@ -802,15 +873,15 @@ class WebsiteKOISensor:
             property_attr = meta.get('property', '').lower()
             content = meta.get('content', '')
 
-            if name == 'description' or property_attr == 'og:description':
+            if (name == 'description' or property_attr == 'og:description') and 'description' not in metadata:
                 metadata["description"] = content
-            elif name == 'keywords':
+            elif name == 'keywords' and 'keywords' not in metadata:
                 metadata["keywords"] = [k.strip() for k in content.split(',') if k.strip()]
-            elif name == 'author':
+            elif name == 'author' and 'author' not in metadata:
                 metadata["author"] = content
-            elif name == 'language' or property_attr == 'og:locale':
+            elif (name == 'language' or property_attr == 'og:locale') and 'language' not in metadata:
                 metadata["language"] = content.split('-')[0] if '-' in content else content
-            elif name == 'last-modified' or name == 'date':
+            elif (name == 'last-modified' or name == 'date') and 'last_modified' not in metadata:
                 metadata["last_modified"] = content
 
         return metadata
