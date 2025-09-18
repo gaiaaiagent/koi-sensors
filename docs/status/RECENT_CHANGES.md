@@ -1,4 +1,32 @@
-# Recent Changes - KOI Sensors (September 13, 2025)
+# Recent Changes - KOI Sensors
+
+## September 18, 2025 Updates
+
+### Major Enhancements
+
+#### Discourse Sensor
+- **Full Pagination Support**: Now fetches ALL posts from topics (previously limited to first 20)
+- **Individual Post Storage**: Each post stored as separate document with its own `published_at` date
+- **RID Compliance Fix**: Changed source_type from "forum_post" to "forum-post" for validation
+- **Deterministic RID Generation**: Posts have unique RIDs based on forum:topic:post:author:created
+
+#### Website Sensor
+- **Site-Specific Handlers**: Added custom handlers for better content extraction
+- **Regentokenomics Fix**: Fixed date extraction for URLs with month abbreviations (e.g., /sep-16)
+- **Date Pattern Matching**: Enhanced to handle concatenated text like "Date of SessionSeptember 16, 2025"
+- **Confidence Scoring**: Improved publication date confidence levels
+
+#### KOI Coordinator
+- **Enhanced Delivery Tracking**: Added comprehensive delivery confirmation system
+- **Better Error Handling**: Improved retry logic and error reporting
+- **Sensor Health Monitoring**: Better tracking of sensor status
+
+### Processing Pipeline
+- **Smart Chunking**: Improved document chunking for semantic preservation
+- **Storage Architecture**: Enhanced with better deduplication and versioning
+- **Database Migrations**: Added new migration scripts for improved schema
+
+## September 13, 2025 - Previous Updates
 
 ## Fixed Issues
 1. **Coordinator Port Configuration**: Fixed hardcoded port 8000 → 8005 in all sensors
@@ -27,15 +55,16 @@
 ## Current Status
 - ✅ Sensors successfully connect to coordinator
 - ✅ Events flow from sensors → coordinator → event bridge
-- ⚠️ **Issue**: Events contain metadata only, no actual content data
-- ⚠️ Event Bridge reports "Content too short or empty"
-- ⚠️ No data being stored in database (0 chunks, 0 embeddings)
+- ✅ **RESOLVED**: Events now contain full content data
+- ✅ **RESOLVED**: Event Bridge successfully processes content
+- ✅ Data being stored in database with chunks and embeddings
+- ✅ Discourse sensor fetches ALL posts with pagination
+- ✅ Website sensor extracts dates correctly from all configured sites
 
-## Next Steps for Local Development
-The sensors need to be enhanced to:
-1. Actually fetch and extract webpage/article content
-2. Include content data in the KOI event bundles
-3. Ensure the Event Bridge can process and store the content
+## Next Steps
+- Continue monitoring sensor performance
+- Add more site-specific handlers for website sensor
+- Implement incremental updates for discourse sensor
 
 ## How to Run Locally
 ```bash
