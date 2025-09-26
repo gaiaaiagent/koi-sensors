@@ -275,27 +275,21 @@ Members: {chat.get_member_count() if hasattr(chat, 'get_member_count') else 'Unk
         async with httpx.AsyncClient() as client:
             for doc in documents:
                 try:
-                    # Create KOI event
+                    # Create KOI event - must have rid and source_node at root level
                     event = {
+                        "rid": doc["rid"],  # Required at root level
                         "event_type": "NEW",
-                        "source_sensor": self.config.source_sensor,
+                        "source_node": self.config.source_sensor,  # Changed from source_sensor to source_node
                         "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "bundle": {
-                            "rid": doc["rid"],
-                            "cid": hashlib.sha256(json.dumps(doc, sort_keys=True).encode()).hexdigest(),
-                            "content": {"document": doc},  # Wrap in document structure
-                            "metadata": doc.get("metadata", {}),
-                            "manifest": {
-                                "version": "1.0.0",
-                                "created_at": datetime.now(timezone.utc).isoformat(),
-                                "source": self.config.source_sensor
-                            }
+                        "data": {  # Simplified - coordinator will create bundle from data
+                            "document": doc,
+                            "metadata": doc.get("metadata", {})
                         }
                     }
                     
                     # Send to coordinator
                     response = await client.post(
-                        f"{self.config.koi_coordinator_url}/api/event",
+                        f"{self.config.koi_coordinator_url}/events/broadcast",
                         json=event,
                         timeout=30.0
                     )

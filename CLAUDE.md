@@ -2,13 +2,14 @@
 
 This file provides guidance to Claude Code when working specifically in the koi-sensors project.
 
-## 🚨 Current System State (Sept 15, 2025)
+## 🚨 Current System State (Sept 26, 2025)
 
-- **9 Active Sensors**: Website, GitHub, GitLab, Medium, Discourse, Telegram, Twitter, Discord, Podcast, Notion, Ledger
+- **11 Active Sensors**: Website, GitHub, GitLab, Medium, Discourse, Telegram, Twitter, Discord, Podcast, Notion, Ledger
 - **Health Monitoring**: Smart Hybrid system with 30-min heartbeats and on-demand ping
 - **Coordinator**: Running on port 8005 with event routing and sensor tracking
 - **Dashboard**: Live at https://regen.gaiaai.xyz/koi showing real-time sensor status
 - **Twitter Sensor**: Uses `twitter_sensor_koi.py` (Playwright-based, no auth required)
+- **GitLab Sensor**: Fixed to use KOIPartialNode and document_to_bundle (Sept 26 fix)
 
 ## 🔧 CRITICAL: Dependency Management Rules
 

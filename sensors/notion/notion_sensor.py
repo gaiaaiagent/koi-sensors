@@ -4,8 +4,11 @@ KOI Notion Sensor - Real-time monitoring for Notion databases and pages
 Integrates with Notion API to monitor workspace content changes
 """
 
+print("[STARTUP] Starting imports...")
 import asyncio
+print("[STARTUP] asyncio imported")
 import aiohttp
+print("[STARTUP] aiohttp imported")
 import json
 import hashlib
 from typing import Dict, List, Any, Optional
@@ -13,14 +16,24 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import os
 from urllib.parse import urlparse
+print("[STARTUP] standard libs imported")
 
 # KOI Protocol imports
 import sys
+# Add parent.parent to get to koi-sensors root where koi_protocol is
 sys.path.append(str(Path(__file__).parent.parent.parent))
+# Alternative path for when running from sensors/notion directory
+if not any('koi_protocol' in p for p in sys.path):
+    sys.path.insert(0, '../..')
+print(f"[STARTUP] sys.path includes: {sys.path[:3]}")
 
+print("[STARTUP] Importing KOI modules...")
 from koi_protocol.nodes.koi_node import KOIPartialNode
+print("[STARTUP] KOIPartialNode imported")
 from koi_protocol.core.rid_system import RID, ORN
+print("[STARTUP] RID, ORN imported")
 from koi_protocol.core.bundle_system import Bundle, document_to_bundle
+print("[STARTUP] Bundle imported")
 
 
 class NotionPageRID(ORN):
@@ -72,7 +85,7 @@ class NotionKOISensor:
         # Initialize KOI node
         self.koi_node = KOIPartialNode(
             node_name="notion-sensor",
-            coordinator_url=coordinator_url,
+            coordinator_url=self.coordinator_url,
             poll_interval=30
         )
         
@@ -114,32 +127,48 @@ class NotionKOISensor:
     async def search_workspace(self, query: str = None, filter_type: str = None) -> List[Dict]:
         """
         Search the Notion workspace for pages and databases
-        
+
         Args:
             query: Optional search query
             filter_type: 'page' or 'database' to filter results
         """
         if not self.session:
             raise RuntimeError("Session not initialized. Use async context manager.")
-        
-        search_params = {}
+
+        search_params = {"page_size": 100}  # Max allowed by Notion API
         if query:
             search_params["query"] = query
         if filter_type:
             search_params["filter"] = {"property": "object", "value": filter_type}
-        
+
+        all_results = []
+        has_more = True
+        next_cursor = None
+
         try:
-            async with self.session.post(
-                f"{self.NOTION_API_BASE}/search",
-                json=search_params
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get("results", [])
-                else:
-                    error = await response.text()
-                    print(f"❌ Search failed: {response.status} - {error}")
-                    return []
+            while has_more:
+                if next_cursor:
+                    search_params["start_cursor"] = next_cursor
+
+                async with self.session.post(
+                    f"{self.NOTION_API_BASE}/search",
+                    json=search_params
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        results = data.get("results", [])
+                        all_results.extend(results)
+                        has_more = data.get("has_more", False)
+                        next_cursor = data.get("next_cursor")
+
+                        # Continue fetching all results
+                        # Remove the 150 limit to get ALL pages
+                    else:
+                        error = await response.text()
+                        print(f"❌ Search failed: {response.status} - {error}")
+                        break
+
+            return all_results
         except Exception as e:
             print(f"❌ Error searching workspace: {e}")
             return []
@@ -555,13 +584,45 @@ class NotionKOISensor:
         """
         try:
             # Create a heartbeat bundle
+            # Debug: log what we're monitoring
+            db_count = len(self.monitored_databases)
+            page_count = len(self.monitored_pages)
+            print(f"📊 Heartbeat: Monitoring {db_count} databases, {page_count} pages")
+
+            # Build monitoring list
+            monitoring_list = []
+            for db_id, db in self.monitored_databases.items():
+                url = db.get('url', db_id)
+                monitoring_list.append(url)
+                print(f"   DB: {url}")
+            for page_id, page in self.monitored_pages.items():
+                url = page.get('url', page_id)
+                monitoring_list.append(url)
+                if len(monitoring_list) <= 5:  # Show first 5 for debugging
+                    print(f"   Page: {url}")
+
+            # Use fallback if empty
+            if not monitoring_list:
+                monitoring_list = ["Notion workspace"]
+
+            # Send all pages to monitoring but summarize for display
+            total_count = len(monitoring_list)
+            if total_count > 100:
+                # Keep first 100 for display but add a summary
+                display_list = monitoring_list[:100]
+                display_list.append(f"... and {total_count - 100} more pages")
+                print(f"   Monitoring {total_count} total pages (showing first 100 in dashboard)")
+                monitoring_list = display_list
+
+            print(f"   Final monitoring list has {len(monitoring_list)} items")
+
             heartbeat_data = {
                 "type": "sensor_heartbeat",
                 "sensor_id": self.node_id,
                 "sensor_type": "notion",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "status": "active",
-                "monitoring": list(self.monitored_databases.keys()) + list(self.monitored_pages.keys())
+                "monitoring": monitoring_list
             }
 
             # Add response_to if this is a ping response
@@ -613,7 +674,9 @@ class NotionKOISensor:
         while True:
             try:
                 # Check for coordinator events
-                events = await self.koi_node.poll_coordinator_events()
+                # TODO: KOIPartialNode doesn't have poll_coordinator_events method
+                # For now, just skip this until proper implementation
+                events = []
 
                 for event in events:
                     event_type = event.get('event_type')
@@ -677,11 +740,13 @@ class NotionKOISensor:
 
 async def main():
     """Main entry point with continuous monitoring"""
+    print("🚀 Notion sensor starting...")
     import os
     from dotenv import load_dotenv
 
     # Load environment variables
     load_dotenv()
+    print("✓ Environment loaded")
 
     # Get Notion token from environment
     notion_token = os.getenv('NOTION_API_KEY')
@@ -703,6 +768,7 @@ async def main():
         databases = []
         pages = []
 
+        # Process items without printing each one
         for item in all_items:
             if item["object"] == "database":
                 databases.append(item)
@@ -712,8 +778,15 @@ async def main():
                 print(f"   📁 Database: {title}")
             elif item["object"] == "page":
                 pages.append(item)
-                # Pages in search results don't have full properties
-                print(f"   📄 Page: {item.get('url', item['id'][:8])}")
+
+        # Print summary of pages instead of each one
+        if pages:
+            print(f"   📄 Found {len(pages)} pages")
+            # Show first few as examples
+            for page in pages[:5]:
+                print(f"      • {page.get('url', page['id'][:8])}")
+            if len(pages) > 5:
+                print(f"      ... and {len(pages) - 5} more")
 
         print(f"\nSummary: {len(databases)} databases, {len(pages)} pages")
 
@@ -722,11 +795,41 @@ async def main():
             for db in databases:
                 await sensor.monitor_database(db["id"])
 
-            # Start continuous monitoring
+        # Track pages for reporting (even if not actively monitoring)
+        if pages:
+            for page in pages:
+                page_id = page.get('id', '')
+                page_url = page.get('url', f"https://notion.so/{page_id}")
+                page_title = "Untitled"
+
+                # Try to extract title from properties
+                if 'properties' in page:
+                    for prop_name, prop_value in page['properties'].items():
+                        if prop_value.get('type') == 'title' and prop_value.get('title'):
+                            page_title = ''.join(t['plain_text'] for t in prop_value['title'])
+                            break
+
+                sensor.monitored_pages[page_id] = {
+                    'id': page_id,
+                    'url': page_url,
+                    'title': page_title,
+                    'last_checked': datetime.now(timezone.utc).isoformat()
+                }
+
+        # Start continuous monitoring if we have databases or pages
+        if databases or pages:
+            print(f"\n📊 Before starting monitoring loop:")
+            print(f"   Monitored databases: {len(sensor.monitored_databases)}")
+            print(f"   Monitored pages: {len(sensor.monitored_pages)}")
+            if sensor.monitored_pages:
+                # Show first few pages as example
+                for i, (page_id, page_info) in enumerate(list(sensor.monitored_pages.items())[:3]):
+                    print(f"   Example page {i+1}: {page_info.get('url', page_id)}")
             await sensor.run_monitoring_loop(poll_interval)
         else:
-            print("\n⚠️ No databases found to monitor")
+            print("\n⚠️ No databases or pages found to monitor")
 
 
 if __name__ == "__main__":
+    print("Starting Notion sensor...")
     asyncio.run(main())

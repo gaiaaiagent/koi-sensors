@@ -4,11 +4,11 @@ Indexes documentation from GitLab repositories (specifically Regen whitepapers)
 """
 
 import asyncio
-import httpx
 import json
 import logging
 import tempfile
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -16,12 +16,18 @@ from dataclasses import dataclass
 import hashlib
 import subprocess
 
+# Import KOI protocol
+sys.path.append(str(Path(__file__).parent.parent.parent))
+
+from koi_protocol.nodes.koi_node import KOIPartialNode
+from koi_protocol.core.rid_system import RID
+from koi_protocol.core.bundle_system import Bundle, document_to_bundle
+
 
 @dataclass
 class GitLabConfig:
     """GitLab sensor configuration"""
     repos: List[Dict[str, Any]]
-    koi_bridge_url: str = "http://localhost:8200/process-koi-event"
     koi_coordinator_url: str = "http://localhost:8005"
     source_sensor: str = "gitlab-sensor"
     
@@ -52,7 +58,7 @@ class GitLabConfig:
 
 class GitLabSensor:
     """Sensor for GitLab repository documentation"""
-    
+
     def __init__(self, config: GitLabConfig, logger: Optional[logging.Logger] = None):
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
@@ -62,6 +68,13 @@ class GitLabSensor:
         # Track processed documents
         self.processed_rids = set()
         self.documents_sent = 0
+
+        # Initialize KOI node
+        self.koi_node = KOIPartialNode(
+            node_name="gitlab-sensor",
+            coordinator_url=config.koi_coordinator_url,
+            poll_interval=30
+        )
     
     async def collect_all_repos(self) -> List[Dict[str, Any]]:
         """
@@ -264,9 +277,9 @@ class GitLabSensor:
             # GitLab uses /-/blob/ instead of /blob/
             file_url = f"{repo_url}/-/blob/{branch}/{relative_path}"
             
-            # Generate RID
-            rid = f"gitlab:{repo_name}:{relative_path}"
-            rid = rid.replace('/', ':').replace(' ', '_')
+            # Generate RID (no colons allowed in RID system)
+            rid = f"gitlab_{repo_name}_{relative_path}"
+            rid = rid.replace('/', '_').replace(' ', '_').replace(':', '_')
             
             # Skip if already processed
             if rid in self.processed_rids:
@@ -339,16 +352,26 @@ class GitLabSensor:
 
             # Add collection timestamp
             metadata["collected_at"] = datetime.now(timezone.utc).isoformat()
-            
-            # Create document
+
+            # Create title from repo and file path
+            title = f"{repo_name}: {str(relative_path)}"
+
+            # Create document compatible with document_to_bundle
             doc = {
-                "rid": rid,
+                "id": rid,  # Used by document_to_rid as fallback
+                "rid": rid,  # Keep for backward compatibility
+                "title": title,  # Required by document_to_bundle
                 "source": "gitlab",
+                "source_type": "gitlab",  # Used by document_to_rid
                 "repo": repo_name,
                 "file_path": str(relative_path),
-                "url": file_url,
+                "url": file_url,  # Important for attribution
                 "branch": branch,
                 "content": content,
+                "author": commit_author,  # From git log
+                "tags": [repo_name, branch, file_path.suffix or "no_extension"],
+                "collected_at": datetime.now(timezone.utc).isoformat(),
+                "last_modified": published_at.isoformat() if published_at else None,
                 "metadata": metadata
             }
             
@@ -364,116 +387,73 @@ class GitLabSensor:
             return None
     
     async def send_to_koi(self, documents: List[Dict[str, Any]]) -> int:
-        """
-        Send documents to KOI Event Bridge
-        
-        Args:
-            documents: List of documents to send
-            
-        Returns:
-            Number of successfully sent documents
-        """
+        """Send documents to KOI coordinator as events"""
         success_count = 0
-        
+
         for doc in documents:
             try:
-                # Generate CID from content
-                content_str = json.dumps(doc, sort_keys=True)
-                cid = hashlib.sha256(content_str.encode()).hexdigest()
-                
-                # Create bundle
-                bundle = {
-                    "rid": doc["rid"],
-                    "cid": cid,
-                    "content": doc,
-                    "metadata": doc.get("metadata", {}),
-                    "manifest": {
-                        "version": "1.0.0",
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "source": self.config.source_sensor
-                    }
-                }
-                
-                # Create event
-                event = {
-                    "event_type": "NEW",
-                    "source_sensor": self.config.source_sensor,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "bundle": bundle
-                }
-                
-                # Send to KOI Event Bridge
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(
-                        self.config.koi_bridge_url,
-                        json=event
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        self.logger.info(
-                            f"Sent document {doc['rid']}: "
-                            f"{result.get('chunks_created')} chunks, "
-                            f"{result.get('embeddings_created')} embeddings"
-                        )
-                        success_count += 1
-                        self.documents_sent += 1
-                    else:
-                        self.logger.error(f"Failed to send {doc['rid']}: {response.status_code}")
+                # Create bundle from document
+                bundle = document_to_bundle(doc, source_node="gitlab-sensor")
+
+                # Emit event
+                await self.koi_node.emit_new_event(bundle)
+
+                self.logger.info(f"Sent document {doc.get('id', 'unknown')} to KOI coordinator")
+                success_count += 1
+                self.documents_sent += 1
 
             except Exception as e:
-                self.logger.error(f"Error sending document {doc.get('rid', 'unknown')}: {e}")
+                self.logger.error(f"Error sending document {doc.get('id', 'unknown')}: {e}")
                 continue
 
         return success_count
 
-    async def send_heartbeat_event(self, response_to: str = None):
-        """Send a heartbeat event to register with coordinator"""
-        heartbeat_data = {
-            "type": "sensor_heartbeat",
-            "sensor_id": "gitlab-sensor",
-            "sensor_type": "gitlab",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "status": "active",
-            "monitoring": [repo["name"] for repo in self.config.repos],
-            "documents_sent": self.documents_sent
-        }
+    async def send_heartbeat_event(self, response_to: Optional[str] = None):
+        """Send a heartbeat event to register with coordinator
 
-        if response_to:
-            heartbeat_data["response_to"] = response_to
-
-        # Create bundle
-        bundle = {
-            "rid": f"gitlab:heartbeat:{datetime.now().timestamp()}",
-            "cid": hashlib.sha256(json.dumps(heartbeat_data).encode()).hexdigest(),
-            "content": heartbeat_data,
-            "metadata": {"type": "heartbeat"},
-            "manifest": {
-                "version": "1.0.0",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "source": "gitlab-sensor"
-            }
-        }
-
-        # Create event
-        event = {
-            "event_type": "HEARTBEAT",
-            "source_sensor": "gitlab-sensor",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "bundle": bundle
-        }
-
-        # Send to coordinator
+        Args:
+            response_to: Optional RID to respond to for ping requests
+        """
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    f"{self.config.koi_coordinator_url}/events/broadcast",
-                    json=event
-                )
-                if response.status_code == 200:
-                    self.logger.info(f"Sent heartbeat to coordinator (response_to: {response_to})")
-                else:
-                    self.logger.error(f"Failed to send heartbeat: {response.status_code}")
+            # Create a heartbeat bundle
+            heartbeat_data = {
+                "type": "sensor_heartbeat",
+                "sensor_id": "gitlab-sensor",
+                "sensor_type": "gitlab",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "status": "active",
+                "monitoring": [repo["name"] for repo in self.config.repos],
+                "documents_sent": self.documents_sent
+            }
+
+            # Add response_to if this is a ping response
+            if response_to:
+                heartbeat_data["response_to"] = response_to
+
+            # Create document for heartbeat with required fields
+            heartbeat_document = {
+                'id': f"gitlab_heartbeat_{int(datetime.now().timestamp())}",
+                'title': 'GitLab Sensor Heartbeat',
+                'url': '',
+                'type': 'heartbeat',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'content': json.dumps(heartbeat_data),
+                'metadata': {
+                    'sensor_type': 'gitlab',
+                    'sensor_id': 'gitlab-sensor',
+                    'event_type': 'HEARTBEAT'
+                }
+            }
+
+            # Convert to bundle and emit
+            bundle = document_to_bundle(heartbeat_document)
+            await self.koi_node.emit_new_event(bundle)
+
+            if response_to:
+                self.logger.info(f"Sent ping response heartbeat to coordinator (responding to {response_to})")
+            else:
+                self.logger.info("Sent heartbeat event to register with coordinator")
+
         except Exception as e:
             self.logger.error(f"Error sending heartbeat: {e}")
 
@@ -489,22 +469,18 @@ class GitLabSensor:
             await self.send_heartbeat_event()
 
     async def handle_coordinator_events(self):
-        """Handle events from coordinator (ping requests)"""
-        async with httpx.AsyncClient() as client:
-            sse_url = f"{self.config.koi_coordinator_url}/events/stream?sensor_id=gitlab-sensor"
+        """Listen for and handle coordinator events like ping requests"""
+        while True:
             try:
-                async with client.stream('GET', sse_url) as response:
-                    async for line in response.aiter_lines():
-                        if line.startswith('data: '):
-                            try:
-                                event_data = json.loads(line[6:])
-                                if event_data.get('event_type') == 'PING':
-                                    self.logger.info("Received ping from coordinator")
-                                    await self.send_heartbeat_event(response_to=event_data.get('ping_id'))
-                            except json.JSONDecodeError:
-                                continue
+                # KOIPartialNode doesn't have poll_coordinator_events, skip for now
+                await asyncio.sleep(30)
+                continue
+            except asyncio.CancelledError:
+                self.logger.info("Coordinator event handler cancelled")
+                break
             except Exception as e:
                 self.logger.error(f"Error handling coordinator events: {e}")
+                await asyncio.sleep(30)
 
     def cleanup(self):
         """Clean up temporary directory"""
@@ -519,6 +495,9 @@ class GitLabSensor:
 async def run_sensor_continuous(sensor):
     """Run sensor with continuous monitoring and heartbeats"""
     try:
+        # Start KOI node
+        await sensor.koi_node.start()
+
         # Register with coordinator
         await sensor.register_with_coordinator()
 

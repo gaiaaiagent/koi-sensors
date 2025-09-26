@@ -104,6 +104,48 @@ if ! curl -s http://localhost:8005/health > /dev/null 2>&1; then
     sleep 3
 fi
 
+# Check if Event Bridge v2 is running
+echo -e "${CYAN}Checking KOI Event Bridge v2...${NC}"
+if ! curl -s http://localhost:8100/health > /dev/null 2>&1; then
+    echo -e "${YELLOW}⚠ KOI Event Bridge v2 not running. Starting it...${NC}"
+    cd /opt/projects/koi-processor
+    source venv/bin/activate
+    nohup python3 src/core/koi_event_bridge_v2.py > event_bridge.log 2>&1 &
+    echo "KOI_EVENT_BRIDGE:$!" >> "$PID_FILE"
+    echo -e "${GREEN}✓ KOI Event Bridge v2 started${NC}"
+    sleep 3
+else
+    echo -e "${GREEN}✓ KOI Event Bridge v2 is already running${NC}"
+fi
+
+# Check if KOI Content API is running
+echo -e "${CYAN}Checking KOI Content API...${NC}"
+if ! curl -s http://localhost:8007/health > /dev/null 2>&1; then
+    echo -e "${YELLOW}⚠ KOI Content API not running. Starting it...${NC}"
+    cd /opt/projects/koi-processor
+    source venv/bin/activate
+    nohup python3 api/koi_content_api.py > content_api.log 2>&1 &
+    echo "KOI_CONTENT_API:$!" >> "$PID_FILE"
+    echo -e "${GREEN}✓ KOI Content API started${NC}"
+    sleep 2
+else
+    echo -e "${GREEN}✓ KOI Content API is already running${NC}"
+fi
+
+# Check if KOI Event Forwarder is running
+echo -e "${CYAN}Checking KOI Event Forwarder...${NC}"
+if ! pgrep -f "coordinator_to_eventbridge_forwarder" > /dev/null 2>&1; then
+    echo -e "${YELLOW}⚠ KOI Event Forwarder not running. Starting it...${NC}"
+    cd /opt/projects/koi-processor
+    source venv/bin/activate
+    nohup python3 scripts/coordinator_to_eventbridge_forwarder.py > forwarder.log 2>&1 &
+    echo "KOI_FORWARDER:$!" >> "$PID_FILE"
+    echo -e "${GREEN}✓ KOI Event Forwarder started${NC}"
+    sleep 1
+else
+    echo -e "${GREEN}✓ KOI Event Forwarder is already running${NC}"
+fi
+
 # Start sensors
 echo ""
 echo -e "${CYAN}Starting sensors...${NC}"

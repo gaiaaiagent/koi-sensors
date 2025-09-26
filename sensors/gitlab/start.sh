@@ -17,9 +17,9 @@ if [ -f "$SCRIPT_DIR/../../.env" ]; then
 fi
 
 if [ "$1" == "--background" ] || [ "$1" == "-b" ]; then
-    nohup python3 gitlab_sensor_fixed.py >> gitlab_sensor.log 2>&1 &
+    nohup python3 gitlab_sensor.py >> gitlab_sensor.log 2>&1 &
     echo "✅ GitLab sensor started (PID: $!)"
 else
     echo "Starting GitLab Sensor..."
-    python3 gitlab_sensor_fixed.py
+    python3 gitlab_sensor.py
 fi

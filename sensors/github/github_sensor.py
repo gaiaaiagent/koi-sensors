@@ -80,10 +80,15 @@ class GitHubSensor:
     async def collect_all_repos(self) -> List[Dict[str, Any]]:
         """
         Collect documents from all configured repositories
-        
+
         Returns:
             List of collected documents
         """
+        # Clear processed RIDs for this collection cycle
+        # This allows us to track updates to files, not just new files
+        self.processed_rids.clear()
+        self.logger.info("Starting new collection cycle, cleared processed RIDs")
+
         all_documents = []
         
         for repo_config in self.config.repos:
@@ -117,17 +122,19 @@ class GitHubSensor:
         # Clone repository
         repo_path = self.temp_dir / repo_name
         if repo_path.exists():
+            self.logger.info(f"Removing existing repo at {repo_path}")
             shutil.rmtree(repo_path)
-        
+
         try:
             # Try cloning with specified branch (full history for commit dates)
-            self.logger.debug(f"Cloning {repo_url} to {repo_path} (branch: {branch})")
+            self.logger.info(f"Cloning {repo_url} to {repo_path} (branch: {branch})")
             result = subprocess.run(
                 ['git', 'clone', '--branch', branch, repo_url, str(repo_path)],
                 capture_output=True,
                 text=True,
                 timeout=120  # Increased timeout for full clone
             )
+            self.logger.info(f"Clone result: returncode={result.returncode}")
             
             if result.returncode != 0:
                 # Try with master branch if main fails
@@ -154,15 +161,18 @@ class GitHubSensor:
             return []
         
         documents = []
-        
+
         # Process specified paths
         for path_pattern in paths:
             files = self.find_files(repo_path, path_pattern)
-            
+            self.logger.info(f"Found {len(files)} files matching pattern '{path_pattern}' in {repo_name}")
+
             for file_path in files:
                 doc = self.process_file(file_path, repo_name, repo_url, branch)
                 if doc:
                     documents.append(doc)
+                else:
+                    self.logger.debug(f"No document created for {file_path}")
         
         # Clean up cloned repo
         try:
@@ -262,12 +272,13 @@ class GitHubSensor:
             relative_path = file_path.relative_to(file_path.parent.parent.parent)
             file_url = f"{repo_url}/blob/{branch}/{relative_path}"
             
-            # Generate RID
-            rid = f"github:{repo_name}:{relative_path}"
-            rid = rid.replace('/', ':').replace(' ', '_')
+            # Generate RID (no colons allowed in RID system)
+            rid = f"github_{repo_name}_{relative_path}"
+            rid = rid.replace('/', '_').replace(' ', '_').replace(':', '_')
             
-            # Skip if already processed
+            # Track this RID within this collection cycle to avoid duplicates
             if rid in self.processed_rids:
+                # Already processed in this collection cycle
                 return None
             self.processed_rids.add(rid)
             
@@ -307,7 +318,7 @@ class GitHubSensor:
                         if len(parts) >= 1:
                             commit_date = parts[0]
                             published_at = datetime.fromisoformat(commit_date.replace('Z', '+00:00'))
-                            confidence = 0.85  # High confidence for git commit dates
+                            confidence = 1.0  # Git commit dates are 100% verifiable
                         if len(parts) >= 2:
                             commit_author = parts[1]
                         if len(parts) >= 3:
@@ -327,16 +338,32 @@ class GitHubSensor:
                     confidence = 0.6  # Lower confidence for file system dates
                 except:
                     pass
+
+            # Optional: Only include files updated in the last 30 days for weekly digests
+            # This prevents old, unchanged files from being repeatedly processed
+            if published_at:
+                days_old = (datetime.now(timezone.utc) - published_at).days
+                if days_old > 30:
+                    self.logger.debug(f"Skipping {file_path.name} - last updated {days_old} days ago")
+                    # Remove from processed_rids since we're not actually processing it
+                    self.processed_rids.discard(rid)
+                    return None
             
-            # Create document
+            # Create document title from repo and file path
+            title = f"{repo_name}: {str(relative_path)}"
+
+            # Create document compatible with document_to_bundle
             doc = {
-                "rid": rid,
+                "id": rid,  # Used by document_to_rid as fallback
+                "title": title,  # Required by document_to_bundle
                 "source": "github",
-                "repo": repo_name,
-                "file_path": str(relative_path),
-                "url": file_url,
-                "branch": branch,
+                "source_type": "github",  # Used by document_to_rid
+                "url": file_url,  # Important for attribution
                 "content": content,
+                "author": commit_author,  # From git log
+                "tags": [repo_name, branch, file_path.suffix or "no_extension"],
+                "collected_at": datetime.now(timezone.utc).isoformat(),
+                "last_modified": published_at.isoformat() if published_at else None,
                 "metadata": {
                     # Publication date metadata for Daily Curator
                     "published_at": published_at.isoformat() if published_at else None,
@@ -346,11 +373,15 @@ class GitHubSensor:
                     "commit_message": commit_message,
                     "commit_author": commit_author,
 
-                    # Original metadata
+                    # GitHub specific metadata
+                    "repo": repo_name,
+                    "branch": branch,
+                    "file_path": str(relative_path),
+
+                    # File metadata
                     "file_type": file_path.suffix or "no_extension",
                     "file_size": len(content),
-                    "lines": content.count('\n') + 1,
-                    "collected_at": datetime.now(timezone.utc).isoformat()
+                    "lines": content.count('\n') + 1
                 }
             }
             
@@ -488,12 +519,18 @@ class GitHubSensor:
         coordinator_task = asyncio.create_task(self.handle_coordinator_events())
 
         # Initial collection
-        await self.collect_all_repos()
+        documents = await self.collect_all_repos()
+        if documents:
+            sent_count = await self.send_to_koi(documents)
+            self.logger.info(f"Initial collection: sent {sent_count}/{len(documents)} documents to KOI")
 
         # Start monitoring loop
         while True:
             await asyncio.sleep(3600)  # Check every hour
-            await self.collect_all_repos()
+            documents = await self.collect_all_repos()
+            if documents:
+                sent_count = await self.send_to_koi(documents)
+                self.logger.info(f"Periodic collection: sent {sent_count}/{len(documents)} documents to KOI")
 
     def cleanup(self):
         """Clean up temporary directory"""

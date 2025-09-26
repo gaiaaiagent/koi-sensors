@@ -11,9 +11,19 @@ fi
 source venv/bin/activate
 export PYTHONPATH="$SCRIPT_DIR/../..:$PYTHONPATH"
 
-# Source .env file if it exists
+# Source .env file if it exists and export all variables
 if [ -f "$SCRIPT_DIR/../../.env" ]; then
+    # Use export with source to ensure variables are available to Python
+    set -a  # Mark all new variables for export
     source "$SCRIPT_DIR/../../.env"
+    set +a  # Turn off auto-export
+
+    # Debug: Verify NOTION_API_KEY is set
+    if [ -n "$NOTION_API_KEY" ]; then
+        echo "✓ NOTION_API_KEY loaded from .env"
+    else
+        echo "⚠️ NOTION_API_KEY not found in .env"
+    fi
 fi
 
 if [ "$1" == "--background" ] || [ "$1" == "-b" ]; then

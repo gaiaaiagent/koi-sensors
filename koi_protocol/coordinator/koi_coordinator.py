@@ -91,9 +91,12 @@ class KOICoordinator:
         self.node_name = node_name
         self.port = port
         self.start_time = datetime.now()
-        
+
         # Initialize KOI full node
         self.koi_node = KOIFullNode(node_name, port)
+
+        # Store sensor monitoring data
+        self.sensor_monitoring = {}
         
         # Initialize FastAPI app
         self.app = FastAPI(
@@ -140,6 +143,19 @@ class KOICoordinator:
                 event_data = request.dict()
                 self.logger.debug(f"Received event data keys: {event_data.keys()}")
                 self.logger.debug(f"Event type: {event_data.get('event_type')}")
+
+                # Check if this is a sensor heartbeat with monitoring data
+                if event_data and event_data.get("data") and event_data.get("data", {}).get("type") == "sensor_heartbeat":
+                    heartbeat_data = event_data.get("data", {})
+                    sensor_id = heartbeat_data.get("sensor_id")
+                    monitoring_list = heartbeat_data.get("monitoring", [])
+
+                    if sensor_id and monitoring_list:
+                        self.sensor_monitoring[sensor_id] = monitoring_list
+                        self.logger.info(f"Updated monitoring data for {sensor_id}: {len(monitoring_list)} items")
+                        # Show first few items for debugging
+                        if len(monitoring_list) > 0:
+                            self.logger.debug(f"First monitoring item: {monitoring_list[0]}")
                 
                 # Handle bundle if present, or create one from sensor data
                 if event_data.get("bundle"):
@@ -427,7 +443,29 @@ class KOICoordinator:
                 elif sensor_type == "discourse":
                     monitoring = ["forum.regen.network", "regencommons.discourse.group"]
                 elif sensor_type == "notion":
-                    monitoring = ["Notion workspace"]
+                    # Check if we have stored monitoring data for this sensor
+                    # Try both node_id and simplified sensor type
+                    monitoring_found = False
+                    if hasattr(self, 'sensor_monitoring'):
+                        # Try exact node_id match first
+                        if node_id in self.sensor_monitoring:
+                            monitoring = self.sensor_monitoring[node_id]
+                            monitoring_found = True
+                        # Try notion-sensor key
+                        elif 'notion-sensor' in self.sensor_monitoring:
+                            monitoring = self.sensor_monitoring['notion-sensor']
+                            monitoring_found = True
+                        # Try any key containing 'notion'
+                        else:
+                            for key in self.sensor_monitoring:
+                                if 'notion' in key.lower():
+                                    monitoring = self.sensor_monitoring[key]
+                                    monitoring_found = True
+                                    break
+
+                    if not monitoring_found:
+                        # Default until sensor sends its monitoring data
+                        monitoring = ["Notion workspace (loading pages...)"]
                 elif sensor_type == "twitter":
                     monitoring = ["@regen_network"]
                 elif sensor_type == "github":
