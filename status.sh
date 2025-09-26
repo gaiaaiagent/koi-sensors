@@ -39,7 +39,7 @@ declare -A sensor_files=(
     ["Medium"]="medium_sensor.py"
     ["Discourse"]="discourse_sensor.py"
     ["Notion"]="notion_sensor.py"
-    ["Telegram"]="telegram_sensor_v2.py"
+    ["Telegram"]="telegram_sensor.py"
     ["Twitter"]="twitter_sensor.py"
     ["Podcast"]="podcast_sensor.py"
 )

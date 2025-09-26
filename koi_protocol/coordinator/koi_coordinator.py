@@ -244,13 +244,56 @@ class KOICoordinator:
                         }
                         self.logger.debug(f"Tracked new sensor: {sensor_type} (node: {source_node})")
                 
+                # Create CAT receipt for sensor collection
+                try:
+                    # Import the receipt manager
+                    import sys
+                    import os
+                    sys.path.append(os.path.join(os.path.dirname(__file__), '../../../koi-processor/src'))
+                    from cat.coordinator_receipt_integration import CoordinatorReceiptManager
+
+                    receipt_manager = CoordinatorReceiptManager()
+
+                    # Create sensor collection receipt
+                    if event.bundle and event.rid:
+                        sensor_name = event_data.get("source_node", "unknown")
+                        content_hash = event.bundle.manifest.content_hash if event.bundle else ""
+                        metadata = event.bundle.manifest.metadata if event.bundle else {}
+
+                        collection_receipt = await receipt_manager.create_sensor_collection_receipt(
+                            sensor_name=sensor_name,
+                            rid=event.rid,
+                            content_hash=content_hash,
+                            source_url=metadata.get("url"),
+                            document_count=1,
+                            metadata=metadata
+                        )
+
+                        # Create forwarding receipt
+                        forwarding_receipt = await receipt_manager.create_coordinator_forwarding_receipt(
+                            input_rid=event.rid,
+                            output_rid=event.rid,
+                            target_service="event-bridge",
+                            sensor_name=sensor_name,
+                            event_type=event.event_type,
+                            metadata={"collection_receipt": collection_receipt}
+                        )
+
+                        self.logger.info(f"Created CAT receipts - collection: {collection_receipt}, forwarding: {forwarding_receipt}")
+
+                    await receipt_manager.close()
+
+                except Exception as e:
+                    self.logger.warning(f"Could not create CAT receipts: {e}")
+                    # Don't fail the event processing if receipt creation fails
+
                 # Process event through KOI node
                 await self.koi_node.handle_event(event)
-                
+
                 # CRITICAL: Queue the event for other nodes to poll (KOI protocol requirement)
                 self.koi_node.queue_event(event)
                 self.logger.info(f"Queued event for polling: {event.rid}")
-                
+
                 # Also broadcast to connected nodes
                 await self.koi_node.broadcast_event(event)
 

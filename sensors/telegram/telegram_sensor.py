@@ -31,6 +31,13 @@ import sys
 import httpx
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+try:
+    from koi_protocol.nodes.koi_node import KOIPartialNode
+except ImportError:
+    print("Error: KOI protocol not found")
+    print("Ensure you're running from the koi-sensors directory")
+    exit(1)
+
 
 @dataclass
 class TelegramConfig:
@@ -62,14 +69,21 @@ class TelegramConfig:
 
 class TelegramSensor:
     """Sensor for Telegram channel messages"""
-    
+
     def __init__(self, config: TelegramConfig, logger: Optional[logging.Logger] = None):
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
         self.bot = Bot(token=config.bot_token)
-        
+
         # Track processed messages
         self.processed_message_ids = set()
+
+        # Initialize KOI node
+        self.koi_node = KOIPartialNode(
+            node_name=self.config.source_sensor,
+            coordinator_url=self.config.koi_coordinator_url,
+            poll_interval=30  # Poll coordinator every 30 seconds
+        )
     
     async def test_connection(self) -> bool:
         """Test bot connection and permissions"""
@@ -314,52 +328,141 @@ Members: {chat.get_member_count() if hasattr(chat, 'get_member_count') else 'Unk
             if not await self.test_connection():
                 self.logger.error("Bot connection test failed")
                 return
-            
+
             # Collect documents
             self.logger.info("Collecting channel information...")
             documents = await self.collect_channel_history()
-            
+
             if documents:
                 self.logger.info(f"Collected {len(documents)} documents")
-                
+
                 # Save locally for inspection
                 output_dir = Path("output")
                 output_dir.mkdir(exist_ok=True)
-                
+
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 output_file = output_dir / f"telegram_{timestamp}.json"
-                
+
                 with open(output_file, 'w') as f:
                     json.dump(documents, f, indent=2)
-                
+
                 self.logger.info(f"Saved to {output_file}")
-                
+
                 # Send to KOI
                 success_count = await self.send_to_koi(documents)
                 self.logger.info(f"Sent {success_count}/{len(documents)} documents to KOI")
             else:
                 self.logger.info("No new documents to process")
-                
+
         except Exception as e:
             self.logger.error(f"Error in sensor run: {e}")
 
+    async def send_heartbeat_event(self):
+        """Send heartbeat event to coordinator"""
+        try:
+            heartbeat_event = {
+                "rid": f"telegram:heartbeat:{int(datetime.now().timestamp())}",
+                "event_type": "HEARTBEAT",
+                "source_node": self.config.source_sensor,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "data": {
+                    "status": "active",
+                    "message": "Telegram sensor is running",
+                    "channel": self.config.channel_username
+                }
+            }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.config.koi_coordinator_url}/events/broadcast",
+                    json=heartbeat_event,
+                    timeout=30.0
+                )
+
+                if response.status_code == 200:
+                    self.logger.debug("Sent heartbeat event")
+                else:
+                    self.logger.warning(f"Failed to send heartbeat: {response.status_code}")
+
+        except Exception as e:
+            self.logger.error(f"Error sending heartbeat: {e}")
+
+    async def send_periodic_heartbeats(self):
+        """Send heartbeat events every 30 minutes"""
+        while True:
+            try:
+                await self.send_heartbeat_event()
+                await asyncio.sleep(1800)  # 30 minutes
+            except Exception as e:
+                self.logger.error(f"Error in heartbeat loop: {e}")
+                await asyncio.sleep(60)  # Retry after 1 minute on error
+
+    async def handle_coordinator_events(self):
+        """Handle events from the coordinator"""
+        while True:
+            try:
+                # KOIPartialNode polls automatically, just sleep for now
+                await asyncio.sleep(30)
+
+            except asyncio.CancelledError:
+                self.logger.info("Coordinator event handler cancelled")
+                break
+            except Exception as e:
+                self.logger.error(f"Error handling coordinator events: {e}")
+                await asyncio.sleep(30)  # Wait before retrying
+
+    async def start(self):
+        """Start the sensor in continuous mode with heartbeats"""
+        try:
+            # Start KOI node
+            await self.koi_node.start()
+            self.logger.info(f"Started KOI node: {self.config.source_sensor}")
+
+            # Test connection
+            if not await self.test_connection():
+                self.logger.error("Bot connection test failed, will retry...")
+                # Don't exit, keep trying
+
+            # Send initial heartbeat
+            await self.send_heartbeat_event()
+            self.logger.info("Sent startup heartbeat")
+
+            # Start background tasks
+            heartbeat_task = asyncio.create_task(self.send_periodic_heartbeats())
+            coordinator_task = asyncio.create_task(self.handle_coordinator_events())
+
+            # Initial collection
+            await self.run_once()
+
+            # Main monitoring loop - check every hour
+            while True:
+                await asyncio.sleep(3600)  # Wait 1 hour
+
+                # Collect and send new data
+                self.logger.info("Running periodic collection...")
+                await self.run_once()
+
+        except Exception as e:
+            self.logger.error(f"Error in sensor start: {e}")
+            raise
+
 
 async def main():
-    """Test the Telegram sensor"""
+    """Run the Telegram sensor in continuous mode"""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     logger = logging.getLogger(__name__)
-    
+
     try:
         # Load configuration from environment
         config = TelegramConfig.from_env()
-        
-        # Create and run sensor
+
+        # Create and start sensor in continuous mode
         sensor = TelegramSensor(config, logger)
-        await sensor.run_once()
-        
+        await sensor.start()  # Changed from run_once() to start()
+
     except Exception as e:
         logger.error(f"Failed to run Telegram sensor: {e}")
 
