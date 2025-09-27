@@ -1,0 +1,28 @@
+# GitHub Activity Sensor Configuration
+# Monitors commits, issues, PRs, and discussions from GitHub repositories
+
+koi_coordinator_url: "http://localhost:8005"
+
+# GitHub repositories to monitor for activity
+repos:
+  - owner: regen-network
+    name: regen-ledger
+
+  - owner: regen-network
+    name: regen-web
+
+  - owner: regen-network
+    name: regen-data-standards
+
+  - owner: regen-network
+    name: regenie-corpus
+
+  - owner: regen-network
+    name: mcp
+
+# How far back to look for activity (in hours)
+lookback_hours: 24
+
+# Optional: Set GITHUB_TOKEN environment variable for higher rate limits
+# Without token: 60 requests/hour
+# With token: 5000 requests/hour
