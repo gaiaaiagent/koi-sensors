@@ -300,7 +300,7 @@ class DiscourseSensor:
     
     async def process_posts_as_documents(self, forum_name: str, forum_url: str, topic: Dict) -> List[Dict]:
         """
-        Process a topic and create individual documents for each post
+        Process a topic and create individual documents for each post with proper provenance
 
         Args:
             forum_name: Name of the forum
@@ -308,7 +308,7 @@ class DiscourseSensor:
             topic: Topic metadata
 
         Returns:
-            List of KOI documents (one per post)
+            List of KOI documents (parent topic + child posts)
         """
         topic_id = topic['id']
         topic_slug = topic.get('slug', '')
@@ -329,7 +329,70 @@ class DiscourseSensor:
 
         documents = []
 
-        # Create a document for each post
+        # Create parent topic document FIRST
+        topic_rid = self.generate_rid(f"{forum_name}:topic:{topic_id}:{topic_title}")
+
+        # Get topic creation date
+        topic_created_at = None
+        if topic_data.get('created_at'):
+            try:
+                topic_created_at = datetime.fromisoformat(
+                    topic_data['created_at'].replace('Z', '+00:00')
+                )
+            except:
+                topic_created_at = datetime.now(timezone.utc)
+        else:
+            topic_created_at = datetime.now(timezone.utc)
+
+        # Find the latest post date for the topic
+        latest_post_date = topic_created_at
+        for post in posts:
+            created = post.get('created_at', '')
+            if created:
+                try:
+                    post_date = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                    if post_date > latest_post_date:
+                        latest_post_date = post_date
+                except:
+                    pass
+
+        # Create parent topic document
+        parent_document = {
+            'id': f"{forum_name}_topic_{topic_id}",
+            'rid': topic_rid,
+            'source': f'discourse:{forum_name}',
+            'source_type': 'forum-topic',
+            'url': topic_url_full,
+            'title': topic_title,
+            'content': f"Forum topic: {topic_title}",  # Brief content for parent
+            'author': posts[0].get('username', 'anonymous') if posts else 'anonymous',
+            'timestamp': latest_post_date.isoformat(),  # Use latest activity for relevance
+            'metadata': {
+                'published_at': latest_post_date.isoformat(),
+                'published_confidence': 0.95,
+                'topic_created_at': topic_created_at.isoformat(),
+                'forum': forum_name,
+                'topic_id': topic_id,
+                'topic_slug': topic_slug,
+                'category': topic_data.get('category_id'),
+                'posts_count': len(posts),
+                'views': topic_data.get('views', 0),
+                'like_count': topic_data.get('like_count', 0),
+                'reply_count': topic_data.get('reply_count', 0),
+                'tags': topic_tags,
+                'pinned': topic_data.get('pinned', False),
+                'archived': topic_data.get('archived', False),
+                'is_parent': True,  # Mark as parent document
+            }
+        }
+
+        # Check if topic already processed
+        topic_key = f"{forum_name}:topic:{topic_id}"
+        if topic_key not in self.processed_topics:
+            documents.append(parent_document)
+            self.processed_topics.add(topic_key)
+
+        # Create a document for each post as children of the topic
         for post in posts:
             post_id = post.get('id')
             post_number = post.get('post_number', 0)
@@ -372,6 +435,10 @@ class DiscourseSensor:
                 'author': username,
                 'timestamp': post_date.isoformat(),
                 'metadata': {
+                    # PROVENANCE: Link to parent topic document
+                    'parent_rid': topic_rid,  # Reference to parent topic RID
+                    'parent_url': topic_url_full,  # Direct URL to topic
+
                     # Publication date for this specific post
                     'published_at': post_date.isoformat(),
                     'published_confidence': 0.95,
@@ -384,6 +451,7 @@ class DiscourseSensor:
                     'post_id': post_id,
                     'post_number': post_number,
                     'is_first_post': post_number == 1,
+                    'is_child': True,  # Mark as child document
 
                     # Post metadata
                     'reply_to_post_number': post.get('reply_to_post_number'),
