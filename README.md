@@ -20,9 +20,10 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 - ✅ **CAT Receipts**: Full provenance tracking through transformation pipeline
 - ✅ **Production Tested**: End-to-end pipeline verified with clean content
 
-**Active Sensors in Production** (as of September 15, 2025):
+**Active Sensors in Production** (as of September 28, 2025):
 - ✅ **Website Sensor**: Continuous monitoring with configurable polling intervals
 - ✅ **GitHub Sensor**: Repository monitoring with heartbeat support
+- ✅ **GitHub Activity Sensor**: Comprehensive activity tracking (commits, issues, PRs) for daily/weekly curation
 - ✅ **GitLab Sensor**: Documentation monitoring with heartbeat support
 - ✅ **Medium Sensor**: RSS feed monitoring with heartbeat support
 - ✅ **Discourse Sensor**: Forum monitoring with heartbeat support
@@ -225,11 +226,16 @@ koi-sensors/
 │   │   ├── test_*.py            # Comprehensive test suite
 │   │   ├── extracted_website_data.json # Actual scraped data
 │   │   └── docker-compose.yml   # Docker deployment
-│   └── podcast/                 # Podcast monitoring sensor ✅ COMPLETE
-│       ├── podcast_sensor.py    # SoundCloud podcast monitoring
-│       ├── config.yaml          # Planetary Regeneration Podcast
-│       ├── test_podcast_sensor.py # Standalone testing
-│       └── Dockerfile           # Docker deployment
+│   ├── podcast/                 # Podcast monitoring sensor ✅ COMPLETE
+│   │   ├── podcast_sensor.py    # SoundCloud podcast monitoring
+│   │   ├── config.yaml          # Planetary Regeneration Podcast
+│   │   ├── test_podcast_sensor.py # Standalone testing
+│   │   └── Dockerfile           # Docker deployment
+│   └── github_activity/         # GitHub Activity sensor ✅ COMPLETE
+│       ├── github_activity_sensor.py # Comprehensive GitHub activity tracking
+│       ├── config.yaml          # 5 Regen Network repos configured
+│       ├── setup.sh             # Setup script with venv isolation
+│       └── start.sh             # Start script for background operation
 ├── shared/                      # Shared utilities
 └── docs/                        # Documentation and guides
 ```
