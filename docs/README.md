@@ -3,30 +3,22 @@
 ## Quick Links
 - [Main README](../README.md)
 - [Quick Start Guide](../QUICKSTART.md)
+- [CLAUDE Configuration](../CLAUDE.md)
 
 ## Documentation Structure
 
-### 📁 Architecture
-- [Implementation Details](architecture/IMPLEMENTATION.md)
-- [KOI Implementation](KOI_IMPLEMENTATION.md)
-- [Sensor vs Server Comparison](SENSOR_VS_SERVER_COMPARISON.md)
-
-### 📁 Development
-- [Claude Development Guide](development/CLAUDE.md)
-- [Instructions for Claude](development/INSTRUCTIONS_FOR_CLAUDE.md)
-- [Next Steps](development/NEXT_STEPS.md)
-
 ### 📁 Status
-- [Changelog](status/CHANGELOG.md)
-- [Recent Changes](status/RECENT_CHANGES.md)
-- [KOI Pipeline Status](status/KOI_PIPELINE_STATUS.md)
-- [Documentation Status](DOCUMENTATION_STATUS.md)
-
+- [Main Changelog](status/CHANGELOG.md)
+- [Weekly Status Reports](status/)
 
 ### 📁 Integration Guides
 - [Integration Guide](INTEGRATION_GUIDE.md)
 - [Notion Integration](NOTION_INTEGRATION.md)
 - [Twitter Integration](TWITTER_INTEGRATION.md)
+- [Telegram Sensor Setup](TELEGRAM_SENSOR_SETUP.md)
+
+### 📁 Implementation
+- [KOI Implementation](KOI_IMPLEMENTATION.md)
 
 ### 📁 Deployment
 - [Deployment Guide](DEPLOYMENT.md)
@@ -36,26 +28,45 @@
 
 ## Main Components
 
-### Sensors
+### Sensors (12 Active)
 Individual sensor implementations in `/sensors/`:
-- Website Sensor
-- Twitter Sensor
-- Discord Sensor
-- Notion Sensor
-- Medium Sensor
-- GitHub/GitLab Sensors
-- Podcast Sensor
-- Ledger Sensor
+- Website Sensor - Continuous monitoring with hash-based change detection
+- GitHub Sensor - Repository monitoring with heartbeat support
+- GitHub Activity Sensor - Comprehensive activity tracking for daily/weekly curation
+- GitLab Sensor - Documentation monitoring
+- Medium Sensor - RSS feed monitoring
+- Discourse Sensor - Forum monitoring
+- Telegram Sensor - Real-time channel monitoring
+- Twitter Sensor v2 - Playwright-based monitoring
+- Discord Sensor - Real-time message monitoring
+- Podcast Sensor - RSS feed monitoring
+- Notion Sensor - Database monitoring
+- Ledger Sensor - Blockchain monitoring
 
 ### KOI Protocol
 Core protocol implementation in `/koi_protocol/`:
-- Coordinator
-- RID System
-- Bundle System
-- Node implementations
+- KOI Coordinator (Port 8005) - Central event routing
+- RID System - Resource Identifier management
+- Bundle System - Content packaging
+- Full/Partial Node implementations
 
-### Indexing
-Legacy indexing system in `/indexing/`:
-- Collectors
-- Processors
-- Storage systems
+### Event Bridge v2
+Real-time content processing:
+- RID-based deduplication
+- Content versioning with superseded_at timestamps
+- Event filtering for heartbeats and test data
+- Direct PostgreSQL integration
+
+### Dashboard
+Live monitoring at https://regen.gaiaai.xyz/koi:
+- Real-time sensor status
+- Pipeline flow visualization
+- Provenance tracking
+- Transformation timeline
+
+## Current Status (September 28, 2025)
+- **12 Active Sensors** in production
+- **Event Bridge v2** with deduplication and filtering
+- **Content-based deduplication** preventing duplicate processing
+- **Complete pipeline** from sensors to agent RAG access
+- **Dashboard** with live monitoring and provenance tracking
