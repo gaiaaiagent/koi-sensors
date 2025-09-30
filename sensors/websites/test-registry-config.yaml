@@ -1,0 +1,30 @@
+# Test config to crawl only registry.regen.network
+sensor:
+  name: website-sensor-test
+  type: website
+  node_id: "koi-sensor-website-test"
+  coordinator_url: "http://localhost:8005"
+
+# Only registry for testing
+websites:
+  - name: registry-regen-network
+    url: https://registry.regen.network
+    strategy: scrape
+    max_depth: 10  # Set high to ensure no depth limit
+    max_pages: 200  # Increase for testing
+    check_interval: 3600
+    priority: high
+    notes: "Test crawl to find learning-center articles"
+
+# Processing settings
+processing:
+  user_agent: "KOI-Sensor-Test/1.0"
+  request_delay: 0.5  # Faster for testing
+  timeout: 30
+  retry_attempts: 3
+  content_threshold: 100
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

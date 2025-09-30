@@ -266,8 +266,21 @@ def document_to_bundle(document: Dict[str, Any], source_node: str = "regen-colle
         "original_id": document.get("id")
     }
 
-    # CRITICAL: Pass through publication date metadata for digest generation
+    # CRITICAL: Include URL fields for event bridge URL extraction
+    # Event bridge checks bundle.manifest.metadata for 'url' and 'source_url'
+    if document.get("url"):
+        bundle_metadata["url"] = document.get("url")
+    if document.get("source_url"):
+        bundle_metadata["source_url"] = document.get("source_url")
+
+    # Also check metadata for URL fields as fallback
     doc_metadata = document.get("metadata", {})
+    if not bundle_metadata.get("url") and doc_metadata.get("url"):
+        bundle_metadata["url"] = doc_metadata.get("url")
+    if not bundle_metadata.get("source_url") and doc_metadata.get("source_url"):
+        bundle_metadata["source_url"] = doc_metadata.get("source_url")
+
+    # CRITICAL: Pass through publication date metadata for digest generation
     if "published_at" in doc_metadata:
         bundle_metadata["published_at"] = doc_metadata["published_at"]
         bundle_metadata["published_confidence"] = doc_metadata.get("published_confidence", 0.5)
