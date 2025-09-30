@@ -151,3 +151,8 @@ sensors/*/cache/
 sensors/*/logs/
 sensors/*/output/
 test_outputs/
+# Sensor runtime files
+.sensor_pids
+*_sensor_state.json
+*_sensor_state.json.backup
+
