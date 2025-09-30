@@ -9,6 +9,7 @@ import hashlib
 from typing import Dict, List, Any, Optional, Set
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse
+from pathlib import Path
 from bs4 import BeautifulSoup
 import html2text
 import re

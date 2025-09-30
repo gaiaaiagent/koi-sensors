@@ -429,7 +429,7 @@ class PodcastKOISensor:
 
             else:
                 # No change
-            event_type = "NO_CHANGE"
+                event_type = "NO_CHANGE"
         
         return event_type
     
