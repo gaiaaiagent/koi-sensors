@@ -23,6 +23,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.rid_system import RID
 from koi_protocol.core.bundle_system import Bundle, document_to_bundle
+from shared.persistent_state import PersistentSensorState
 
 # Configure logging
 logging.basicConfig(
@@ -63,14 +64,15 @@ class DiscourseSensor:
                 'categories': ['all']  # Fetch all categories
             },
             {
-                'name': 'regencommons.discourse.group', 
+                'name': 'regencommons.discourse.group',
                 'url': 'https://regencommons.discourse.group',
                 'categories': ['all']
             }
         ]
-        
-        # Cache for avoiding duplicates
-        self.processed_topics = set()
+
+        # Persistent state for deterministic crawling (replaces in-memory processed_topics)
+        self.state = PersistentSensorState('discourse', Path(__file__).parent)
+
         self.output_dir = Path(__file__).parent / 'output'
         self.output_dir.mkdir(exist_ok=True)
     
@@ -388,9 +390,9 @@ class DiscourseSensor:
 
         # Check if topic already processed
         topic_key = f"{forum_name}:topic:{topic_id}"
-        if topic_key not in self.processed_topics:
+        if not self.state.is_processed(topic_key):
             documents.append(parent_document)
-            self.processed_topics.add(topic_key)
+            self.state.mark_processed(forum_url, topic_key)
 
         # Create a document for each post as children of the topic
         for post in posts:
@@ -399,7 +401,7 @@ class DiscourseSensor:
 
             # Skip if already processed
             post_key = f"{forum_name}:{topic_id}:post_{post_number}"
-            if post_key in self.processed_topics:
+            if self.state.is_processed(post_key):
                 continue
 
             # Extract post data
@@ -468,7 +470,7 @@ class DiscourseSensor:
             }
 
             documents.append(document)
-            self.processed_topics.add(post_key)
+            self.state.mark_processed(forum_url, post_key)
 
         return documents
 
@@ -490,7 +492,7 @@ class DiscourseSensor:
         
         # Check if already processed
         topic_key = f"{forum_name}:{topic_id}"
-        if topic_key in self.processed_topics:
+        if self.state.is_processed(topic_key):
             return None
         
         # Fetch full topic content
@@ -598,7 +600,7 @@ class DiscourseSensor:
         }
         
         # Mark as processed
-        self.processed_topics.add(topic_key)
+        self.state.mark_processed(forum_url, topic_key)
         
         return document
     
@@ -684,6 +686,10 @@ class DiscourseSensor:
             try:
                 docs = await self.collect_forum(forum_config, limit_per_forum)
                 all_documents.extend(docs)
+
+                # Save state after each forum for persistence
+                self.state.save()
+
             except Exception as e:
                 logger.error(f"Error collecting from {forum_config['name']}: {e}")
                 logger.debug(traceback.format_exc())

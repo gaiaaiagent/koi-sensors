@@ -19,6 +19,7 @@ from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.rid_system import RID
 from koi_protocol.core.bundle_system import Bundle, document_to_bundle
 from shared.config.base import BaseSensorConfig, APIConfig
+from shared.persistent_state import PersistentSensorState
 
 
 class MediumMonitorConfig(BaseSensorConfig):
@@ -85,10 +86,10 @@ class MediumKOISensor:
             poll_interval=30
         )
         
-        # Article tracking
-        self.article_hashes: Dict[str, str] = {}  # URL -> content hash
-        self.collected_articles: Set[str] = set()  # Track collected article URLs
-        
+        # Persistent state for deterministic article tracking (replaces article_hashes and collected_articles)
+        from pathlib import Path
+        self.state = PersistentSensorState('medium', Path(__file__).parent)
+
         # HTTP session
         self.session: Optional[aiohttp.ClientSession] = None
         
@@ -125,7 +126,7 @@ class MediumKOISensor:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "status": "active",
                 "monitoring": [source['name'] for source in self.config.medium_sources],
-                "articles_tracked": len(self.collected_articles)
+                "articles_tracked": len(self.state.processed)
             }
 
             if response_to:
@@ -230,9 +231,12 @@ class MediumKOISensor:
             try:
                 # Collect recent articles
                 await self.collect_recent_articles(source_config)
-                
+
+                # Save state after each check cycle
+                self.state.save()
+
                 self.logger.debug(f"Completed check cycle for {source_config['name']}")
-                
+
                 # Wait for next check
                 await asyncio.sleep(check_interval)
                 
@@ -291,11 +295,11 @@ class MediumKOISensor:
         article_urls = list(article_urls)[:100]  # Process first 100 historical articles
         
         for i, url in enumerate(article_urls, 1):
-            if url not in self.collected_articles:
+            if not self.state.is_processed(url):
                 try:
                     self.logger.info(f"Processing historical article {i}/{len(article_urls)}: {url}")
                     await self.process_article(url, source_config["name"])
-                    self.collected_articles.add(url)
+                    self.state.mark_processed(source_name, url)
                     
                     # Rate limiting
                     await asyncio.sleep(self.config.request_delay)
@@ -323,7 +327,7 @@ class MediumKOISensor:
                 self.logger.warning(f"Error scraping main page: {e}")
         
         # Process new articles only
-        new_articles = [url for url in article_urls if url not in self.collected_articles]
+        new_articles = [url for url in article_urls if not self.state.is_processed(url)]
         
         if new_articles:
             self.logger.info(f"Found {len(new_articles)} new articles")
@@ -331,7 +335,7 @@ class MediumKOISensor:
             for url in new_articles[:self.config.max_articles_per_check]:
                 try:
                     await self.process_article(url, source_config["name"])
-                    self.collected_articles.add(url)
+                    self.state.mark_processed(source_name, url)
                     
                     # Rate limiting
                     await asyncio.sleep(self.config.request_delay)
@@ -524,7 +528,7 @@ class MediumKOISensor:
             content_hash = hashlib.sha256(article_data["content"].encode('utf-8')).hexdigest()
             
             # Check if content changed
-            previous_hash = self.article_hashes.get(article_url)
+            previous_hash = self.state.metadata.get(f"hash_{article_url}")
             content_changed = previous_hash != content_hash
             
             if content_changed or previous_hash is None:
@@ -537,7 +541,7 @@ class MediumKOISensor:
                 )
                 
                 # Update hash
-                self.article_hashes[article_url] = content_hash
+                self.state.metadata[f"hash_{article_url}"] = content_hash
                 
                 self.logger.info(f"Processed article: {article_data.get('title', 'Untitled')}")
         

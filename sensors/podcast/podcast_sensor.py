@@ -22,6 +22,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.rid_system import RID, ORN
 from koi_protocol.core.bundle_system import Bundle, document_to_bundle
+from shared.persistent_state import PersistentSensorState
 
 # Audio transcription (optional)
 try:
@@ -76,8 +77,10 @@ class PodcastKOISensor:
         
         # Podcast monitoring state
         self.monitored_podcasts: Dict[str, Dict[str, Any]] = {}
-        self.episode_hashes: Dict[str, str] = {}  # episode_id -> content hash
-        
+
+        # Persistent state for deterministic episode tracking (replaces episode_hashes)
+        self.state = PersistentSensorState('podcast', Path(__file__).parent)
+
         # SoundCloud API state
         self.soundcloud_client_id: Optional[str] = None
         self.session: Optional[aiohttp.ClientSession] = None
@@ -242,7 +245,10 @@ class PodcastKOISensor:
         # Update podcast state
         podcast_config["last_check"] = datetime.now().isoformat()
         podcast_config["episode_count"] = len(episodes)
-        
+
+        # Save persistent state after processing all episodes
+        self.state.save()
+
         print(f"   ✅ {new_episodes} new, {updated_episodes} updated episodes")
     
     async def collect_soundcloud_episodes(self, soundcloud_url: str) -> List[Dict[str, Any]]:
@@ -399,26 +405,30 @@ class PodcastKOISensor:
         # Build episode content
         content = self.build_episode_content(episode_data)
         
-        # Check for changes
-        content_hash = hashlib.sha256(content.encode()).hexdigest()
-        existing_hash = self.episode_hashes.get(episode_id)
-        
-        if existing_hash is None:
-            # New episode
+        # Check if episode already processed (using persistent state)
+        podcast_name = self.monitored_podcasts.get("planetary-regeneration", {}).get("url", "soundcloud")
+
+        if not self.state.is_processed(episode_id):
+            # New episode - process it
             event_type = "NEW"
-            self.episode_hashes[episode_id] = content_hash
+            self.state.mark_processed(podcast_name, episode_id)
             await self.emit_episode_event(rid, episode_data, content, "NEW")
             print(f"   📄 NEW: {title[:50]}...")
-            
-        elif existing_hash != content_hash:
-            # Updated episode
-            event_type = "UPDATE"  
-            self.episode_hashes[episode_id] = content_hash
-            await self.emit_episode_event(rid, episode_data, content, "UPDATE")
-            print(f"   🔄 UPDATE: {title[:50]}...")
-            
+
         else:
-            # No change
+            # Episode already processed - check for updates
+            content_hash = hashlib.sha256(content.encode()).hexdigest()
+            stored_hash = self.state.metadata.get(f"hash_{episode_id}")
+
+            if stored_hash != content_hash:
+                # Content changed - emit update
+                event_type = "UPDATE"
+                self.state.metadata[f"hash_{episode_id}"] = content_hash
+                await self.emit_episode_event(rid, episode_data, content, "UPDATE")
+                print(f"   🔄 UPDATE: {title[:50]}...")
+
+            else:
+                # No change
             event_type = "NO_CHANGE"
         
         return event_type

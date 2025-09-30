@@ -34,6 +34,8 @@ from koi_protocol.core.rid_system import RID, ORN
 print("[STARTUP] RID, ORN imported")
 from koi_protocol.core.bundle_system import Bundle, document_to_bundle
 print("[STARTUP] Bundle imported")
+from shared.persistent_state import PersistentSensorState
+print("[STARTUP] PersistentSensorState imported")
 
 
 class NotionPageRID(ORN):
@@ -92,7 +94,10 @@ class NotionKOISensor:
         # Monitoring state
         self.monitored_databases: Dict[str, Dict[str, Any]] = {}
         self.monitored_pages: Dict[str, Dict[str, Any]] = {}
-        self.content_hashes: Dict[str, str] = {}  # page_id -> content hash
+
+        # Persistent state for deterministic page tracking (replaces content_hashes)
+        self.state = PersistentSensorState('notion', Path(__file__).parent)
+
         self.session: Optional[aiohttp.ClientSession] = None
         
         # Workspace identifier (extracted from pages/databases)
@@ -485,7 +490,7 @@ class NotionKOISensor:
                     content_hash = hashlib.sha256(content.encode()).hexdigest()
                     
                     # Check if content changed
-                    old_hash = self.content_hashes.get(page_id)
+                    old_hash = self.state.metadata.get(f"hash_{page_id}")
                     
                     if old_hash != content_hash:
                         event_type = "UPDATE" if old_hash else "NEW"
@@ -535,13 +540,16 @@ class NotionKOISensor:
                         }
                         
                         changes.append(change)
-                        self.content_hashes[page_id] = content_hash
+                        self.state.metadata[f"hash_{page_id}"] = content_hash; self.state.mark_processed(self.workspace_id, page_id)
                         
                         print(f"   {'🆕' if event_type == 'NEW' else '🔄'} {title}")
                 
                 # Update last checked time
                 self.monitored_databases[db_id]["last_checked"] = now
-        
+
+        # Save persistent state after checking all databases
+        self.state.save()
+
         return changes
     
     async def send_to_coordinator(self, changes: List[Dict]):

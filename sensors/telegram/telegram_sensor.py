@@ -33,6 +33,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 try:
     from koi_protocol.nodes.koi_node import KOIPartialNode
+    from shared.persistent_state import PersistentSensorState
 except ImportError:
     print("Error: KOI protocol not found")
     print("Ensure you're running from the koi-sensors directory")
@@ -75,8 +76,8 @@ class TelegramSensor:
         self.logger = logger or logging.getLogger(__name__)
         self.bot = Bot(token=config.bot_token)
 
-        # Track processed messages
-        self.processed_message_ids = set()
+        # Persistent state for deterministic message tracking (replaces processed_message_ids)
+        self.state = PersistentSensorState('telegram', Path(__file__).parent)
 
         # Initialize KOI node
         self.koi_node = KOIPartialNode(
@@ -168,9 +169,9 @@ class TelegramSensor:
             rid = f"telegram:channel:{chat.id}:info"
             
             # Skip if already processed
-            if rid in self.processed_message_ids:
+            if self.state.is_processed(rid):
                 return None
-            self.processed_message_ids.add(rid)
+            self.state.mark_processed(self.config.channel_username, rid)
             
             # Create content
             content = f"""# {chat.title}
@@ -215,9 +216,9 @@ Members: {chat.get_member_count() if hasattr(chat, 'get_member_count') else 'Unk
             rid = f"telegram:channel:{chat.id}:message:{message.message_id}"
             
             # Skip if already processed
-            if rid in self.processed_message_ids:
+            if self.state.is_processed(rid):
                 return None
-            self.processed_message_ids.add(rid)
+            self.state.mark_processed(self.config.channel_username, rid)
             
             # Extract content
             content = ""
@@ -350,6 +351,9 @@ Members: {chat.get_member_count() if hasattr(chat, 'get_member_count') else 'Unk
 
                 # Send to KOI
                 success_count = await self.send_to_koi(documents)
+
+                # Save persistent state after processing
+                self.state.save()
                 self.logger.info(f"Sent {success_count}/{len(documents)} documents to KOI")
             else:
                 self.logger.info("No new documents to process")

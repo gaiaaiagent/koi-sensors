@@ -26,6 +26,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.rid_system import RID
 from koi_protocol.core.bundle_system import Bundle, document_to_bundle
+from shared.persistent_state import PersistentSensorState
 
 try:
     from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeout
@@ -87,9 +88,10 @@ class TwitterKOISensor:
             node_name="twitter-sensor",
             coordinator_url="http://localhost:8005"
         )
-        
-        # Cache for avoiding duplicates
-        self.processed_tweets = set()
+
+        # Persistent state for deterministic tweet tracking (replaces processed_tweets)
+        self.state = PersistentSensorState('twitter', Path(__file__).parent)
+
         self.output_dir = Path(__file__).parent / 'output'
         self.output_dir.mkdir(exist_ok=True)
         
@@ -113,7 +115,7 @@ class TwitterKOISensor:
                 "timestamp": datetime.now().isoformat(),
                 "status": "active",
                 "monitoring": self.accounts + [f"search:{q}" for q in self.search_queries],
-                "tweets_processed": len(self.processed_tweets)
+                "tweets_processed": len(self.state.processed)
             }
 
             # Add response_to if this is a ping response
@@ -414,7 +416,7 @@ class TwitterKOISensor:
         """Convert tweet data to KOI document format"""
         # Skip if already processed
         tweet_id = tweet.get('id')
-        if not tweet_id or tweet_id in self.processed_tweets:
+        if not tweet_id or self.state.is_processed(tweet_id):
             return None
         
         # Generate RID
@@ -457,7 +459,7 @@ class TwitterKOISensor:
             }
         }
         
-        self.processed_tweets.add(tweet_id)
+        self.state.mark_processed("twitter", tweet_id)
         return document
     
     async def send_to_koi(self, document: Dict) -> bool:
@@ -506,7 +508,10 @@ class TwitterKOISensor:
             
             # Rate limiting
             await asyncio.sleep(self.min_delay)
-        
+
+        # Save persistent state after collecting from all sources
+        self.state.save()
+
         return sent_count
     
     async def run(self, continuous: bool = False):

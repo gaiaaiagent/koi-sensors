@@ -62,20 +62,26 @@ class WebsiteKOISensor:
     def __init__(self, config: WebsiteMonitorConfig):
         self.config = config
         self.logger = self._setup_logging()
-        
+
         # Initialize KOI node
         self.koi_node = KOIPartialNode(
             node_name=f"website-sensor",
             coordinator_url=getattr(config.koi_net, 'coordinator_url', 'http://localhost:8005'),
             poll_interval=30
         )
-        
+
+        # Persistent state file for crawl queues (survives restarts)
+        self.state_file = Path(__file__).parent / "website_sensor_state.json"
+
         # Website monitoring state
         self.monitored_pages: Dict[str, Dict[str, Any]] = {}
         self.page_hashes: Dict[str, str] = {}  # URL -> content hash
         self.crawl_queues: Dict[str, Set[str]] = {}  # domain -> URLs to crawl
         self.pages_crawled: Dict[str, int] = {}  # domain -> count of pages crawled
         self.video_queue: List[Dict[str, Any]] = []  # Queue for videos to transcribe
+
+        # Load persistent state from previous runs
+        self._load_state()
 
         # Initialize video transcriber if available
         self.video_transcriber = None
@@ -111,7 +117,50 @@ class WebsiteKOISensor:
         logger.addHandler(console_handler)
         
         return logger
-    
+
+    def _load_state(self):
+        """Load persistent crawl queue state from JSON file"""
+        if not self.state_file.exists():
+            self.logger.info("No previous state file found, starting fresh")
+            return
+
+        try:
+            with open(self.state_file, 'r') as f:
+                state = json.load(f)
+
+            # Restore crawl queues (convert lists back to sets)
+            for domain, urls in state.get('crawl_queues', {}).items():
+                self.crawl_queues[domain] = set(urls)
+
+            # Restore page counts
+            self.pages_crawled = state.get('pages_crawled', {})
+
+            # Restore page hashes
+            self.page_hashes = state.get('page_hashes', {})
+
+            self.logger.info(f"Loaded state: {len(self.crawl_queues)} domains, {sum(len(q) for q in self.crawl_queues.values())} queued URLs")
+
+        except Exception as e:
+            self.logger.error(f"Error loading state file: {e}")
+
+    def _save_state(self):
+        """Save persistent crawl queue state to JSON file"""
+        try:
+            state = {
+                'crawl_queues': {domain: list(urls) for domain, urls in self.crawl_queues.items()},
+                'pages_crawled': self.pages_crawled,
+                'page_hashes': self.page_hashes,
+                'last_saved': datetime.now(timezone.utc).isoformat()
+            }
+
+            with open(self.state_file, 'w') as f:
+                json.dump(state, f, indent=2)
+
+            self.logger.debug(f"Saved state: {len(self.crawl_queues)} domains, {sum(len(q) for q in self.crawl_queues.values())} queued URLs")
+
+        except Exception as e:
+            self.logger.error(f"Error saving state file: {e}")
+
     async def send_heartbeat_event(self, response_to: str = None):
         """Send a heartbeat event to register with coordinator"""
         try:
@@ -366,21 +415,32 @@ class WebsiteKOISensor:
                 except Exception as e:
                     self.logger.error(f"Error processing {url}: {e}", exc_info=True)
         
-        # Process initial URLs
+        # Process ALL URLs in queue (removed [:20] limit for deterministic full-site crawling)
+        # Process in batches to respect max_pages limit while ensuring all URLs eventually get processed
+        batch_size = min(max_pages - self.pages_crawled.get(domain, 0), len(urls_to_process))
+
         tasks = []
-        for url in urls_to_process[:20]:  # Limit initial crawl
+        for url in urls_to_process[:batch_size]:
             task = asyncio.create_task(process_url_safe(url, 0))
             tasks.append(task)
-        
+
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Update crawl queue with new URLs for next cycle
-        if new_urls and len(self.crawl_queues[domain]) < 100:  # Limit queue size
+
+        # Remove processed URLs from queue
+        for url in urls_to_process[:batch_size]:
+            self.crawl_queues[domain].discard(url)
+
+        # Update crawl queue with new URLs for next cycle (removed 100 URL limit)
+        # All discovered URLs are added to ensure complete site coverage
+        if new_urls:
             self.crawl_queues[domain].update(new_urls)
             self.logger.info(f"Added {len(new_urls)} new URLs to queue for {domain}, queue now has {len(self.crawl_queues[domain])} URLs")
 
         self.logger.info(f"Crawled {domain}: {processed_count} pages processed, {len(new_urls)} new URLs discovered")
+
+        # Save state after each crawl cycle for persistence across restarts
+        self._save_state()
     
     async def process_page(self, url: str, depth: int, max_depth: int, strategy: str) -> Optional[Dict[str, Any]]:
         """Process a single web page"""
