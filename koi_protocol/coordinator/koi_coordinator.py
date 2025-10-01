@@ -8,6 +8,7 @@ import json
 import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -125,10 +126,20 @@ class KOICoordinator:
         # Use sensor type as key to avoid duplicates when sensors reconnect
         self.broadcast_sensors: Dict[str, Dict[str, Any]] = {}  # sensor_type -> sensor info
         self.sensor_timeout_seconds = 3600  # Mark sensors inactive after 1 hour (increased from 5 minutes)
-        
+
         # Processor bridge URL (for forwarding events)
         self.processor_bridge_url = "http://localhost:8100/process-koi-event"
-        
+
+        # Content deduplication tracking
+        # Maps RID -> content_hash to detect duplicate content
+        self.content_hashes: Dict[str, str] = {}  # RID -> content_hash
+        # For web pages, also track by URL since RID can vary
+        self.url_hashes: Dict[str, str] = {}  # URL -> content_hash
+
+        # Persistent state file for deduplication (survives restarts)
+        self.dedup_state_file = Path(__file__).parent / "coordinator_dedup_state.json"
+        self._load_dedup_state()
+
         # Setup routes
         self._setup_routes()
     
@@ -243,8 +254,21 @@ class KOICoordinator:
                             "event_type": event_data.get("event_type", "unknown")
                         }
                         self.logger.debug(f"Tracked new sensor: {sensor_type} (node: {source_node})")
-                
-                # Create CAT receipt for sensor collection
+
+                # Check for duplicate content before processing
+                if event.bundle and event.rid:
+                    content_hash = event.bundle.manifest.content_hash if event.bundle else ""
+                    metadata = event.bundle.manifest.metadata if event.bundle else {}
+                    source_url = metadata.get("url") or metadata.get("source_url")
+
+                    # Check if this is duplicate content
+                    is_duplicate = self._check_duplicate_content(event.rid, content_hash, source_url)
+
+                    if is_duplicate:
+                        self.logger.info(f"Skipping duplicate content for RID {event.rid} (hash: {content_hash[:8]}...)")
+                        return {"status": "skipped_duplicate", "event_id": event.rid, "reason": "duplicate_content"}
+
+                # Create CAT receipt for sensor collection (only for new/changed content)
                 try:
                     # Import the receipt manager
                     import sys
@@ -719,6 +743,70 @@ class KOICoordinator:
             self.logger.error(f"Error sending ping request: {e}")
 
         return ping_id
+
+    def _load_dedup_state(self):
+        """Load deduplication state from persistent storage"""
+        try:
+            if self.dedup_state_file.exists():
+                with open(self.dedup_state_file, 'r') as f:
+                    state = json.load(f)
+                    self.content_hashes = state.get('content_hashes', {})
+                    self.url_hashes = state.get('url_hashes', {})
+                    self.logger.info(f"Loaded deduplication state: {len(self.content_hashes)} RIDs, {len(self.url_hashes)} URLs")
+        except Exception as e:
+            self.logger.warning(f"Could not load deduplication state: {e}")
+            self.content_hashes = {}
+            self.url_hashes = {}
+
+    def _save_dedup_state(self):
+        """Save deduplication state to persistent storage"""
+        try:
+            state = {
+                'content_hashes': self.content_hashes,
+                'url_hashes': self.url_hashes,
+                'last_updated': datetime.now(timezone.utc).isoformat()
+            }
+            with open(self.dedup_state_file, 'w') as f:
+                json.dump(state, f, indent=2)
+        except Exception as e:
+            self.logger.error(f"Could not save deduplication state: {e}")
+
+    def _check_duplicate_content(self, rid: str, content_hash: str, url: str = None) -> bool:
+        """
+        Check if this content has already been processed
+
+        Returns:
+            True if duplicate (should skip), False if new/changed (should process)
+        """
+        # For web pages with URLs, check by URL first (more reliable than RID)
+        if url:
+            existing_hash = self.url_hashes.get(url)
+            if existing_hash == content_hash:
+                self.logger.info(f"✓ DUPLICATE: URL {url} (hash: {content_hash[:8]}...) - SKIPPING")
+                return True
+            elif existing_hash:
+                self.logger.info(f"✓ CONTENT CHANGED: URL {url} (old: {existing_hash[:8]}..., new: {content_hash[:8]}...) - PROCESSING")
+            else:
+                self.logger.info(f"✓ NEW URL: {url} (hash: {content_hash[:8]}...) - PROCESSING")
+            # Update the hash for this URL
+            self.url_hashes[url] = content_hash
+            self._save_dedup_state()
+            return False
+
+        # For non-web content, check by RID
+        existing_hash = self.content_hashes.get(rid)
+        if existing_hash == content_hash:
+            self.logger.info(f"✓ DUPLICATE: RID {rid} (hash: {content_hash[:8]}...) - SKIPPING")
+            return True
+        elif existing_hash:
+            self.logger.info(f"✓ CONTENT CHANGED: RID {rid} (old: {existing_hash[:8]}..., new: {content_hash[:8]}...) - PROCESSING")
+        else:
+            self.logger.info(f"✓ NEW RID: {rid} (hash: {content_hash[:8]}...) - PROCESSING")
+
+        # Update the hash for this RID
+        self.content_hashes[rid] = content_hash
+        self._save_dedup_state()
+        return False
 
     async def start(self):
         """Start the coordinator"""
