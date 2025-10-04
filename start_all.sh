@@ -10,6 +10,13 @@ echo "========================================="
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# Source .env file if it exists
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a  # Mark all new variables for export
+    source "$SCRIPT_DIR/.env"
+    set +a  # Turn off auto-export
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -25,6 +32,7 @@ PID_FILE="$SCRIPT_DIR/.sensor_pids"
 declare -a SENSORS=(
     "websites"
     "github"
+    "github_activity"
     "gitlab"
     "medium"
     "discourse"

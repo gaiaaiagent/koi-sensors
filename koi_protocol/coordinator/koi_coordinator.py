@@ -140,6 +140,14 @@ class KOICoordinator:
         self.dedup_state_file = Path(__file__).parent / "coordinator_dedup_state.json"
         self._load_dedup_state()
 
+        # Sensor registry persistence
+        self.sensor_registry_file = Path(__file__).parent / "coordinator_sensor_registry.json"
+        self._load_sensor_registry()
+
+        # Health monitoring
+        self.health_check_interval = 300  # 5 minutes
+        self.health_check_task = None
+
         # Setup routes
         self._setup_routes()
     
@@ -228,8 +236,9 @@ class KOICoordinator:
                     source_node = event_data["source_node"]
                     
                     # Extract sensor type from node_id (e.g., "website-sensor-12345" -> "website-sensor")
+                    # Handle multi-word sensors like "github-activity-sensor"
                     import re
-                    sensor_type_match = re.match(r'^([^-]+-sensor)', source_node)
+                    sensor_type_match = re.match(r'^(.*?-sensor)', source_node)
                     if sensor_type_match:
                         sensor_type = sensor_type_match.group(1)
                     else:
@@ -243,6 +252,7 @@ class KOICoordinator:
                         self.broadcast_sensors[sensor_type]["node_id"] = source_node  # Update to latest node_id
                         self.broadcast_sensors[sensor_type]["last_event"] = current_time.isoformat()
                         self.broadcast_sensors[sensor_type]["event_count"] += 1
+                        self.broadcast_sensors[sensor_type]["status"] = "active"  # Mark as active when we receive events
                         self.logger.debug(f"Updated existing sensor: {sensor_type} (node: {source_node})")
                     else:
                         # New sensor type
@@ -251,9 +261,12 @@ class KOICoordinator:
                             "sensor_type": sensor_type,
                             "last_event": current_time.isoformat(),
                             "event_count": 1,
-                            "event_type": event_data.get("event_type", "unknown")
+                            "event_type": event_data.get("event_type", "unknown"),
+                            "status": "active"  # New sensors start as active
                         }
                         self.logger.debug(f"Tracked new sensor: {sensor_type} (node: {source_node})")
+                        # Save registry when new sensor appears
+                        self._save_sensor_registry()
 
                 # Check for duplicate content before processing
                 if event.bundle and event.rid:
@@ -808,13 +821,121 @@ class KOICoordinator:
         self._save_dedup_state()
         return False
 
+    def _load_sensor_registry(self):
+        """Load sensor registry from disk"""
+        if self.sensor_registry_file.exists():
+            try:
+                with open(self.sensor_registry_file, 'r') as f:
+                    data = json.load(f)
+                    self.broadcast_sensors = data.get('sensors', {})
+                    self.logger.info(f"Loaded {len(self.broadcast_sensors)} sensors from registry")
+            except Exception as e:
+                self.logger.error(f"Error loading sensor registry: {e}")
+
+    def _save_sensor_registry(self):
+        """Save sensor registry to disk"""
+        try:
+            with open(self.sensor_registry_file, 'w') as f:
+                json.dump({'sensors': self.broadcast_sensors}, f, indent=2)
+        except Exception as e:
+            self.logger.error(f"Error saving sensor registry: {e}")
+
+    async def check_sensor_health(self, sensor_key: str, sensor_info: Dict) -> str:
+        """
+        Check health of a sensor by seeing if it responds to polls.
+        Returns: 'active', 'idle', or 'offline'
+        """
+        try:
+            node_id = sensor_info.get('node_id')
+            if not node_id:
+                return 'offline'
+
+            # Check time since last event
+            last_event_str = sensor_info.get('last_event')
+            if last_event_str:
+                last_event = datetime.fromisoformat(last_event_str)
+                time_since_event = (datetime.now(timezone.utc) - last_event).total_seconds()
+
+                # If we've heard from sensor recently (< 10 minutes), it's active
+                if time_since_event < 600:
+                    return 'active'
+                # If heard within 30 minutes but not recently, it's idle
+                elif time_since_event < 1800:
+                    return 'idle'
+
+            # If no recent events, mark as offline
+            return 'offline'
+
+        except Exception as e:
+            self.logger.error(f"Error checking health for {sensor_key}: {e}")
+            return 'offline'
+
+    async def periodic_health_checks(self):
+        """Periodically check health of all registered sensors"""
+        self.logger.info(f"Starting periodic health checks (interval: {self.health_check_interval}s)")
+
+        while True:
+            try:
+                await asyncio.sleep(self.health_check_interval)
+
+                self.logger.info("Running health check on all sensors...")
+                sensors_checked = 0
+                sensors_active = 0
+                sensors_offline = 0
+
+                for sensor_key, sensor_info in list(self.broadcast_sensors.items()):
+                    status = await self.check_sensor_health(sensor_key, sensor_info)
+                    old_status = sensor_info.get('status', 'unknown')
+
+                    # Update status if changed
+                    if status != old_status:
+                        sensor_info['status'] = status
+                        self.logger.info(f"Sensor {sensor_key} status changed: {old_status} → {status}")
+
+                    sensors_checked += 1
+                    if status == 'active':
+                        sensors_active += 1
+                    elif status == 'offline':
+                        sensors_offline += 1
+
+                self.logger.info(f"Health check complete: {sensors_checked} sensors ({sensors_active} active, {sensors_offline} offline)")
+
+                # Save updated registry
+                self._save_sensor_registry()
+
+            except asyncio.CancelledError:
+                self.logger.info("Health check task cancelled")
+                break
+            except Exception as e:
+                self.logger.error(f"Error in periodic health checks: {e}")
+
+    async def startup_health_check(self):
+        """Check health of all known sensors on startup"""
+        self.logger.info("Running startup health check on all known sensors...")
+
+        for sensor_key, sensor_info in list(self.broadcast_sensors.items()):
+            status = await self.check_sensor_health(sensor_key, sensor_info)
+            sensor_info['status'] = status
+            sensor_name = sensor_info.get('node_id', sensor_key)
+            self.logger.info(f"Sensor {sensor_name}: {status}")
+
+        self._save_sensor_registry()
+        self.logger.info("Startup health check complete")
+
     async def start(self):
         """Start the coordinator"""
         self.logger.info(f"Starting KOI Coordinator on port {self.port}")
-        
+
         # Start KOI node
         await self.koi_node.start()
-        
+
+        # Run startup health check on known sensors
+        await self.startup_health_check()
+
+        # Start periodic health monitoring task
+        self.health_check_task = asyncio.create_task(self.periodic_health_checks())
+        self.logger.info("Started periodic health monitoring")
+
         # Start web server
         config = uvicorn.Config(
             app=self.app,
@@ -828,7 +949,18 @@ class KOICoordinator:
     async def stop(self):
         """Stop the coordinator"""
         self.logger.info("Stopping KOI Coordinator")
-        
+
+        # Stop health check task
+        if self.health_check_task:
+            self.health_check_task.cancel()
+            try:
+                await self.health_check_task
+            except asyncio.CancelledError:
+                pass
+
+        # Save final sensor registry state
+        self._save_sensor_registry()
+
         # Stop all sensor adapters
         for sensor_type in list(self.sensor_adapters.keys()):
             try:
@@ -836,7 +968,7 @@ class KOICoordinator:
                 del self.sensor_adapters[sensor_type]
             except Exception as e:
                 self.logger.error(f"Error stopping sensor {sensor_type}: {e}")
-        
+
         # Stop KOI node
         await self.koi_node.stop()
 

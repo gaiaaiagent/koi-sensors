@@ -263,20 +263,12 @@ class GitHubActivitySensor:
                 # Create bundle from document
                 bundle = document_to_bundle(
                     doc,
-                    source_node=self.config.source_sensor,
-                    dataset_name="github-activity"
+                    source_node=self.config.source_sensor
                 )
 
                 # Send to coordinator
-                success = await self.koi_node.send_event(
-                    bundle=bundle,
-                    event_type="ADD"
-                )
-
-                if success:
-                    logger.info(f"✓ Sent {doc['source_type']}: {doc['id']}")
-                else:
-                    logger.warning(f"✗ Failed to send: {doc['id']}")
+                await self.koi_node.emit_new_event(bundle)
+                logger.info(f"✓ Sent {doc['source_type']}: {doc['id']}")
 
             except Exception as e:
                 logger.error(f"Error processing document {doc.get('id')}: {e}")
@@ -302,6 +294,9 @@ class GitHubActivitySensor:
     async def run(self):
         """Run the sensor continuously"""
         logger.info("GitHub Activity Sensor starting...")
+
+        # Start KOI node
+        await self.koi_node.start()
 
         while True:
             try:
