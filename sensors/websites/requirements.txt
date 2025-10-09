@@ -7,6 +7,8 @@ httpx==0.28.1
 pydantic==2.11.9
 pydantic_core==2.33.2
 python-dotenv==1.1.1
+# JavaScript rendering for dynamic content
+playwright>=1.40.0
 # Video processing dependencies
 openai-whisper>=20250625  # For transcription
 yt-dlp>=2025.9.5  # For YouTube/Vimeo downloads

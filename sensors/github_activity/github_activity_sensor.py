@@ -21,6 +21,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.rid_system import RID
 from koi_protocol.core.bundle_system import document_to_bundle
+from shared.persistent_state import PersistentSensorState
 
 # Setup logging
 logging.basicConfig(
@@ -49,6 +50,10 @@ class GitHubActivitySensor:
             node_name=config.source_sensor,
             coordinator_url=config.coordinator_url
         )
+
+        # Persistent state for content hash tracking
+        self.state = PersistentSensorState('github_activity', Path(__file__).parent)
+
         self.processed_items = set()
         self.headers = {
             'Accept': 'application/vnd.github.v3+json',
@@ -266,9 +271,29 @@ class GitHubActivitySensor:
                     source_node=self.config.source_sensor
                 )
 
-                # Send to coordinator
-                await self.koi_node.emit_new_event(bundle)
-                logger.info(f"✓ Sent {doc['source_type']}: {doc['id']}")
+                # Calculate content hash
+                content = json.dumps(doc, sort_keys=True)
+                content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
+                rid = doc.get('rid', doc.get('id', 'unknown'))
+
+                # Check if content changed
+                previous_hash = self.state.metadata.get(f"hash_{rid}")
+
+                if previous_hash and previous_hash != content_hash:
+                    # Content changed - emit UPDATE
+                    await self.koi_node.emit_update_event(bundle)
+                    logger.info(f"✓ UPDATE {doc['source_type']}: {doc['id']}")
+                elif not previous_hash:
+                    # New content - emit NEW
+                    await self.koi_node.emit_new_event(bundle)
+                    logger.info(f"✓ NEW {doc['source_type']}: {doc['id']}")
+                else:
+                    # No change - skip
+                    logger.debug(f"SKIP (no change) {doc['source_type']}: {doc['id']}")
+                    continue
+
+                # Store hash
+                self.state.metadata[f"hash_{rid}"] = content_hash
 
             except Exception as e:
                 logger.error(f"Error processing document {doc.get('id')}: {e}")

@@ -1,0 +1,68 @@
+{
+  "entities": [
+    {
+      "name": "Wilmot Cattle Station Grazing Management",
+      "type": "Project",
+      "confidence": 0.95
+    },
+    {
+      "name": "CommonLand Australia Pty Ltd",
+      "type": "Organization",
+      "confidence": 0.9
+    },
+    {
+      "name": "Gold Standard International",
+      "type": "Organization",
+      "confidence": 0.85
+    },
+    {
+      "name": "Regen Registry",
+      "type": "Organization",
+      "confidence": 0.8
+    }
+  ],
+  "statements": [
+    {
+      "subject": "Wilmot Cattle Station Grazing Management",
+      "predicate": "implements",
+      "object": "holistic planned grazing practices across 450,000 acres of rangeland",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Wilmot Cattle Station Grazing Management",
+      "predicate": "generates",
+      "object": "credits under the C02 credit class",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "CommonLand Australia Pty Ltd",
+      "predicate": "develops",
+      "object": "Wilmot Cattle Station Grazing Management",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Wilmot Cattle Station Grazing Management",
+      "predicate": "was verified by",
+      "object": "Gold Standard International",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "Wilmot Cattle Station Grazing Management",
+      "predicate": "uses",
+      "object": "remote sensing combined with soil sampling to monitor carbon sequestration",
+      "statementType": "claim",
+      "confidence": 0.8
+    },
+    {
+      "subject": "Credits from Wilmot Cattle Station Grazing Management",
+      "predicate": "are available for purchase on",
+      "object": "the Regen Registry marketplace",
+      "statementType": "claim",
+      "confidence": 0.8
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "entities": [
+    {
+      "name": "Gregory Landua",
+      "type": "Person",
+      "confidence": 0.95
+    },
+    {
+      "name": "Regen Network Development, Inc.",
+      "type": "Organization",
+      "confidence": 0.95
+    },
+    {
+      "name": "Regen Network",
+      "type": "Project",
+      "confidence": 0.9
+    },
+    {
+      "name": "Santa Fe",
+      "type": "Organization",
+      "confidence": 0.85
+    },
+    {
+      "name": "C01 credit class",
+      "type": "Project",
+      "confidence": 0.8
+    },
+    {
+      "name": "VM0042 methodology",
+      "type": "Project",
+      "confidence": 0.75
+    }
+  ],
+  "statements": [
+    {
+      "subject": "Gregory Landua",
+      "predicate": "is a co-founder of",
+      "object": "Regen Network Development, Inc.",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Gregory Landua",
+      "predicate": "serves as",
+      "object": "Chief Regeneration Officer",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Gregory Landua",
+      "predicate": "has been working on",
+      "object": "regenerative agriculture and ecological restoration",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "Gregory Landua",
+      "predicate": "proposed",
+      "object": "Regen Network Proposal #42",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "Regen Network Development, Inc.",
+      "predicate": "was founded in",
+      "object": "2017",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Regen Network Development, Inc.",
+      "predicate": "builds",
+      "object": "blockchain infrastructure for ecological data and carbon credits",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Regen Network Development, Inc.",
+      "predicate": "is based in",
+      "object": "Santa Fe, New Mexico",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "Regen Network Development, Inc.",
+      "predicate": "created",
+      "object": "C01 credit class for biochar carbon removal",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "C01 credit class",
+      "predicate": "uses",
+      "object": "VM0042 methodology for verification",
+      "statementType": "claim",
+      "confidence": 0.8
+    },
+    {
+      "subject": "C01 credit class",
+      "predicate": "enables",
+      "object": "projects to generate verified carbon credits",
+      "statementType": "claim",
+      "confidence": 0.8
+    },
+    {
+      "subject": "verified carbon credits",
+      "predicate": "can be traded on",
+      "object": "the Regen Registry",
+      "statementType": "claim",
+      "confidence": 0.8
+    }
+  ]
+}

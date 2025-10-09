@@ -1,0 +1,129 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix schema: <http://schema.org/> .
+@prefix reg: <https://regen.network/ontology#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# KOI Knowledge Graph SHACL Constraints (v1.1)
+# Validation rules for extracted entities and statements
+
+# Base shape for all extracted resources
+reg:ExtractedResourceShape
+    a sh:NodeShape ;
+    sh:targetClass rdfs:Resource ;
+    sh:property [
+        sh:path reg:sourceRID ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:pattern "^orn:[a-zA-Z0-9\\-\\.]+:" ;
+        sh:message "All extracted resources must have a valid sourceRID in ORN format" ;
+    ] ;
+    sh:property [
+        sh:path reg:sourceURL ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:anyURI ;
+        sh:message "All extracted resources must have a sourceURL" ;
+    ] ;
+    sh:property [
+        sh:path reg:extractionConfidence ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:float ;
+        sh:minInclusive 0.0 ;
+        sh:maxInclusive 1.0 ;
+        sh:message "Extraction confidence must be between 0.0 and 1.0" ;
+    ] ;
+    sh:property [
+        sh:path reg:catReceiptId ;
+        sh:maxCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "CAT receipt ID must be a string if present" ;
+    ] .
+
+# Shape for Person entities
+reg:PersonShape
+    a sh:NodeShape ;
+    sh:targetClass schema:Person ;
+    sh:property [
+        sh:path schema:name ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Person must have a name" ;
+    ] .
+
+# Shape for Organization entities
+reg:OrganizationShape
+    a sh:NodeShape ;
+    sh:targetClass schema:Organization ;
+    sh:property [
+        sh:path schema:name ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Organization must have a name" ;
+    ] .
+
+# Shape for Project entities
+reg:ProjectShape
+    a sh:NodeShape ;
+    sh:targetClass reg:Project ;
+    sh:property [
+        sh:path schema:name ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Project must have a name" ;
+    ] .
+
+# Shape for Statement entities
+reg:StatementShape
+    a sh:NodeShape ;
+    sh:targetClass reg:Statement ;
+    sh:property [
+        sh:path schema:text ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "Statement must have text content" ;
+    ] ;
+    sh:property [
+        sh:path reg:statementType ;
+        sh:maxCount 1 ;
+        sh:in ("claim" "fact" "opinion" "relation") ;
+        sh:message "Statement type must be one of: claim, fact, opinion, relation" ;
+    ] .
+
+# Shape for RID format validation
+reg:RIDShape
+    a sh:NodeShape ;
+    sh:property [
+        sh:path reg:sourceRID ;
+        sh:pattern "^orn:[a-zA-Z0-9\\-\\.]+:[a-zA-Z0-9\\-\\._/]+$" ;
+        sh:message "RID must match ORN format: orn:namespace:reference" ;
+    ] .
+
+# Shape for KG extraction RID validation
+reg:KGExtractionRIDShape
+    a sh:NodeShape ;
+    sh:property [
+        sh:path reg:sourceRID ;
+        sh:pattern "^orn:[a-zA-Z0-9\\-\\.]+:[a-zA-Z0-9\\-\\._/]+:kg:(passA|passB|entity_resolution|nanopub_creation|contradiction_detection):v[0-9]+\\.[0-9]+$" ;
+        sh:message "KG extraction RID must match pattern: {base_rid}:kg:{pass_type}:v{version}" ;
+    ] .
+
+# Shape for entity RID validation
+reg:EntityRIDShape
+    a sh:NodeShape ;
+    sh:property [
+        sh:path reg:sourceRID ;
+        sh:pattern "^orn:[a-zA-Z0-9\\-\\.]+:[a-zA-Z0-9\\-\\._/]+:entity:[a-z]+:[a-z0-9\\-_]+$" ;
+        sh:message "Entity RID must match pattern: {base_rid}:entity:{type}:{id}" ;
+    ] .
+
+# Shape for statement RID validation
+reg:StatementRIDShape
+    a sh:NodeShape ;
+    sh:property [
+        sh:path reg:sourceRID ;
+        sh:pattern "^orn:[a-zA-Z0-9\\-\\.]+:[a-zA-Z0-9\\-\\._/]+:statement:[a-z]+:[0-9]{3}$" ;
+        sh:message "Statement RID must match pattern: {base_rid}:statement:{type}:{index:03d}" ;
+    ] .

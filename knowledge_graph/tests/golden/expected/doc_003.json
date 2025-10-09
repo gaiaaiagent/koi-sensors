@@ -1,0 +1,68 @@
+{
+  "entities": [
+    {
+      "name": "Regen Foundation",
+      "type": "Organization",
+      "confidence": 0.95
+    },
+    {
+      "name": "Cosmos Hub",
+      "type": "Organization",
+      "confidence": 0.9
+    },
+    {
+      "name": "Zaki Manian",
+      "type": "Person",
+      "confidence": 0.85
+    },
+    {
+      "name": "Regen Network Proposal #87",
+      "type": "Project",
+      "confidence": 0.8
+    }
+  ],
+  "statements": [
+    {
+      "subject": "Regen Foundation",
+      "predicate": "announces",
+      "object": "partnership with Cosmos Hub",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Regen Foundation",
+      "predicate": "integrates",
+      "object": "ecological data modules into the interchain ecosystem",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "Zaki Manian",
+      "predicate": "states",
+      "object": "This partnership demonstrates the power of IBC to create markets for planetary health",
+      "statementType": "claim",
+      "confidence": 0.8
+    },
+    {
+      "subject": "Regen Network Proposal #87",
+      "predicate": "was approved",
+      "object": "with 94% validator support",
+      "statementType": "claim",
+      "confidence": 0.75
+    },
+    {
+      "subject": "Regen Foundation",
+      "predicate": "allocated",
+      "object": "500,000 REGEN tokens to fund development",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "integration",
+      "predicate": "is expected to be completed",
+      "object": "in Q3 2023",
+      "statementType": "claim",
+      "confidence": 0.8
+    }
+  ]
+}

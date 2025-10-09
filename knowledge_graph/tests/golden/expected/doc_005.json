@@ -1,0 +1,73 @@
+{
+  "entities": [
+    {
+      "name": "Christian Shearer",
+      "type": "Person",
+      "confidence": 0.95
+    },
+    {
+      "name": "Regen Network",
+      "type": "Organization",
+      "confidence": 0.95
+    },
+    {
+      "name": "NASA",
+      "type": "Organization",
+      "confidence": 0.9
+    },
+    {
+      "name": "Stanford University",
+      "type": "Organization",
+      "confidence": 0.85
+    },
+    {
+      "name": "Gregory Landua",
+      "type": "Person",
+      "confidence": 0.9
+    }
+  ],
+  "statements": [
+    {
+      "subject": "Christian Shearer",
+      "predicate": "joins",
+      "object": "Regen Network as Head of Science",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Christian Shearer",
+      "predicate": "holds",
+      "object": "a PhD in Earth Systems Science from Stanford University",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "Christian Shearer",
+      "predicate": "has published",
+      "object": "over 30 peer-reviewed papers on carbon cycling and remote sensing",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "Christian Shearer",
+      "predicate": "worked at",
+      "object": "NASA's Jet Propulsion Laboratory on the ECOSTRESS mission",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Christian Shearer",
+      "predicate": "is excited to apply",
+      "object": "space-based Earth observation to verify regenerative agriculture outcomes at scale",
+      "statementType": "claim",
+      "confidence": 0.8
+    },
+    {
+      "subject": "Christian Shearer",
+      "predicate": "reports to",
+      "object": "Gregory Landua, Chief Regeneration Officer",
+      "statementType": "claim",
+      "confidence": 0.85
+    }
+  ]
+}

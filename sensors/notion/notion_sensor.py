@@ -513,6 +513,7 @@ class NotionKOISensor:
                         last_edited_time = page.get("last_edited_time")
                         
                         # Create change document
+                        page_url = page.get("url", "")
                         change = {
                             "event_type": event_type,
                             "source": "notion",
@@ -523,16 +524,18 @@ class NotionKOISensor:
                             "metadata": {
                                 # Required for document_to_rid
                                 "page_id": page_id,
-                                
+
                                 # Publication date metadata for Daily Curator
                                 "published_at": created_time,  # Notion provides ISO format timestamps
                                 "published_confidence": 0.85,  # Good confidence for API data
                                 "last_modified": last_edited_time,
-                                
+
                                 # Original metadata
                                 "database_id": db_id,
                                 "database_title": db_info["title"],
-                                "page_url": page.get("url", ""),
+                                "page_url": page_url,
+                                "url": page_url,  # For compatibility
+                                "source_url": page_url,  # Required for KG extraction
                                 "created_time": created_time,
                                 "last_edited_time": last_edited_time,
                                 "properties": properties

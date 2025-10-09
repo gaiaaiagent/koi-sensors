@@ -1,0 +1,210 @@
+{
+  "date": "2025-10-04T00:00:00+00:00",
+  "extraction_metrics": {
+    "total_extractions": 27,
+    "unique_memories": 27,
+    "avg_confidence": 0.5248902739180873,
+    "total_entities": 124,
+    "total_statements": 172,
+    "total_relations": 0,
+    "by_type": [
+      {
+        "type": "passA",
+        "count": 27,
+        "avg_confidence": 0.5248902739180873
+      }
+    ]
+  },
+  "entity_metrics": {
+    "by_type": [
+      {
+        "type": "Project",
+        "count": 81,
+        "avg_confidence": 0.8798765432098766
+      },
+      {
+        "type": "Organization",
+        "count": 39,
+        "avg_confidence": 0.8274358974358973
+      },
+      {
+        "type": "Person",
+        "count": 4,
+        "avg_confidence": 0.645
+      }
+    ],
+    "top_entities": [
+      {
+        "type": "Project",
+        "name": "web-marketplace",
+        "occurrences": 4,
+        "avg_confidence": 0.9
+      },
+      {
+        "type": "Organization",
+        "name": "grpcurl",
+        "occurrences": 3,
+        "avg_confidence": 0.6333333333333333
+      },
+      {
+        "type": "Project",
+        "name": "@lingui/react",
+        "occurrences": 3,
+        "avg_confidence": 0.9166666666666666
+      },
+      {
+        "type": "Project",
+        "name": "@lingui/macro",
+        "occurrences": 3,
+        "avg_confidence": 0.9333333333333332
+      },
+      {
+        "type": "Organization",
+        "name": "regen",
+        "occurrences": 3,
+        "avg_confidence": 0.8833333333333333
+      },
+      {
+        "type": "Project",
+        "name": "@lingui/core",
+        "occurrences": 3,
+        "avg_confidence": 0.9333333333333332
+      },
+      {
+        "type": "Organization",
+        "name": "Osmosis",
+        "occurrences": 3,
+        "avg_confidence": 0.9166666666666666
+      },
+      {
+        "type": "Organization",
+        "name": "Regen",
+        "occurrences": 3,
+        "avg_confidence": 0.9499999999999998
+      },
+      {
+        "type": "Person",
+        "name": "regen1k82wewrfkhdmegw6uxrgwwzrsd7593t8tej2d5",
+        "occurrences": 3,
+        "avg_confidence": 0.5333333333333333
+      },
+      {
+        "type": "Organization",
+        "name": "Kava",
+        "occurrences": 2,
+        "avg_confidence": 0.9299999999999999
+      },
+      {
+        "type": "Project",
+        "name": "usdt.kava",
+        "occurrences": 2,
+        "avg_confidence": 0.935
+      },
+      {
+        "type": "Project",
+        "name": "GRAPH_CANONICALIZATION_ALGORITHM_URDNA2015",
+        "occurrences": 2,
+        "avg_confidence": 0.725
+      },
+      {
+        "type": "Project",
+        "name": "usdc.noble",
+        "occurrences": 2,
+        "avg_confidence": 0.925
+      },
+      {
+        "type": "Project",
+        "name": "DIGEST_ALGORITHM_BLAKE2B_256",
+        "occurrences": 2,
+        "avg_confidence": 0.725
+      },
+      {
+        "type": "Project",
+        "name": "Lingui CLI",
+        "occurrences": 2,
+        "avg_confidence": 0.8600000000000001
+      },
+      {
+        "type": "Organization",
+        "name": "Noble",
+        "occurrences": 2,
+        "avg_confidence": 0.95
+      },
+      {
+        "type": "Project",
+        "name": "USDC",
+        "occurrences": 2,
+        "avg_confidence": 0.965
+      },
+      {
+        "type": "Project",
+        "name": "regen.data.v2.Query/Resolver",
+        "occurrences": 2,
+        "avg_confidence": 0.94
+      },
+      {
+        "type": "Project",
+        "name": "i18n",
+        "occurrences": 2,
+        "avg_confidence": 0.815
+      },
+      {
+        "type": "Organization",
+        "name": "http://foo.bar",
+        "occurrences": 2,
+        "avg_confidence": 0.55
+      }
+    ]
+  },
+  "resolution_metrics": {
+    "total_resolutions": 41,
+    "entities_resolved": 41,
+    "canonical_entities": 25,
+    "by_cluster_size": [
+      {
+        "cluster_size": 6,
+        "count": 10
+      },
+      {
+        "cluster_size": 4,
+        "count": 3
+      },
+      {
+        "cluster_size": 3,
+        "count": 12
+      },
+      {
+        "cluster_size": 2,
+        "count": 16
+      }
+    ]
+  },
+  "contradiction_metrics": {
+    "total_contradictions": 0,
+    "resolved": 0,
+    "unresolved": 0,
+    "by_type": []
+  },
+  "cost_metrics": {
+    "total_tokens": 79689,
+    "total_cost_usd": 0.027018,
+    "avg_cost_per_extraction": 0.0010006666666666666,
+    "by_extractor_version": [
+      {
+        "version": "1.0.0",
+        "extractions": 27,
+        "tokens": 79689,
+        "cost_usd": 0.027018
+      }
+    ]
+  },
+  "provenance_metrics": {
+    "total_cat_receipts": 68,
+    "transformation_types": 2,
+    "provenance_completeness": {
+      "total_extractions": 27,
+      "with_receipts": 27,
+      "completeness_percentage": 100.0
+    }
+  }
+}

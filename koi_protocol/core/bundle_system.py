@@ -11,6 +11,19 @@ from dataclasses import dataclass, asdict
 from .rid_system import RID
 
 
+# Content type registry for different bundle types
+CONTENT_TYPES = {
+    "application/json": {
+        "extensions": [".json"],
+        "description": "Generic JSON content"
+    },
+    "application/kg+json": {
+        "extensions": [".kg.json"],
+        "description": "Knowledge Graph extraction results"
+    }
+}
+
+
 @dataclass
 class Manifest:
     """KOI Bundle Manifest containing metadata and hash"""

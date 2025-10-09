@@ -33,6 +33,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 try:
     from koi_protocol.nodes.koi_node import KOIPartialNode
+    from koi_protocol.core.bundle_system import document_to_bundle
     from shared.persistent_state import PersistentSensorState
 except ImportError:
     print("Error: KOI protocol not found")
@@ -286,39 +287,42 @@ Members: {chat.get_member_count() if hasattr(chat, 'get_member_count') else 'Unk
     async def send_to_koi(self, documents: List[Dict[str, Any]]) -> int:
         """Send documents to KOI coordinator"""
         success_count = 0
-        
-        async with httpx.AsyncClient() as client:
-            for doc in documents:
-                try:
-                    # Create KOI event - must have rid and source_node at root level
-                    event = {
-                        "rid": doc["rid"],  # Required at root level
-                        "event_type": "NEW",
-                        "source_node": self.config.source_sensor,  # Changed from source_sensor to source_node
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "data": {  # Simplified - coordinator will create bundle from data
-                            "document": doc,
-                            "metadata": doc.get("metadata", {})
-                        }
-                    }
-                    
-                    # Send to coordinator
-                    response = await client.post(
-                        f"{self.config.koi_coordinator_url}/events/broadcast",
-                        json=event,
-                        timeout=30.0
-                    )
-                    
-                    if response.status_code == 200:
-                        self.logger.info(f"Sent document: {doc['rid']}")
-                        success_count += 1
-                    else:
-                        self.logger.error(f"Failed to send {doc['rid']}: {response.status_code}")
-                        
-                except Exception as e:
-                    self.logger.error(f"Error sending document {doc.get('rid', 'unknown')}: {e}")
+
+        for doc in documents:
+            try:
+                # Create bundle from document
+                bundle = document_to_bundle(doc, source_node=self.config.source_sensor)
+
+                # Calculate content hash
+                content = doc.get('content', '')
+                content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
+                rid = doc.get('rid', 'unknown')
+
+                # Check if content changed
+                previous_hash = self.state.metadata.get(f"hash_{rid}")
+
+                if previous_hash and previous_hash != content_hash:
+                    # Content changed - emit UPDATE
+                    await self.koi_node.emit_update_event(bundle)
+                    self.logger.info(f"UPDATE: {rid}")
+                    success_count += 1
+                elif not previous_hash:
+                    # New content - emit NEW
+                    await self.koi_node.emit_new_event(bundle)
+                    self.logger.info(f"NEW: {rid}")
+                    success_count += 1
+                else:
+                    # No change - skip
+                    self.logger.debug(f"SKIP (no change): {rid}")
                     continue
-        
+
+                # Store hash
+                self.state.metadata[f"hash_{rid}"] = content_hash
+
+            except Exception as e:
+                self.logger.error(f"Error sending document {doc.get('rid', 'unknown')}: {e}")
+                continue
+
         return success_count
     
     async def run_once(self):

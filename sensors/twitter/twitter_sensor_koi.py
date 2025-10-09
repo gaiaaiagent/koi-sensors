@@ -467,13 +467,32 @@ class TwitterKOISensor:
         try:
             # Create bundle from document
             bundle = document_to_bundle(document)
-            
-            # Emit as NEW event through KOI node
-            await self.koi_node.emit_new_event(bundle)
-            
-            print(f"      📤 Sent to KOI: {document['title']}")
+
+            # Calculate content hash
+            content = document.get('content', '')
+            content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
+            rid = document.get('rid', document.get('id', 'unknown'))
+
+            # Check if content changed
+            previous_hash = self.state.metadata.get(f"hash_{rid}")
+
+            if previous_hash and previous_hash != content_hash:
+                # Content changed - emit UPDATE
+                await self.koi_node.emit_update_event(bundle)
+                print(f"      🔄 UPDATE: {document['title']}")
+            elif not previous_hash:
+                # New content - emit NEW
+                await self.koi_node.emit_new_event(bundle)
+                print(f"      📤 NEW: {document['title']}")
+            else:
+                # No change - skip
+                print(f"      ⏭️  SKIP (no change): {document['title']}")
+                return True
+
+            # Store hash
+            self.state.metadata[f"hash_{rid}"] = content_hash
             return True
-            
+
         except Exception as e:
             print(f"      ❌ Failed to send to KOI: {e}")
             return False

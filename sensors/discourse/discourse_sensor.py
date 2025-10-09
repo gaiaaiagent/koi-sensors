@@ -766,8 +766,24 @@ class DiscourseSensor:
                         logger.error(f"Document structure: {list(doc.keys())}")
                         continue
 
-                    # Emit event
-                    await self.koi_node.emit_new_event(bundle)
+                    # Check if content changed (for UPDATE vs NEW)
+                    content_hash = hashlib.sha256(doc['content'].encode('utf-8')).hexdigest()
+                    previous_hash = self.state.metadata.get(f"hash_{rid_str}")
+
+                    if previous_hash and previous_hash != content_hash:
+                        # Content changed - emit UPDATE
+                        await self.koi_node.emit_update_event(bundle)
+                        logger.info(f"UPDATE: {doc.get('title', rid_str)[:50]}")
+                    elif not previous_hash:
+                        # New content - emit NEW
+                        await self.koi_node.emit_new_event(bundle)
+                        logger.info(f"NEW: {doc.get('title', rid_str)[:50]}")
+                    else:
+                        # No change - skip
+                        continue
+
+                    # Store hash
+                    self.state.metadata[f"hash_{rid_str}"] = content_hash
 
                 except Exception as e:
                     logger.error(f"Error sending document to KOI: {e}")

@@ -144,6 +144,19 @@ processing:
   retry_attempts: 3
   content_threshold: 100  # Minimum content length to process
 
+# Playwright settings for JavaScript-heavy sites
+playwright:
+  # Enable Playwright for specific domains (NOT all sites - resource intensive)
+  enabled: true
+  domains:
+    - regentokenomics.org  # Notion-based site with collapsible toggles
+  # Auto-expand Notion-style toggle blocks to reveal hidden content
+  expand_toggles: true
+  # Wait time (ms) for JavaScript content to load after page load
+  wait_time: 3000
+  # Browser settings
+  headless: true
+
 # Content detection
 content_detection:
   ignore_elements:

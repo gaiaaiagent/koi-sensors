@@ -1,0 +1,100 @@
+{
+  "total_tested": 17,
+  "successful": 13,
+  "failed": 4,
+  "by_sensor": {
+    "website": {
+      "tested": 3,
+      "successful": 3,
+      "failed": 0,
+      "avg_entities": 0.0,
+      "avg_statements": 0.0,
+      "avg_confidence": 0.0,
+      "total_cost": 0.0025659999999999997
+    },
+    "discourse": {
+      "tested": 3,
+      "successful": 3,
+      "failed": 0,
+      "avg_entities": 0.0,
+      "avg_statements": 0.0,
+      "avg_confidence": 0.0,
+      "total_cost": 0.00256
+    },
+    "github": {
+      "tested": 3,
+      "successful": 3,
+      "failed": 0,
+      "avg_entities": 0.6666666666666666,
+      "avg_statements": 2.0,
+      "avg_confidence": 0.30833333333333335,
+      "total_cost": 0.002522
+    },
+    "notion": {
+      "tested": 3,
+      "successful": 0,
+      "failed": 3,
+      "avg_entities": 0.0,
+      "avg_statements": 0.0,
+      "avg_confidence": 0,
+      "total_cost": 0
+    },
+    "gitlab": {
+      "tested": 2,
+      "successful": 2,
+      "failed": 0,
+      "avg_entities": 0.0,
+      "avg_statements": 0.0,
+      "avg_confidence": 0.0,
+      "total_cost": 0.0017079999999999999
+    },
+    "podcast": {
+      "tested": 2,
+      "successful": 1,
+      "failed": 1,
+      "avg_entities": 0.0,
+      "avg_statements": 0.0,
+      "avg_confidence": 0.0,
+      "total_cost": 0.000858
+    },
+    "github-activity": {
+      "tested": 1,
+      "successful": 1,
+      "failed": 0,
+      "avg_entities": 1.0,
+      "avg_statements": 7.0,
+      "avg_confidence": 0.9312499999999999,
+      "total_cost": 0.000582
+    }
+  },
+  "total_cost": 0.010796,
+  "total_entities": 3,
+  "total_statements": 13,
+  "errors": [
+    {
+      "success": false,
+      "sensor_type": "notion",
+      "rid": "orn:notion.page:regen/27f25b77-eda1-8090-b8df-c7d8de022953#chunk11",
+      "error": "source_url is required in metadata"
+    },
+    {
+      "success": false,
+      "sensor_type": "notion",
+      "rid": "orn:notion.page:regen/27f25b77-eda1-8090-b8df-c7d8de022953#chunk10",
+      "error": "source_url is required in metadata"
+    },
+    {
+      "success": false,
+      "sensor_type": "notion",
+      "rid": "orn:notion.page:regen/27f25b77-eda1-8090-b8df-c7d8de022953#chunk9",
+      "error": "source_url is required in metadata"
+    },
+    {
+      "success": false,
+      "sensor_type": "podcast",
+      "rid": "regen.podcast:podcast_677303778#chunk0",
+      "error": "Error code: 400 - {'error': {'message': 'Could not finish the message because max_tokens or model output limit was reached. Please try again with higher max_tokens.', 'type': 'invalid_request_error', 'param': None, 'code': None}}"
+    }
+  ],
+  "timestamp": "2025-10-04T08:09:16.811724"
+}

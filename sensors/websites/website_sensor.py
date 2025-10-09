@@ -27,6 +27,14 @@ except ImportError:
     # Video transcriber is optional
     VideoTranscriber = None
 
+try:
+    from playwright.async_api import async_playwright, Page
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+    async_playwright = None
+    Page = None
+
 
 class WebsiteMonitorConfig(BaseSensorConfig):
     """Website monitoring sensor configuration"""
@@ -44,6 +52,12 @@ class WebsiteMonitorConfig(BaseSensorConfig):
     min_content_length: int = 200
     exclude_extensions: List[str] = ['.pdf', '.jpg', '.png', '.gif', '.zip', '.mp3']  # Removed .mp4 for video processing
     include_content_types: List[str] = ['text/html', 'application/xhtml+xml']
+
+    # Playwright settings for JavaScript-heavy sites
+    use_playwright: bool = False  # Enable Playwright for all sites
+    playwright_domains: List[str] = ['regentokenomics.org']  # Domains that require Playwright
+    playwright_wait_time: int = 3000  # ms to wait for content to load
+    playwright_expand_toggles: bool = True  # Auto-expand Notion-style toggle blocks
 
 
 class WebPageRID(RID):
@@ -79,7 +93,7 @@ class WebsiteKOISensor:
         self.page_hashes: Dict[str, str] = {}  # URL -> content hash
         self.crawl_queues: Dict[str, Set[str]] = {}  # domain -> URLs to crawl
         self.pages_crawled: Dict[str, int] = {}  # domain -> count of pages crawled
-        self.video_queue: List[Dict[str, Any]] = []  # Queue for videos to transcribe
+        # Video transcription is now inline during page event emission (no queue needed)
 
         # Load persistent state from previous runs
         self._load_state()
@@ -95,7 +109,12 @@ class WebsiteKOISensor:
         
         # HTTP session
         self.session: Optional[aiohttp.ClientSession] = None
-        
+
+        # Playwright browser for JavaScript-heavy sites
+        self.playwright = None
+        self.browser = None
+        self.browser_context = None
+
         # Content converter - DEPRECATED: html2text was causing word-breaking issues
         # Now using BeautifulSoup's get_text() method for cleaner extraction
         # self.html_converter = html2text.HTML2Text()
@@ -255,7 +274,11 @@ class WebsiteKOISensor:
             timeout=timeout,
             headers=headers
         )
-        
+
+        # Initialize Playwright browser if needed
+        if PLAYWRIGHT_AVAILABLE and (self.config.use_playwright or self.config.playwright_domains):
+            await self._initialize_playwright()
+
         # Initialize crawl queues for each website
         for website in self.config.websites:
             domain = urlparse(website["url"]).netloc
@@ -279,72 +302,31 @@ class WebsiteKOISensor:
         # Wait for all monitoring tasks
         await asyncio.gather(*tasks)
     
-    async def process_video_queue(self):
-        """Process videos in the queue"""
-        if not self.video_transcriber or not self.video_queue:
-            return
-
-        while self.video_queue:
-            video_info = self.video_queue.pop(0)
-            try:
-                self.logger.info(f"Processing video from {video_info['source_page']}")
-                result = await self.video_transcriber.process_video(video_info)
-
-                if result and result.get('transcript'):
-                    # Create a document for the transcript
-                    doc = {
-                        'id': f"video_transcript_{hashlib.sha256(video_info['url'].encode()).hexdigest()[:16]}",
-                        'source': video_info['source_page'],
-                        'source_type': 'video_transcript',
-                        'url': video_info['url'],
-                        'title': f"Video Transcript: {video_info.get('title', 'Video')}",
-                        'content': result['transcript'],
-                        'author': 'Video Transcription',
-                        'tags': ['video', 'transcript', urlparse(video_info['source_page']).netloc],
-                        'collected_at': datetime.now(timezone.utc).isoformat(),
-                        'last_modified': datetime.now(timezone.utc).isoformat(),
-                        'metadata': {
-                            'video_type': video_info['type'],
-                            'source_page': video_info['source_page'],
-                            'transcribed_at': result.get('transcribed_at')
-                        }
-                    }
-
-                    # Emit as KOI event
-                    await self.emit_video_transcript_event(doc)
-
-            except Exception as e:
-                self.logger.error(f"Error processing video {video_info.get('url')}: {e}")
-
-    async def emit_video_transcript_event(self, doc: Dict[str, Any]):
-        """Emit KOI event for video transcript"""
-        try:
-            # Create bundle
-            bundle = document_to_bundle(doc)
-
-            # Emit event
-            await self.emit_new_event(bundle)
-            self.logger.info(f"Emitted video transcript event for {doc['url']}")
-
-        except Exception as e:
-            self.logger.error(f"Error emitting video transcript event: {e}")
+    # REMOVED: process_video_queue() and emit_video_transcript_event()
+    # Videos are now transcribed inline during emit_page_event() and integrated into page content
+    # This eliminates separate video transcript documents and ensures transcripts are part of the page from the start
 
     async def stop(self):
         """Stop website monitoring sensor"""
         self.logger.info("Stopping Website KOI Sensor")
 
-        # Process remaining videos
-        if self.video_queue:
-            self.logger.info(f"Processing {len(self.video_queue)} remaining videos...")
-            await self.process_video_queue()
+        # Videos are now processed inline during page events (no queue to process)
 
         if self.session:
             await self.session.close()
 
+        # Cleanup Playwright browser
+        if self.browser_context:
+            await self.browser_context.close()
+        if self.browser:
+            await self.browser.close()
+        if self.playwright:
+            await self.playwright.stop()
+
         # Cleanup video transcriber
         if self.video_transcriber:
             self.video_transcriber.cleanup()
-        
+
         await self.koi_node.stop()
     
     async def monitor_website(self, website_config: Dict[str, Any]):
@@ -357,12 +339,8 @@ class WebsiteKOISensor:
         while self.koi_node.running:
             try:
                 # Crawl and check for changes
+                # Videos are now transcribed inline during page event emission
                 await self.crawl_website(website_config)
-
-                # Process any queued videos after crawling
-                if self.video_queue and self.video_transcriber:
-                    self.logger.info(f"Processing {len(self.video_queue)} videos from {domain}")
-                    await self.process_video_queue()
 
                 self.logger.debug(f"Completed crawl cycle for {domain}")
                 
@@ -454,24 +432,36 @@ class WebsiteKOISensor:
         
         if not self.session:
             return None
-        
+
+        # Decide whether to use Playwright or regular HTTP
+        use_playwright = self._should_use_playwright(url)
+
         try:
-            # Fetch page
-            async with self.session.get(url) as response:
-                if response.status != 200:
-                    self.logger.warning(f"HTTP {response.status} for {url}")
-                    return None
-                
-                content_type = response.headers.get('content-type', '').lower()
-                if not any(ct in content_type for ct in self.config.include_content_types):
-                    return None
-                
-                html_content = await response.text()
-        
+            if use_playwright:
+                # Fetch with Playwright for JavaScript-rendered content
+                self.logger.info(f"📜 Using Playwright for {url}")
+                html_content = await self._fetch_with_playwright(url)
+                if not html_content:
+                    self.logger.warning(f"Playwright fetch failed, falling back to HTTP")
+                    use_playwright = False
+
+            if not use_playwright:
+                # Fetch page with regular HTTP
+                async with self.session.get(url) as response:
+                    if response.status != 200:
+                        self.logger.warning(f"HTTP {response.status} for {url}")
+                        return None
+
+                    content_type = response.headers.get('content-type', '').lower()
+                    if not any(ct in content_type for ct in self.config.include_content_types):
+                        return None
+
+                    html_content = await response.text()
+
         except Exception as e:
             self.logger.error(f"Error fetching {url}: {e}")
             return None
-        
+
         # Parse content
         soup = BeautifulSoup(html_content, 'html.parser')
         
@@ -501,23 +491,113 @@ class WebsiteKOISensor:
         # Always discover internal URLs (no depth limit)
         discovered_urls = self.extract_internal_urls(soup, url)
 
-        # Extract video URLs if enabled for this site
-        video_urls = []
-        if strategy != 'discourse_api':  # Don't extract videos from discourse API
-            video_urls = self.extract_video_urls(soup, url)
-            if video_urls:
-                self.logger.info(f"Found {len(video_urls)} videos on {url}")
-                # Add to video queue for processing
-                self.video_queue.extend(video_urls)
+        # Video URLs are extracted and transcribed inline during emit_page_event
+        # No longer using separate video queue - transcripts are integrated into page content
 
         return {
             "url": url,
             "content_length": len(text_content),
             "content_changed": content_changed,
-            "discovered_urls": discovered_urls,
-            "video_urls": video_urls
+            "discovered_urls": discovered_urls
         }
-    
+
+    async def _initialize_playwright(self):
+        """Initialize Playwright browser for JavaScript-heavy sites"""
+        try:
+            self.logger.info("Initializing Playwright browser...")
+            self.playwright = await async_playwright().start()
+            self.browser = await self.playwright.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-setuid-sandbox']
+            )
+            self.browser_context = await self.browser.new_context(
+                user_agent=self.config.user_agent,
+                viewport={'width': 1920, 'height': 1080}
+            )
+            self.logger.info("✅ Playwright browser initialized")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Playwright: {e}")
+            self.logger.warning("Falling back to HTTP-only mode")
+
+    async def _fetch_with_playwright(self, url: str) -> Optional[str]:
+        """Fetch page content using Playwright for JavaScript rendering"""
+        if not self.browser_context:
+            self.logger.warning(f"Playwright not available, cannot fetch {url}")
+            return None
+
+        try:
+            page = await self.browser_context.new_page()
+
+            # Navigate to page
+            await page.goto(url, wait_until='networkidle', timeout=30000)
+
+            # Wait for content to load
+            await asyncio.sleep(self.config.playwright_wait_time / 1000)
+
+            # Auto-expand Notion-style toggle blocks if enabled
+            if self.config.playwright_expand_toggles:
+                await self._expand_notion_toggles(page)
+
+            # Get the fully rendered HTML
+            html_content = await page.content()
+
+            await page.close()
+            return html_content
+
+        except Exception as e:
+            self.logger.error(f"Playwright fetch failed for {url}: {e}")
+            return None
+
+    async def _expand_notion_toggles(self, page: Page):
+        """Expand all Notion-style toggle/collapsible blocks to reveal hidden content"""
+        try:
+            # Common selectors for toggle/collapsible blocks
+            toggle_selectors = [
+                'details:not([open])',  # HTML5 details/summary
+                '[class*="toggle"]',     # Notion-style toggles
+                '[class*="collaps"]',    # Generic collapsed elements
+                '[aria-expanded="false"]',  # ARIA collapsed
+                'button[class*="toggle"]',  # Toggle buttons
+            ]
+
+            for selector in toggle_selectors:
+                try:
+                    # Find all matching elements
+                    elements = await page.query_selector_all(selector)
+                    self.logger.info(f"Found {len(elements)} elements matching '{selector}'")
+
+                    # Click/expand each one
+                    for element in elements:
+                        try:
+                            await element.click(timeout=1000)
+                            await asyncio.sleep(0.2)  # Brief wait for animation
+                        except Exception:
+                            pass  # Element might not be clickable, that's okay
+
+                except Exception as e:
+                    # Some selectors might not match, that's fine
+                    pass
+
+            # Additional wait for any lazy-loaded content
+            await asyncio.sleep(0.5)
+
+            self.logger.info("✅ Expanded all toggle blocks")
+
+        except Exception as e:
+            self.logger.warning(f"Error expanding toggles: {e}")
+
+    def _should_use_playwright(self, url: str) -> bool:
+        """Determine if URL should be fetched with Playwright"""
+        if not PLAYWRIGHT_AVAILABLE or not (self.browser_context):
+            return False
+
+        if self.config.use_playwright:
+            return True
+
+        # Check if domain is in playwright_domains list
+        domain = urlparse(url).netloc
+        return domain in self.config.playwright_domains
+
     def extract_clean_content(self, soup: BeautifulSoup, url: str) -> str:
         """Extract clean text content from HTML"""
 
@@ -697,7 +777,52 @@ class WebsiteKOISensor:
                     confidence = 0.6  # Lower confidence for modification date
                 except Exception:
                     pass
-            
+
+            # INTEGRATE VIDEO TRANSCRIPTION: Transcribe videos BEFORE emitting page event
+            # Extract and transcribe videos from this page
+            video_urls = self.extract_video_urls(soup, url)
+            video_transcripts = []
+
+            if video_urls and self.video_transcriber:
+                self.logger.info(f"Found {len(video_urls)} videos on {url}, transcribing before emitting event...")
+
+                for video_info in video_urls:
+                    try:
+                        result = await self.video_transcriber.process_video(video_info)
+                        if result and result.get('transcript'):
+                            video_transcripts.append({
+                                'url': video_info['url'],
+                                'type': video_info['type'],
+                                'title': video_info.get('title', 'Video'),
+                                'transcript': result['transcript']
+                            })
+                            self.logger.info(f"Transcribed video: {video_info['url'][:60]}...")
+                    except Exception as e:
+                        self.logger.error(f"Error transcribing video {video_info['url']}: {e}")
+
+            # Append video transcripts to page content
+            enhanced_content = content
+            if video_transcripts:
+                self.logger.info(f"Appending {len(video_transcripts)} video transcripts to page content")
+                enhanced_content += "\n\n--- VIDEO TRANSCRIPTS ---\n"
+
+                for i, vt in enumerate(video_transcripts, 1):
+                    enhanced_content += f"\n## Video {i}: {vt['title']}\n"
+                    enhanced_content += f"URL: {vt['url']}\n"
+                    enhanced_content += f"Type: {vt['type']}\n\n"
+                    enhanced_content += vt['transcript'] + "\n"
+
+                # Store video info in metadata
+                metadata['videos'] = [
+                    {
+                        'url': vt['url'],
+                        'type': vt['type'],
+                        'title': vt['title'],
+                        'transcribed': True
+                    }
+                    for vt in video_transcripts
+                ]
+
             # Create document in format compatible with existing system
             document = {
                 "id": f"web_{rid.url_hash}",
@@ -706,7 +831,7 @@ class WebsiteKOISensor:
                 "url": url,  # CRITICAL: URL at root level for provenance
                 "source_url": url,  # Additional field to ensure preservation
                 "title": metadata.get("title", ""),
-                "content": content,
+                "content": enhanced_content,  # Use enhanced content with video transcripts
                 "metadata": {
                     # Core metadata fields for provenance
                     "title": metadata.get("title", ""),

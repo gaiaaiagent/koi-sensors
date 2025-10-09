@@ -1,0 +1,13 @@
+Collecting playwright
+  Using cached playwright-1.55.0-py3-none-manylinux1_x86_64.whl.metadata (3.5 kB)
+Collecting pyee<14,>=13 (from playwright)
+  Using cached pyee-13.0.0-py3-none-any.whl.metadata (2.9 kB)
+Collecting greenlet<4.0.0,>=3.1.1 (from playwright)
+  Using cached greenlet-3.2.4-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (4.1 kB)
+Requirement already satisfied: typing-extensions in ./venv/lib/python3.12/site-packages (from pyee<14,>=13->playwright) (4.15.0)
+Using cached playwright-1.55.0-py3-none-manylinux1_x86_64.whl (45.9 MB)
+Using cached greenlet-3.2.4-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (607 kB)
+Using cached pyee-13.0.0-py3-none-any.whl (15 kB)
+Installing collected packages: pyee, greenlet, playwright
+
+Successfully installed greenlet-3.2.4 playwright-1.55.0 pyee-13.0.0

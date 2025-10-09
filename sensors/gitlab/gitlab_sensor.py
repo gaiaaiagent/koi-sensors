@@ -22,6 +22,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.rid_system import RID
 from koi_protocol.core.bundle_system import Bundle, document_to_bundle
+from shared.persistent_state import PersistentSensorState
 
 
 @dataclass
@@ -68,6 +69,9 @@ class GitLabSensor:
         # Track processed documents
         self.processed_rids = set()
         self.documents_sent = 0
+
+        # Persistent state for content hash tracking
+        self.state = PersistentSensorState('gitlab', Path(__file__).parent)
 
         # Initialize KOI node
         self.koi_node = KOIPartialNode(
@@ -395,10 +399,29 @@ class GitLabSensor:
                 # Create bundle from document
                 bundle = document_to_bundle(doc, source_node="gitlab-sensor")
 
-                # Emit event
-                await self.koi_node.emit_new_event(bundle)
+                # Calculate content hash
+                content = doc.get('content', '')
+                content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
+                rid = doc.get('rid', doc.get('id', 'unknown'))
 
-                self.logger.info(f"Sent document {doc.get('id', 'unknown')} to KOI coordinator")
+                # Check if content changed
+                previous_hash = self.state.metadata.get(f"hash_{rid}")
+
+                if previous_hash and previous_hash != content_hash:
+                    # Content changed - emit UPDATE
+                    await self.koi_node.emit_update_event(bundle)
+                    self.logger.info(f"UPDATE: {rid}")
+                elif not previous_hash:
+                    # New content - emit NEW
+                    await self.koi_node.emit_new_event(bundle)
+                    self.logger.info(f"NEW: {rid}")
+                else:
+                    # No change - skip
+                    self.logger.debug(f"SKIP (no change): {rid}")
+                    continue
+
+                # Store hash
+                self.state.metadata[f"hash_{rid}"] = content_hash
                 success_count += 1
                 self.documents_sent += 1
 

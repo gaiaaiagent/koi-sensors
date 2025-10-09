@@ -1,0 +1,63 @@
+{
+  "entities": [
+    {
+      "name": "Verra",
+      "type": "Organization",
+      "confidence": 0.95
+    },
+    {
+      "name": "Regen Network",
+      "type": "Organization",
+      "confidence": 0.95
+    },
+    {
+      "name": "C01 credit class",
+      "type": "Project",
+      "confidence": 0.85
+    }
+  ],
+  "statements": [
+    {
+      "subject": "Verra",
+      "predicate": "developed",
+      "object": "methodology for biochar carbon removal",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "Verra",
+      "predicate": "approved",
+      "object": "methodology by technical committee",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "Regen Network",
+      "predicate": "collaborated with",
+      "object": "Verra",
+      "statementType": "claim",
+      "confidence": 0.9
+    },
+    {
+      "subject": "methodology",
+      "predicate": "provides",
+      "object": "standardized procedures for quantifying carbon removal",
+      "statementType": "claim",
+      "confidence": 0.85
+    },
+    {
+      "subject": "methodology",
+      "predicate": "is implemented by",
+      "object": "12 active projects globally",
+      "statementType": "claim",
+      "confidence": 0.8
+    },
+    {
+      "subject": "methodology",
+      "predicate": "forms the basis for",
+      "object": "C01 credit class on Regen Registry",
+      "statementType": "claim",
+      "confidence": 0.85
+    }
+  ]
+}
