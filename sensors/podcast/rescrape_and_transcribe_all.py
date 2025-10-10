@@ -87,18 +87,22 @@ async def rescrape_all_episodes():
             print(f"\n[{i}/{total}] Processing: {title[:50]}...")
 
             try:
-                # Force transcription by treating as new episode
-                event_type = await sensor.process_episode("planetary-regeneration", episode)
+                # Clear state for this episode to force transcription
+                sensor.state.metadata.pop(f"hash_{episode_id}", None)
+                if episode_id in sensor.state.processed_items:
+                    sensor.state.processed_items.remove(episode_id)
 
-                if event_type in ["NEW", "UPDATE"]:
-                    success += 1
-                    print(f"  ✓ Success ({event_type})")
-                else:
-                    print(f"  → Already processed")
+                # Force transcription by directly calling the transcription method
+                await sensor.transcribe_and_update_episode(episode_id, episode, title)
+
+                success += 1
+                print(f"  ✓ Success (TRANSCRIBED & UPDATE)")
 
             except Exception as e:
                 failed += 1
                 print(f"  ✗ Failed: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
 
         # Summary
