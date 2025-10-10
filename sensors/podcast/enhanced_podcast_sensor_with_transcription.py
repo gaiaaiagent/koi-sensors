@@ -127,12 +127,17 @@ class EnhancedPodcastKOISensor(PodcastKOISensor):
         print(f"\n🎤 Starting transcription: {title[:50]}...")
 
         try:
-            # Get audio URL - SoundCloud needs special handling
+            # Get audio URL - prefer direct MP3 URL from RSS feed
             audio_url = None
 
-            # Best approach: Use permalink_url with yt-dlp (handles auth automatically)
-            if episode_data.get('permalink_url'):
+            # Best: Direct MP3 URL from RSS feed (20-30x faster than HLS)
+            if episode_data.get('direct_mp3_url'):
+                audio_url = episode_data['direct_mp3_url']
+                print(f"  🎵 Using direct MP3 URL (fast download)")
+            # Fallback: permalink_url with yt-dlp (slow HLS streaming)
+            elif episode_data.get('permalink_url'):
                 audio_url = episode_data['permalink_url']
+                print(f"  🎵 Using permalink URL (yt-dlp/HLS - slow)")
             # Fallback: Try direct stream URL with client_id
             elif episode_data.get('stream_url') and self.soundcloud_client_id:
                 audio_url = f"{episode_data['stream_url']}?client_id={self.soundcloud_client_id}"
@@ -147,7 +152,7 @@ class EnhancedPodcastKOISensor(PodcastKOISensor):
                 print(f"  ⚠️  No audio URL found for episode {episode_id}")
                 return
 
-            print(f"  🎵 Audio URL: {audio_url[:80]}...")
+            print(f"  📥 Audio URL: {audio_url[:80]}...")
 
             # Transcribe episode (keep audio files for caching)
             result = await self.transcriber.transcribe_episode(

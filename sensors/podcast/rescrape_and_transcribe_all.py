@@ -8,6 +8,7 @@ import asyncio
 import json
 from pathlib import Path
 from enhanced_podcast_sensor_with_transcription import EnhancedPodcastKOISensor
+from rss_feed_parser import get_planetary_regeneration_episodes
 
 async def rescrape_all_episodes():
     """
@@ -66,11 +67,9 @@ async def rescrape_all_episodes():
         # Start KOI node
         await sensor.koi_node.start()
 
-        # Collect all episodes from SoundCloud
-        print("\n🎧 Collecting episodes from SoundCloud...")
-        episodes = await sensor.collect_soundcloud_episodes(
-            "https://soundcloud.com/planetaryregeneration"
-        )
+        # Collect all episodes from RSS feed (20-30x faster downloads)
+        print("\n📡 Collecting episodes from RSS feed...")
+        episodes = await get_planetary_regeneration_episodes()
 
         print(f"✓ Found {len(episodes)} episodes")
         print()
@@ -153,11 +152,9 @@ async def rescrape_specific_episodes(episode_ids: list):
     try:
         await sensor.koi_node.start()
 
-        # Collect all episodes
-        print("🎧 Collecting episodes from SoundCloud...")
-        all_episodes = await sensor.collect_soundcloud_episodes(
-            "https://soundcloud.com/planetaryregeneration"
-        )
+        # Collect all episodes from RSS feed
+        print("📡 Collecting episodes from RSS feed...")
+        all_episodes = await get_planetary_regeneration_episodes()
 
         # Filter to requested episodes
         episodes_to_process = [

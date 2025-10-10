@@ -27,4 +27,4 @@ torchaudio>=2.0.0
 
 # Note: For GPU acceleration, install CUDA-enabled PyTorch:
 # torch>=2.0.0+cu118
-# torchaudio>=2.0.0+cu118
+# torchaudio>=2.0.0+cu118feedparser>=6.0.10
