@@ -36,7 +36,7 @@ async def rescrape_all_episodes():
         coordinator_url="http://localhost:8005",
         enable_transcription=True,
         whisper_model="base",  # Fast and accurate
-        enable_diarization=True  # Requires HUGGINGFACE_TOKEN
+        enable_diarization=False  # Disabled - diarization too slow on CPU
     )
 
     print("\n" + "="*70)
@@ -139,7 +139,7 @@ async def rescrape_specific_episodes(episode_ids: list):
         coordinator_url="http://localhost:8005",
         enable_transcription=True,
         whisper_model="base",
-        enable_diarization=True
+        enable_diarization=False  # Disabled - diarization too slow on CPU
     )
 
     # Initialize session
