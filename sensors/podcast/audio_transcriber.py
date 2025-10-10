@@ -280,8 +280,17 @@ class PodcastAudioTranscriber:
         logger.info("Running speaker diarization...")
 
         try:
-            # Run diarization
-            diarization = self.diarization_pipeline(str(audio_path))
+            # Run diarization with parameters optimized for podcasts
+            # num_speakers can be set if known, or left as None for automatic detection
+            diarization = self.diarization_pipeline(
+                str(audio_path),
+                min_speakers=2,  # Expect at least 2 speakers in interviews
+                max_speakers=5   # Limit to reasonable number for podcasts
+            )
+
+            # Debug: Count total turns detected
+            turn_count = sum(1 for _ in diarization.itertracks())
+            logger.info(f"  Detected {turn_count} speaker turns")
 
             # Assign speakers to segments
             for segment in whisper_segments:
@@ -302,9 +311,16 @@ class PodcastAudioTranscriber:
             speakers = set(seg.get('speaker') for seg in whisper_segments if seg.get('speaker'))
             logger.info(f"✓ Diarization complete ({len(speakers)} speakers detected)")
 
+            # If no speakers detected, log warning
+            if len(speakers) == 0:
+                logger.warning("No speakers were assigned to segments!")
+                logger.warning("This might indicate audio quality issues or single-speaker content")
+
         except Exception as e:
             logger.error(f"Diarization failed: {e}")
             logger.warning("Continuing without speaker labels")
+            import traceback
+            logger.error(traceback.format_exc())
             for segment in whisper_segments:
                 segment['speaker'] = None
 
