@@ -88,9 +88,9 @@ async def rescrape_all_episodes():
 
             try:
                 # Clear state for this episode to force transcription
-                sensor.state.metadata.pop(f"hash_{episode_id}", None)
-                if episode_id in sensor.state.processed_items:
-                    sensor.state.processed_items.remove(episode_id)
+                # Remove from processed set
+                if episode_id in sensor.state.processed:
+                    sensor.state.processed.remove(episode_id)
 
                 # Force transcription by directly calling the transcription method
                 await sensor.transcribe_and_update_episode(episode_id, episode, title)
@@ -176,12 +176,11 @@ async def rescrape_specific_episodes(episode_ids: list):
             print(f"\n[{i}/{len(episodes_to_process)}] {title[:50]}...")
 
             # Clear state for this episode to force re-processing
-            sensor.state.metadata.pop(f"hash_{episode_id}", None)
-            if episode_id in sensor.state.processed_items:
-                sensor.state.processed_items.remove(episode_id)
+            if episode_id in sensor.state.processed:
+                sensor.state.processed.remove(episode_id)
 
             try:
-                await sensor.process_episode("planetary-regeneration", episode)
+                await sensor.transcribe_and_update_episode(episode_id, episode, title)
                 print(f"  ✓ Complete")
             except Exception as e:
                 print(f"  ✗ Failed: {e}")
