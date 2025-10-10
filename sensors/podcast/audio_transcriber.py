@@ -259,6 +259,50 @@ class PodcastAudioTranscriber:
         logger.info(f"✓ Transcription complete ({len(result['segments'])} segments)")
         return result
 
+    def _convert_to_wav(self, audio_path: Path) -> Path:
+        """
+        Convert MP3 to WAV with consistent sample rate for PyAnnote compatibility
+
+        PyAnnote requires exact sample counts, which MP3s don't always provide.
+        Converting to WAV at 16kHz ensures consistent processing.
+
+        Args:
+            audio_path: Path to MP3 file
+
+        Returns:
+            Path to converted WAV file
+        """
+        wav_path = audio_path.with_suffix('.wav')
+
+        # Skip if WAV already exists
+        if wav_path.exists():
+            logger.info(f"Using cached WAV: {wav_path}")
+            return wav_path
+
+        try:
+            import ffmpeg
+            logger.info(f"Converting {audio_path} to WAV for diarization...")
+
+            # Convert to 16kHz mono WAV (standard for speech processing)
+            ffmpeg.input(str(audio_path)).output(
+                str(wav_path),
+                ar=16000,  # 16kHz sample rate
+                ac=1,      # Mono audio
+                acodec='pcm_s16le'  # Standard WAV codec
+            ).overwrite_output().run(quiet=True, capture_stderr=True)
+
+            logger.info(f"✓ Converted to WAV: {wav_path}")
+            return wav_path
+
+        except ImportError:
+            logger.error("ffmpeg-python not installed. Install with: pip install ffmpeg-python")
+            logger.warning("Attempting diarization with MP3 file (may fail)")
+            return audio_path
+        except Exception as e:
+            logger.error(f"WAV conversion failed: {e}")
+            logger.warning("Attempting diarization with MP3 file (may fail)")
+            return audio_path
+
     def add_speaker_diarization(
         self,
         audio_path: Path,
@@ -281,10 +325,14 @@ class PodcastAudioTranscriber:
         logger.info("Running speaker diarization...")
 
         try:
+            # Convert MP3 to WAV for PyAnnote compatibility
+            # PyAnnote requires exact sample counts which MP3s don't always provide
+            wav_path = self._convert_to_wav(audio_path)
+
             # Run diarization with parameters optimized for podcasts
             # num_speakers can be set if known, or left as None for automatic detection
             diarization = self.diarization_pipeline(
-                str(audio_path),
+                str(wav_path),  # Use WAV instead of MP3
                 min_speakers=2,  # Expect at least 2 speakers in interviews
                 max_speakers=5   # Limit to reasonable number for podcasts
             )
