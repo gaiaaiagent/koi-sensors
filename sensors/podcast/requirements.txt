@@ -4,11 +4,27 @@ beautifulsoup4>=4.11.0
 lxml>=4.9.0
 pyyaml>=6.0
 loguru>=0.7.0
+python-dateutil>=2.8.0
 
 # Audio download (required for full functionality)
 yt-dlp>=2023.7.6
 
-# Optional: Audio transcription
-# Uncomment the line below to enable transcription
-# Note: This will download ~1GB of model files
-# openai-whisper>=20230314
+# Audio transcription with word-level timestamps (YonEarth-proven approach)
+# Note: Using git version for Python 3.13 compatibility
+git+https://github.com/openai/whisper.git
+# Alternative: faster-whisper (more compatible, faster)
+# faster-whisper>=1.0.0
+
+# Speaker diarization (requires HuggingFace token)
+pyannote.audio==4.0.0
+
+# Audio processing
+soundfile==0.13.1
+
+# Deep learning (required by Whisper and PyAnnote)
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Note: For GPU acceleration, install CUDA-enabled PyTorch:
+# torch>=2.0.0+cu118
+# torchaudio>=2.0.0+cu118
