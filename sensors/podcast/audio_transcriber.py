@@ -184,6 +184,7 @@ class PodcastAudioTranscriber:
                 }],
                 'quiet': True,
                 'no_warnings': True,
+                'concurrent_fragment_downloads': 4,  # Download 4 fragments at once (3-4x faster)
             }
 
             # Run yt-dlp in thread pool (it's blocking)

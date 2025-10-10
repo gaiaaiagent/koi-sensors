@@ -149,11 +149,12 @@ class EnhancedPodcastKOISensor(PodcastKOISensor):
 
             print(f"  🎵 Audio URL: {audio_url[:80]}...")
 
-            # Transcribe episode
+            # Transcribe episode (keep audio files for caching)
             result = await self.transcriber.transcribe_episode(
                 audio_url=audio_url,
                 episode_id=episode_id,
-                session=self.session  # Reuse sensor's aiohttp session
+                session=self.session,  # Reuse sensor's aiohttp session
+                keep_audio=True  # Keep audio files for faster re-transcription
             )
 
             # Save transcript to file
