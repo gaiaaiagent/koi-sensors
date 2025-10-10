@@ -127,7 +127,7 @@ class PodcastAudioTranscriber:
                 try:
                     self.diarization_pipeline = Pipeline.from_pretrained(
                         "pyannote/speaker-diarization-3.1",
-                        use_auth_token=huggingface_token
+                        token=huggingface_token  # Updated from use_auth_token (deprecated)
                     )
                     self.diarization_pipeline.to(torch.device(self.device))
                     logger.info("✓ Diarization pipeline loaded")
