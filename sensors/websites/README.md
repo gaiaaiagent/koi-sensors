@@ -138,6 +138,26 @@ The sensor provides:
 - Content change detection metrics
 - KOI event emission tracking
 
+## Known Limitations & Future Improvements
+
+### Notion-Based Sites (regentokenomics.org)
+
+**Issue**: The regentokenomics.org website is built on Notion and uses the Otter.ai widget for meeting transcripts. These transcripts load asynchronously via JavaScript after the page renders, making them difficult to reliably scrape via Playwright.
+
+**Current Status**:
+- ✅ Event-based detection implemented to wait for transcript appearance
+- ⚠️ Extraction still incomplete (~1,655 chars instead of expected 42K+ chars)
+- ⚠️ Standalone testing extracts full transcript, but sensor extraction is partial
+
+**Recommended Solution**:
+Get API access to the underlying Notion workspace that powers regentokenomics.org. This would allow:
+- Direct access to meeting notes and transcripts via Notion API
+- Reliable, complete content extraction without JavaScript rendering issues
+- Faster updates without needing to wait for Otter.ai widget loading
+- Cleaner data without JSON metadata pollution from React state
+
+**Contact**: Reach out to the regentokenomics.org team to request Notion workspace read access for the KOI sensor network.
+
 ## Development Notes
 
 Built using proven patterns from the production server with 86.4% success rate processing 12,967+ documents. Maintains full compatibility with existing data collection methods while adding KOI protocol compliance.

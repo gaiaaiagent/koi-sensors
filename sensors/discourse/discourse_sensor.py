@@ -44,7 +44,10 @@ class DiscourseSensor:
     
     def __init__(self):
         """Initialize Discourse sensor"""
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True  # Follow 301/302 redirects automatically
+        )
 
         # Initialize KOI node for real-time event broadcasting
         self.koi_node = KOIPartialNode(

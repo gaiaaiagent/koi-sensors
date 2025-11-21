@@ -244,6 +244,100 @@ class WebsiteKOISensor:
         except Exception as e:
             self.logger.error(f"Error handling coordinator events: {e}")
 
+    async def trigger_crawl(self, request):
+        """HTTP endpoint to manually trigger crawl of specific URL(s)"""
+        try:
+            data = await request.json()
+            url = data.get('url')
+            domain = data.get('domain')
+
+            if url:
+                # Single URL crawl
+                self.logger.info(f"🔄 Manual trigger: crawling {url}")
+                parsed = urlparse(url)
+                domain_key = parsed.netloc
+
+                # Clear cached hash for this URL to force re-emission (important for manual re-scrapes)
+                if url in self.page_hashes:
+                    self.logger.info(f"Clearing cached hash for {url} to force event emission")
+                    del self.page_hashes[url]
+
+                # Add to front of queue for immediate processing
+                if domain_key not in self.crawl_queues:
+                    self.crawl_queues[domain_key] = set()
+                self.crawl_queues[domain_key].add(url)
+
+                # Process immediately with scrape strategy
+                result = await self.process_page(url, depth=0, max_depth=1, strategy='scrape')
+
+                return aiohttp.web.json_response({
+                    'success': True,
+                    'message': f'Crawled {url}',
+                    'processed': result is not None,
+                    'content_length': len(result.get('content', {}).get('text', '')) if result else 0
+                })
+
+            elif domain:
+                # Full domain re-crawl
+                self.logger.info(f"🔄 Manual trigger: re-crawling entire domain {domain}")
+
+                # Find the website config for this domain
+                for website in self.config.websites:
+                    if domain in website['url']:
+                        # Clear existing queue and start fresh
+                        domain_key = urlparse(website['url']).netloc
+                        self.crawl_queues[domain_key] = {website['url']}
+                        self.pages_crawled[domain_key] = 0
+
+                        # Trigger immediate crawl
+                        await self.crawl_website(website)
+
+                        return aiohttp.web.json_response({
+                            'success': True,
+                            'message': f'Re-crawled domain {domain}',
+                            'pages_crawled': self.pages_crawled.get(domain_key, 0),
+                            'queue_size': len(self.crawl_queues.get(domain_key, set()))
+                        })
+
+                return aiohttp.web.json_response({
+                    'success': False,
+                    'error': f'Domain {domain} not found in configuration'
+                }, status=404)
+            else:
+                return aiohttp.web.json_response({
+                    'success': False,
+                    'error': 'Must provide either "url" or "domain" parameter'
+                }, status=400)
+
+        except Exception as e:
+            self.logger.error(f"Error in trigger_crawl: {e}")
+            return aiohttp.web.json_response({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+
+    async def start_http_api(self):
+        """Start HTTP API server for manual triggers"""
+        try:
+            from aiohttp import web
+
+            app = web.Application()
+            app.router.add_post('/trigger', self.trigger_crawl)
+
+            runner = web.AppRunner(app)
+            await runner.setup()
+
+            # Use port 8010 for website sensor API
+            site = web.TCPSite(runner, 'localhost', 8010)
+            await site.start()
+
+            self.logger.info("🌐 HTTP API started on http://localhost:8010")
+            self.logger.info("   POST /trigger with {'url': '...'} or {'domain': '...'}")
+        except Exception as e:
+            self.logger.error(f"Failed to start HTTP API: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+
     async def start(self):
         """Start website monitoring sensor"""
         self.logger.info("Starting Website KOI Sensor")
@@ -259,6 +353,9 @@ class WebsiteKOISensor:
 
         # Send initial heartbeat to register
         await self.send_heartbeat_event()
+
+        # Start HTTP API for manual triggers
+        asyncio.create_task(self.start_http_api())
 
         # Start background tasks
         asyncio.create_task(self.send_periodic_heartbeats())
@@ -421,6 +518,48 @@ class WebsiteKOISensor:
         # Save state after each crawl cycle for persistence across restarts
         self._save_state()
     
+    def _check_for_transcript_on_page(self, content: str, soup: BeautifulSoup) -> bool:
+        """
+        Check if a transcript already exists on the page.
+        Returns True if transcript is found, False otherwise.
+        """
+        content_lower = content.lower()
+
+        # Check for common transcript indicators
+        transcript_indicators = [
+            'transcript',  # Direct mention
+            'transcription',
+            '00:00',  # Timestamp format common in transcripts
+            '[00:',   # Alternative timestamp format
+            'speaker:',  # Speaker labels
+            'speaker 1:',
+            'speaker 2:',
+        ]
+
+        # Count how many indicators are present
+        indicator_count = sum(1 for indicator in transcript_indicators if indicator in content_lower)
+
+        # If we find multiple indicators, it's likely a transcript
+        if indicator_count >= 2:
+            return True
+
+        # Check for substantial transcript-like content (long paragraphs with timestamps)
+        # Look for patterns like "00:00" or "[00:00]" followed by text
+        import re
+        timestamp_pattern = r'(\d{1,2}:\d{2}|\[\d{1,2}:\d{2}\])'
+        timestamps = re.findall(timestamp_pattern, content)
+
+        # If there are multiple timestamps (>5), it's likely a transcript
+        if len(timestamps) > 5:
+            return True
+
+        # Check for very long content blocks (>5000 words suggests transcript)
+        word_count = len(content.split())
+        if word_count > 5000 and 'transcript' in content_lower:
+            return True
+
+        return False
+
     async def process_page(self, url: str, depth: int, max_depth: int, strategy: str) -> Optional[Dict[str, Any]]:
         """Process a single web page"""
 
@@ -463,33 +602,62 @@ class WebsiteKOISensor:
             return None
 
         # Parse content
+        self.logger.info(f"[DEBUG] Parsing HTML with BeautifulSoup...")
         soup = BeautifulSoup(html_content, 'html.parser')
-        
+        self.logger.info(f"[DEBUG] Parsed {len(html_content)} chars of HTML")
+
+        # DEBUG: Check if transcript content is in raw HTML
+        if 'regentokenomics.org' in url and 'nov-11' in url:
+            if '8min' in html_content:
+                self.logger.info(f"[DEBUG] ✓ Transcript '8min' found in raw HTML for {url}")
+                # Save HTML to file for inspection
+                with open('/tmp/regentokenomics_nov11.html', 'w') as f:
+                    f.write(html_content)
+                self.logger.info(f"[DEBUG] Saved HTML to /tmp/regentokenomics_nov11.html")
+            else:
+                self.logger.warning(f"[DEBUG] ✗ Transcript '8min' NOT in raw HTML for {url}")
+        elif 'regentokenomics.org' in url and '8min' not in html_content:
+            self.logger.warning(f"[DEBUG] ✗ Transcript '8min' NOT in raw HTML for {url}")
+
         # Extract clean text content
+        self.logger.info(f"[DEBUG] Extracting clean content...")
         text_content = self.extract_clean_content(soup, url)
-        
+        self.logger.info(f"[DEBUG] Extracted {len(text_content)} chars of text")
+
         if len(text_content) < self.config.min_content_length:
+            self.logger.info(f"[DEBUG] Content too short ({len(text_content)} < {self.config.min_content_length}), skipping")
             return None
-        
+
         # Calculate content hash
+        self.logger.info(f"[DEBUG] Calculating content hash...")
         content_hash = hashlib.sha256(text_content.encode('utf-8')).hexdigest()
+        self.logger.info(f"[DEBUG] Content hash: {content_hash[:16]}...")
         
         # Check if content changed
+        self.logger.info(f"[DEBUG] Checking if content changed...")
         previous_hash = self.page_hashes.get(url)
         content_changed = previous_hash != content_hash
-        
+        self.logger.info(f"[DEBUG] Previous hash: {previous_hash[:16] if previous_hash else 'None'}")
+        self.logger.info(f"[DEBUG] Content changed: {content_changed}, Is new: {previous_hash is None}")
+
         if content_changed or previous_hash is None:
             # Content is new or changed
-            await self.emit_page_event(url, text_content, soup, 
-                                     "NEW" if previous_hash is None else "UPDATE")
-            
+            event_type = "NEW" if previous_hash is None else "UPDATE"
+            self.logger.info(f"[DEBUG] Calling emit_page_event with event_type={event_type}")
+            await self.emit_page_event(url, text_content, soup, event_type)
+            self.logger.info(f"[DEBUG] emit_page_event returned")
+
             # Update hash and increment page count
             self.page_hashes[url] = content_hash
             if domain in self.pages_crawled:
                 self.pages_crawled[domain] += 1
-        
+        else:
+            self.logger.info(f"[DEBUG] Content unchanged, skipping emit")
+
         # Always discover internal URLs (no depth limit)
+        self.logger.info(f"[DEBUG] Extracting internal URLs...")
         discovered_urls = self.extract_internal_urls(soup, url)
+        self.logger.info(f"[DEBUG] Found {len(discovered_urls)} internal URLs")
 
         # Video URLs are extracted and transcribed inline during emit_page_event
         # No longer using separate video queue - transcripts are integrated into page content
@@ -510,11 +678,32 @@ class WebsiteKOISensor:
                 headless=True,
                 args=['--no-sandbox', '--disable-setuid-sandbox']
             )
-            self.browser_context = await self.browser.new_context(
-                user_agent=self.config.user_agent,
-                viewport={'width': 1920, 'height': 1080}
+
+            # Use a realistic browser user agent for Playwright so that
+            # dynamic frontends (like Super.so/Notion pages on regentokenomics.org)
+            # fully hydrate their content. The generic KOI sensor UA is
+            # still used for plain HTTP requests, but here we want to look
+            # like a normal browser.
+            playwright_ua = None
+            if getattr(self.config, "user_agent", None):
+                ua = self.config.user_agent
+                # Avoid using explicit "KOI-Sensor" style identifiers for
+                # Playwright, as some sites treat these as bots and skip
+                # client-side rendering of rich content (e.g., transcripts).
+                if "koi-sensor" not in ua.lower():
+                    playwright_ua = ua
+
+            context_args = {
+                "viewport": {"width": 1920, "height": 1080},
+            }
+            if playwright_ua:
+                context_args["user_agent"] = playwright_ua
+
+            self.browser_context = await self.browser.new_context(**context_args)
+            self.logger.info(
+                "✅ Playwright browser initialized "
+                f"(user agent={'default' if not playwright_ua else playwright_ua})"
             )
-            self.logger.info("✅ Playwright browser initialized")
         except Exception as e:
             self.logger.error(f"Failed to initialize Playwright: {e}")
             self.logger.warning("Falling back to HTTP-only mode")
@@ -536,10 +725,130 @@ class WebsiteKOISensor:
 
             # Auto-expand Notion-style toggle blocks if enabled
             if self.config.playwright_expand_toggles:
-                await self._expand_notion_toggles(page)
+                self.logger.info(f"[EXPAND] Starting toggle expansion for {url}")
 
-            # Get the fully rendered HTML
+                # For Notion sites, scroll the page to trigger lazy loading, then expand toggles
+                domain = urlparse(url).netloc
+                if domain == 'regentokenomics.org':
+                    try:
+                        # Scroll to bottom to trigger lazy loading of all content
+                        await page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                        await asyncio.sleep(1)
+                        # Scroll back to top
+                        await page.evaluate("() => window.scrollTo(0, 0)")
+                        await asyncio.sleep(1)
+
+                        # Use JavaScript to expand all Notion toggles
+                        await page.evaluate("""
+                            () => {
+                                // Make all notion-toggle__content visible
+                                const hiddenContent = document.querySelectorAll('.notion-toggle__content');
+                                hiddenContent.forEach(el => {
+                                    el.style.display = 'block';
+                                    el.style.visibility = 'visible';
+                                });
+
+                                // Remove 'closed' class from all toggles
+                                const toggles = document.querySelectorAll('.notion-toggle.closed');
+                                toggles.forEach(el => el.classList.remove('closed'));
+                            }
+                        """)
+                        self.logger.info("[EXPAND] Scrolled page and used JavaScript to force-show all toggle content")
+                        await asyncio.sleep(2)
+                    except Exception as e:
+                        self.logger.warning(f"[EXPAND] JavaScript expansion failed: {e}")
+
+                await self._expand_notion_toggles(page)
+                self.logger.info(f"[EXPAND] Toggle expansion completed for {url}")
+                # Wait longer for dynamically loaded content to render
+                # Notion sites need extra time for toggle content to fully load
+                await asyncio.sleep(3)
+
+            # Get the HTML after toggle expansion
             html_content = await page.content()
+            self.logger.info(f"[EXPAND] Retrieved {len(html_content)} chars of HTML for {url}")
+
+            # For Notion sites, extract ALL text from the HTML including hidden toggle content
+            # Don't rely on innerText as it may miss content in collapsed/lazy-loaded sections
+            domain = urlparse(url).netloc
+            extracted_html = None
+            if domain in self.config.playwright_domains and self.config.playwright_expand_toggles:
+                try:
+                    # For regentokenomics.org pages, wait for Otter.ai transcript to load
+                    # The transcript appears AFTER toggle expansion but loads asynchronously
+                    if 'regentokenomics.org' in url and 'weekly-meetups' in url:
+                        self.logger.info("[EXPAND] Waiting for Otter.ai transcript to load...")
+                        try:
+                            # Wait for specific text that appears in transcripts (max 30 seconds)
+                            await page.wait_for_function(
+                                "() => document.body.textContent.includes('8min') || document.body.textContent.includes('Okay, cool')",
+                                timeout=30000
+                            )
+                            self.logger.info("[EXPAND] Transcript detected in page!")
+                            # Give widget extra time to fully render all content
+                            await asyncio.sleep(2)
+                        except Exception as e:
+                            self.logger.warning(f"[EXPAND] Transcript did not load within 30s: {e}")
+                    else:
+                        # For other pages, wait standard time
+                        await asyncio.sleep(5)
+
+                    # Use JavaScript to extract ALL visible text content
+                    all_text = await page.evaluate("""
+                        () => {
+                            const main = document.querySelector('main.super-content');
+                            if (!main) return '';
+                            return main.textContent;
+                        }
+                    """)
+
+                    self.logger.info(f"[EXPAND] Extracted {len(all_text)} chars using recursive text extraction")
+
+                    # Check if we got the transcript
+                    if 'regentokenomics.org' in url:
+                        has_transcript = '8min' in all_text
+                        self.logger.info(f"[EXPAND] Transcript found in extracted text: {has_transcript}")
+                        if has_transcript:
+                            preview_idx = all_text.find('8min')
+                            preview = all_text[max(0, preview_idx-50):preview_idx+200]
+                            self.logger.info(f"[EXPAND] Transcript preview: ...{preview}...")
+
+                    # Convert to HTML paragraphs
+                    if len(all_text) > 200:
+                        import html as html_module
+                        paragraphs = []
+                        # Split by multiple newlines or long spaces to get logical paragraphs
+                        lines = all_text.split('\n')
+                        current_para = []
+
+                        for line in lines:
+                            line = line.strip()
+                            if line:
+                                current_para.append(line)
+                            elif current_para:
+                                # End of paragraph
+                                para_text = ' '.join(current_para)
+                                if len(para_text) > 5:
+                                    escaped = html_module.escape(para_text)
+                                    paragraphs.append(f"<p>{escaped}</p>")
+                                current_para = []
+
+                        # Don't forget the last paragraph
+                        if current_para:
+                            para_text = ' '.join(current_para)
+                            if len(para_text) > 5:
+                                escaped = html_module.escape(para_text)
+                                paragraphs.append(f"<p>{escaped}</p>")
+
+                        html_paragraphs = '\n'.join(paragraphs)
+                        extracted_html = f"""<html><body><main class="super-content">{html_paragraphs}</main></body></html>"""
+                        self.logger.info(f"[EXPAND] Using extracted text content ({len(all_text)} chars, {len(paragraphs)} paragraphs) instead of HTML source")
+                except Exception as e:
+                    self.logger.warning(f"[EXPAND] Could not extract text recursively: {e}")
+
+            # Use extracted HTML if we got it, otherwise use original HTML
+            if extracted_html:
+                html_content = extracted_html
 
             await page.close()
             return html_content
@@ -570,7 +879,7 @@ class WebsiteKOISensor:
                     for element in elements:
                         try:
                             await element.click(timeout=1000)
-                            await asyncio.sleep(0.2)  # Brief wait for animation
+                            await asyncio.sleep(0.5)  # Wait longer for content to load
                         except Exception:
                             pass  # Element might not be clickable, that's okay
 
@@ -578,8 +887,38 @@ class WebsiteKOISensor:
                     # Some selectors might not match, that's fine
                     pass
 
+            # Additional: Look for elements with "‣" symbol (common toggle indicator)
+            # This handles regentokenomics.org and similar sites that use custom toggles
+            try:
+                # Use Playwright's built-in text selector to find and click toggles
+                # This is more reliable than JavaScript clicks for Notion-based sites
+                toggles_found = await page.locator('text=‣').count()
+                self.logger.info(f"Found {toggles_found} ‣ toggle indicators")
+
+                # Click each parent container (the actual clickable element)
+                for i in range(toggles_found):
+                    try:
+                        # Get the toggle indicator
+                        indicator = page.locator('text=‣').nth(i)
+                        # Click the parent (which is the clickable container)
+                        parent = indicator.locator('..')
+                        await parent.click(timeout=1000, force=True)
+                        self.logger.debug(f"Clicked toggle {i+1}/{toggles_found}")
+                        await asyncio.sleep(0.3)
+                    except Exception as e:
+                        self.logger.debug(f"Could not click toggle {i+1}: {e}")
+
+                self.logger.info(f"Clicked {toggles_found} ‣ toggle elements using Playwright locators")
+
+                # Wait longer for content to expand and render
+                # Notion-based sites need time for lazy-loaded content to fully render
+                # Especially for embedded widgets like Otter.ai transcripts which can take 10+ seconds
+                await asyncio.sleep(10)
+            except Exception as e:
+                self.logger.debug(f"Error expanding ‣ toggles: {e}")
+
             # Additional wait for any lazy-loaded content
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(2)
 
             self.logger.info("✅ Expanded all toggle blocks")
 
@@ -601,15 +940,48 @@ class WebsiteKOISensor:
     def extract_clean_content(self, soup: BeautifulSoup, url: str) -> str:
         """Extract clean text content from HTML"""
 
-        # Remove script and style elements
-        for script in soup(["script", "style", "nav", "footer", "aside"]):
-            script.decompose()
-
-        # Get page title
+        # Get page title first
         title = ""
         title_tag = soup.find('title')
         if title_tag:
             title = title_tag.get_text().strip()
+
+        # IMPROVED: For Notion-based sites (like regentokenomics.org), use main.super-content
+        # This is the primary content container that holds the actual page content
+        content_container = None
+
+        # Try Notion/Super.so content containers first
+        content_container = soup.find('main', class_=lambda x: x and 'super-content' in str(x))
+
+        # Fallback to other common content containers
+        if not content_container:
+            content_container = soup.find('main')
+        if not content_container:
+            content_container = soup.find('article')
+        if not content_container:
+            content_container = soup.find(class_=lambda x: x and 'content' in str(x).lower())
+
+        # If still no container found, use the whole soup
+        if not content_container:
+            content_container = soup
+            self.logger.info(f"[CONTAINER] Using full soup as content container for {url}")
+        else:
+            container_name = content_container.name
+            container_classes = content_container.get('class', [])
+            # Get a preview of the text to verify we got the right container
+            preview_text = content_container.get_text(separator=' ', strip=True)[:200]
+            self.logger.info(f"[CONTAINER] Found <{container_name} class='{' '.join(container_classes)}'> with {len(content_container.get_text())} chars for {url}")
+            self.logger.info(f"[CONTAINER] Preview: {preview_text}...")
+
+        # Remove script and style elements from the content container
+        removed_count = 0
+        for script in content_container(["script", "style", "nav", "footer", "aside"]):
+            script.decompose()
+            removed_count += 1
+
+        if 'regentokenomics.org' in url:
+            text_after_removal = content_container.get_text(separator=' ', strip=True)
+            self.logger.info(f"[CONTAINER] After removing {removed_count} elements, container has {len(text_after_removal)} chars")
 
         # Extract text properly without duplicates
         # Use a set to track seen text and preserve order
@@ -618,7 +990,7 @@ class WebsiteKOISensor:
 
         # Process only direct text-containing elements, not nested ones
         # Start with headers, paragraphs, and divs with meaningful content
-        for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'article', 'section', 'main']):
+        for element in content_container.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'article', 'section']):
             text = element.get_text(separator=' ', strip=True)
             if text and len(text) > 5:  # Keep most content, skip only tiny fragments
                 # Clean up the text
@@ -638,8 +1010,8 @@ class WebsiteKOISensor:
                         paragraphs.append(text)
                         seen_texts.add(text)
 
-        # Now get list items separately
-        for element in soup.find_all('li'):
+        # Now get list items separately from the content container
+        for element in content_container.find_all('li'):
             # Only get direct text, not nested list items
             text = ''.join([str(s) for s in element.stripped_strings])
             if text and len(text) > 10:
@@ -757,17 +1129,24 @@ class WebsiteKOISensor:
         """Emit KOI event for web page"""
 
         try:
+            self.logger.info(f"[DEBUG] emit_page_event START for {url}")
             parsed_url = urlparse(url)
             domain = parsed_url.netloc
+            self.logger.info(f"[DEBUG] Parsed URL: domain={domain}")
 
             # Create RID
             rid = WebPageRID(domain, url)
+            self.logger.info(f"[DEBUG] Created RID: {rid.to_string()}")
 
             # Extract page metadata
+            self.logger.info(f"[DEBUG] Extracting metadata...")
             metadata = self.extract_page_metadata(soup, url)
+            self.logger.info(f"[DEBUG] Metadata extracted: {len(metadata)} fields")
 
             # Extract publication date with site-specific patterns
+            self.logger.info(f"[DEBUG] Extracting publication date...")
             published_at, confidence = self.extract_publication_date(soup, url, domain)
+            self.logger.info(f"[DEBUG] Publication date: {published_at}, confidence: {confidence}")
 
             # Fallback to last-modified if no publication date found
             if not published_at and metadata.get("last_modified"):
@@ -778,27 +1157,41 @@ class WebsiteKOISensor:
                 except Exception:
                     pass
 
-            # INTEGRATE VIDEO TRANSCRIPTION: Transcribe videos BEFORE emitting page event
+            # INTEGRATE VIDEO TRANSCRIPTION: Check for existing transcript, only transcribe if missing
             # Extract and transcribe videos from this page
+            self.logger.info(f"[DEBUG] Extracting video URLs...")
             video_urls = self.extract_video_urls(soup, url)
+            self.logger.info(f"[DEBUG] Found {len(video_urls)} video URLs")
             video_transcripts = []
 
-            if video_urls and self.video_transcriber:
-                self.logger.info(f"Found {len(video_urls)} videos on {url}, transcribing before emitting event...")
+            if video_urls:
+                self.logger.info(f"Found {len(video_urls)} videos on {url}")
 
-                for video_info in video_urls:
-                    try:
-                        result = await self.video_transcriber.process_video(video_info)
-                        if result and result.get('transcript'):
-                            video_transcripts.append({
-                                'url': video_info['url'],
-                                'type': video_info['type'],
-                                'title': video_info.get('title', 'Video'),
-                                'transcript': result['transcript']
-                            })
-                            self.logger.info(f"Transcribed video: {video_info['url'][:60]}...")
-                    except Exception as e:
-                        self.logger.error(f"Error transcribing video {video_info['url']}: {e}")
+                # Check if transcript already exists on the page
+                self.logger.info(f"[DEBUG] Checking for existing transcript on page...")
+                has_transcript_on_page = self._check_for_transcript_on_page(content, soup)
+                self.logger.info(f"[DEBUG] Has transcript on page: {has_transcript_on_page}")
+
+                if has_transcript_on_page:
+                    self.logger.info(f"✅ Transcript already exists on page, skipping video transcription")
+                elif self.video_transcriber:
+                    self.logger.info(f"⚠️ No transcript found on page, transcribing {len(video_urls)} video(s)...")
+
+                    for video_info in video_urls:
+                        try:
+                            result = await self.video_transcriber.process_video(video_info)
+                            if result and result.get('transcript'):
+                                video_transcripts.append({
+                                    'url': video_info['url'],
+                                    'type': video_info['type'],
+                                    'title': video_info.get('title', 'Video'),
+                                    'transcript': result['transcript']
+                                })
+                                self.logger.info(f"✅ Transcribed video: {video_info['url'][:60]}...")
+                        except Exception as e:
+                            self.logger.error(f"Error transcribing video {video_info['url']}: {e}")
+                else:
+                    self.logger.warning(f"⚠️ No transcript on page and video transcriber not available")
 
             # Append video transcripts to page content
             enhanced_content = content
@@ -824,6 +1217,7 @@ class WebsiteKOISensor:
                 ]
 
             # Create document in format compatible with existing system
+            self.logger.info(f"[DEBUG] Creating document structure...")
             document = {
                 "id": f"web_{rid.url_hash}",
                 "source": f"web:{domain}",
@@ -866,15 +1260,19 @@ class WebsiteKOISensor:
             }
             
             # Create KOI Bundle
+            self.logger.info(f"[DEBUG] Converting document to bundle...")
             bundle = document_to_bundle(document, self.koi_node.node_id)
-            
+            self.logger.info(f"[DEBUG] Bundle created successfully")
+
             # Emit appropriate KOI event
+            self.logger.info(f"[DEBUG] Emitting {event_type} event to coordinator...")
             if event_type == "NEW":
                 await self.koi_node.emit_new_event(bundle)
             else:
                 await self.koi_node.emit_update_event(bundle)
-            
+
             self.logger.info(f"Emitted {event_type} event for {url} (RID: {rid.to_string()})")
+            self.logger.info(f"[DEBUG] emit_page_event COMPLETED successfully")
         
         except Exception as e:
             self.logger.error(f"Error emitting event for {url}: {e}")

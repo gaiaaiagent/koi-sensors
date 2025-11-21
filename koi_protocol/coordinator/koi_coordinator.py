@@ -275,7 +275,7 @@ class KOICoordinator:
                     source_url = metadata.get("url") or metadata.get("source_url")
 
                     # Check if this is duplicate content
-                    is_duplicate = self._check_duplicate_content(event.rid, content_hash, source_url)
+                    is_duplicate = False if "podcast" in event.rid else self._check_duplicate_content(event.rid, content_hash, source_url)
 
                     if is_duplicate:
                         self.logger.info(f"Skipping duplicate content for RID {event.rid} (hash: {content_hash[:8]}...)")
