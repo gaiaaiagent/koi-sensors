@@ -34,28 +34,73 @@ class GitHubConfig:
     coordinator_url: str = "http://localhost:8005"
     source_sensor: str = "github-sensor"
     
-    # File patterns to index
-    doc_extensions: List[str] = None
-    
+    # File patterns to index - comprehensive for full codebase understanding
+    file_extensions: List[str] = None
+
     # Directories to exclude
     excluded_dirs: List[str] = None
-    
+
     def __post_init__(self):
-        if self.doc_extensions is None:
-            self.doc_extensions = [
-                '*.md', '*.MD', '*.mdx',  # Markdown
-                '*.rst', '*.txt', '*.asciidoc',  # Other docs
-                '*.json', '*.yaml', '*.yml',  # Config/API specs
-                '*.toml', '*.ini', '*.cfg',  # Config files
-                'LICENSE*', 'COPYRIGHT*', 'NOTICE*',  # Legal docs
-                'README*', 'CHANGELOG*', 'CONTRIBUTING*'  # Common docs
+        if self.file_extensions is None:
+            self.file_extensions = [
+                # Documentation
+                '*.md', '*.MD', '*.mdx',
+                '*.rst', '*.txt', '*.asciidoc',
+                'README*', 'CHANGELOG*', 'CONTRIBUTING*',
+                'LICENSE*', 'COPYRIGHT*', 'NOTICE*',
+
+                # Source Code - Go (CRITICAL for Cosmos SDK)
+                '*.go',
+
+                # Source Code - Web/Frontend
+                '*.ts', '*.tsx',
+                '*.js', '*.jsx',
+
+                # Source Code - Other
+                '*.py',
+                '*.rs',
+                '*.sol',
+
+                # Protocol Buffers (CRITICAL for Cosmos SDK)
+                '*.proto',
+
+                # Configuration & Dependencies
+                '*.json', '*.yaml', '*.yml',
+                '*.toml', '*.ini', '*.cfg',
+                'go.mod', 'go.sum',
+
+                # Build & Infrastructure
+                'Makefile', 'makefile',
+                'Dockerfile*',
+                'docker-compose*.yml', 'docker-compose*.yaml',
+
+                # Schemas & Scripts
+                '*.sql',
+                '*.graphql', '*.gql',
+                '*.sh',
             ]
         
         if self.excluded_dirs is None:
             self.excluded_dirs = [
-                'node_modules', 'vendor', 'dist', 'build', '.git',
-                '__pycache__', '.pytest_cache', 'coverage', '.next',
-                'out', 'target', 'bin', '.vscode', '.idea'
+                # Version control
+                '.git',
+
+                # Dependencies/packages
+                'node_modules', 'vendor', '.venv', 'venv',
+                '__pycache__', '.pytest_cache',
+
+                # Build outputs
+                'dist', 'build', 'out', 'target', 'bin',
+                '_build', '.next',
+
+                # IDE/editor
+                '.vscode', '.idea',
+
+                # Test fixtures (usually not useful for understanding)
+                'testdata', 'test_fixtures',
+
+                # Generated code directories (Cosmos SDK specific)
+                'api',  # Often contains generated protobuf code
             ]
 
 
@@ -172,7 +217,7 @@ class GitHubSensor:
             self.logger.info(f"Found {len(files)} files matching pattern '{path_pattern}' in {repo_name}")
 
             for file_path in files:
-                doc = self.process_file(file_path, repo_name, repo_url, branch)
+                doc = self.process_file(file_path, repo_name, repo_url, branch, repo_path)
                 if doc:
                     documents.append(doc)
                 else:
@@ -201,8 +246,8 @@ class GitHubSensor:
         
         # Handle different pattern types
         if pattern == '.':
-            # All documentation files recursively
-            for ext in self.config.doc_extensions:
+            # All files recursively (documentation + code)
+            for ext in self.config.file_extensions:
                 files.extend(repo_path.glob(f'**/{ext}'))
         elif '*' in pattern:
             # Glob pattern
@@ -211,8 +256,8 @@ class GitHubSensor:
             # Specific directory or file
             target = repo_path / pattern
             if target.is_dir():
-                # Search for all doc types in directory
-                for ext in self.config.doc_extensions:
+                # Search for all file types in directory
+                for ext in self.config.file_extensions:
                     files.extend(target.glob(f'**/{ext}'))
             elif target.exists():
                 files.append(target)
@@ -243,16 +288,17 @@ class GitHubSensor:
         
         return filtered_files
     
-    def process_file(self, file_path: Path, repo_name: str, repo_url: str, branch: str) -> Optional[Dict[str, Any]]:
+    def process_file(self, file_path: Path, repo_name: str, repo_url: str, branch: str, repo_path: Path) -> Optional[Dict[str, Any]]:
         """
         Process a single file into a document
-        
+
         Args:
             file_path: Path to file
             repo_name: Repository name
             repo_url: Repository URL
             branch: Git branch
-            
+            repo_path: Path to cloned repository root
+
         Returns:
             Document dictionary or None if processing fails
         """
@@ -271,11 +317,18 @@ class GitHubSensor:
             # Skip empty files
             if not content.strip():
                 return None
-            
+
+            # Check file size - skip very large files (likely generated)
+            MAX_FILE_SIZE = 500_000  # 500KB
+            if len(content.encode('utf-8')) > MAX_FILE_SIZE:
+                self.logger.debug(f"Skipping large file {file_path}: {len(content.encode('utf-8'))} bytes")
+                return None
+
             # Generate document metadata
-            relative_path = file_path.relative_to(file_path.parent.parent.parent)
+            # Get path relative to the repo root (not temp dir)
+            relative_path = file_path.relative_to(repo_path)
             file_url = f"{repo_url}/blob/{branch}/{relative_path}"
-            
+
             # Generate RID (no colons allowed in RID system)
             rid = f"github_{repo_name}_{relative_path}"
             rid = rid.replace('/', '_').replace(' ', '_').replace(':', '_')
@@ -343,15 +396,6 @@ class GitHubSensor:
                 except:
                     pass
 
-            # Optional: Only include files updated in the last 30 days for weekly digests
-            # This prevents old, unchanged files from being repeatedly processed
-            if published_at:
-                days_old = (datetime.now(timezone.utc) - published_at).days
-                if days_old > 30:
-                    self.logger.debug(f"Skipping {file_path.name} - last updated {days_old} days ago")
-                    # Remove from processed_rids since we're not actually processing it
-                    self.processed_rids.discard(rid)
-                    return None
             
             # Create document title from repo and file path
             title = f"{repo_name}: {str(relative_path)}"
@@ -490,6 +534,15 @@ class GitHubSensor:
     async def send_to_koi(self, documents: List[Dict[str, Any]]) -> int:
         """Send documents to KOI coordinator as events"""
         success_count = 0
+
+        # Ensure KOI node session is active
+        if not self.koi_node.session or self.koi_node.session.closed:
+            self.logger.warning("KOI node session not active, reinitializing...")
+            import aiohttp
+            if self.koi_node.session and not self.koi_node.session.closed:
+                await self.koi_node.session.close()
+            self.koi_node.session = aiohttp.ClientSession()
+            self.logger.info("KOI node session reinitialized")
 
         for doc in documents:
             try:
