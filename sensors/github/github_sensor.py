@@ -215,6 +215,11 @@ class GitHubSensor:
         for path_pattern in paths:
             files = self.find_files(repo_path, path_pattern)
             self.logger.info(f"Found {len(files)} files matching pattern '{path_pattern}' in {repo_name}")
+            # Log a quick breakdown to spot extension drop-offs (e.g., proto)
+            if files:
+                from collections import Counter
+                ext_counts = Counter(f.suffix or "no_extension" for f in files)
+                self.logger.info(f"Extension breakdown for '{repo_name}/{path_pattern}': {dict(ext_counts)}")
 
             for file_path in files:
                 doc = self.process_file(file_path, repo_name, repo_url, branch, repo_path)
@@ -285,6 +290,8 @@ class GitHubSensor:
                 continue
             
             filtered_files.append(f)
+
+        self.logger.info(f"Filtering stats for pattern '{pattern}': {len(files)} -> {len(filtered_files)} after exclusions")
         
         return filtered_files
     
@@ -399,6 +406,9 @@ class GitHubSensor:
             
             # Create document title from repo and file path
             title = f"{repo_name}: {str(relative_path)}"
+
+            if file_path.suffix == '.proto':
+                self.logger.info(f"Processing proto file: {relative_path}")
 
             # Create document compatible with document_to_bundle
             doc = {

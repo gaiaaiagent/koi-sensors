@@ -15,7 +15,7 @@ async def main():
             "branch": "main",
             "paths": ["."]
         }],
-        coordinator_url="http://localhost:8005"
+        coordinator_url="http://localhost:8200"
     )
 
     sensor = GitHubSensor(config, logger)
