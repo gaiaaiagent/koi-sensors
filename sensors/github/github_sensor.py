@@ -666,7 +666,7 @@ async def main():
             {
                 "name": "regen-web",
                 "url": "https://github.com/regen-network/regen-web",
-                "branch": "main",
+                "branch": "master",
                 "paths": ["."]  # Changed from ["docs", "README.md"] to scan entire codebase
             },
             {
@@ -676,14 +676,14 @@ async def main():
                 "paths": ["."]
             },
             {
-                "name": "regenie-corpus",
-                "url": "https://github.com/regen-network/regenie-corpus",
+                "name": "regen-registry-handbook",
+                "url": "https://github.com/regen-network/regen-registry-handbook",
                 "branch": "main",
                 "paths": ["."]
             },
             {
-                "name": "mcp",
-                "url": "https://github.com/regen-network/mcp",
+                "name": "regen-registry-methodology-library",
+                "url": "https://github.com/regen-network/regen-registry-methodology-library",
                 "branch": "main",
                 "paths": ["."]  # Changed from ["docs", "README.md", "src"] for complete coverage
             },
@@ -697,7 +697,7 @@ async def main():
             {
                 "name": "koi-processor",
                 "url": "https://github.com/gaiaaiagent/koi-processor",
-                "branch": "main",
+                "branch": "regen-prod",
                 "paths": ["."]
             },
             {

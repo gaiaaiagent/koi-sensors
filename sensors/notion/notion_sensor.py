@@ -11,7 +11,10 @@ import aiohttp
 print("[STARTUP] aiohttp imported")
 import json
 import hashlib
-from typing import Dict, List, Any, Optional
+import re
+import tempfile
+import subprocess
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import os
@@ -55,15 +58,326 @@ class NotionPageRID(ORN):
 class NotionDatabaseRID(ORN):
     """Notion database RID: orn:notion.database:workspace/database_id"""
     namespace = "notion.database"
-    
+
     def __init__(self, workspace: str, database_id: str):
         self.workspace = workspace
         self.database_id = database_id.replace('-', '')
         super().__init__()
-    
+
     @property
     def reference(self) -> str:
         return f"{self.workspace}/{self.database_id}"
+
+
+class PIIFilter:
+    """Filter to detect and redact personally identifiable information from content"""
+
+    # PII patterns to detect
+    PATTERNS = {
+        'email': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        'telegram': r'(?:(?:https?://)?(?:t\.me|telegram\.me)/|@)([A-Za-z0-9_]{5,32})',
+        'phone': r'(?:\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
+        'discord': r'\b[A-Za-z0-9_]+#\d{4}\b',
+    }
+
+    def __init__(self, enabled: bool = True, redact_types: List[str] = None):
+        """
+        Initialize PII filter.
+
+        Args:
+            enabled: Whether filtering is enabled
+            redact_types: List of PII types to redact (email, telegram, phone, discord)
+                         If None, all types are redacted
+        """
+        self.enabled = enabled
+        self.redact_types = redact_types or list(self.PATTERNS.keys())
+        self._compiled_patterns = {
+            pii_type: re.compile(pattern, re.IGNORECASE)
+            for pii_type, pattern in self.PATTERNS.items()
+            if pii_type in self.redact_types
+        }
+
+    def filter_content(self, content: str) -> str:
+        """
+        Filter PII from content, replacing with redaction markers.
+
+        Args:
+            content: Text content to filter
+
+        Returns:
+            Filtered content with PII redacted
+        """
+        if not self.enabled or not content:
+            return content
+
+        filtered = content
+        for pii_type, pattern in self._compiled_patterns.items():
+            # Replace with type-specific placeholder
+            filtered = pattern.sub(f'[REDACTED_{pii_type.upper()}]', filtered)
+
+        return filtered
+
+    def should_skip_property(self, prop_type: str) -> bool:
+        """
+        Check if a property type should be skipped entirely.
+
+        Args:
+            prop_type: Notion property type (email, phone_number, etc.)
+
+        Returns:
+            True if property should be skipped
+        """
+        if not self.enabled:
+            return False
+
+        # Map Notion property types to our PII types
+        pii_mapping = {
+            'email': 'email',
+            'phone_number': 'phone',
+        }
+
+        return pii_mapping.get(prop_type) in self.redact_types
+
+
+class VideoTranscriber:
+    """Transcribe video files using local Whisper model"""
+
+    def __init__(self, model_size: str = "base", enabled: bool = True):
+        """
+        Initialize video transcriber.
+
+        Args:
+            model_size: Whisper model size (tiny, base, small, medium, large)
+            enabled: Whether transcription is enabled
+        """
+        self.enabled = enabled
+        self.model_size = model_size
+        self._model = None
+        self._whisper_available = None
+
+    def _check_whisper_available(self) -> bool:
+        """Check if Whisper is available"""
+        if self._whisper_available is not None:
+            return self._whisper_available
+
+        try:
+            import whisper
+            self._whisper_available = True
+            print("✓ Whisper transcription available")
+        except ImportError:
+            self._whisper_available = False
+            print("⚠️ Whisper not installed - video transcription disabled")
+            print("   Install with: pip install openai-whisper")
+
+        return self._whisper_available
+
+    def _load_model(self):
+        """Load Whisper model (lazy loading)"""
+        if self._model is not None:
+            return self._model
+
+        if not self._check_whisper_available():
+            return None
+
+        try:
+            import whisper
+            print(f"📥 Loading Whisper {self.model_size} model...")
+            self._model = whisper.load_model(self.model_size)
+            print(f"✓ Whisper model loaded")
+            return self._model
+        except Exception as e:
+            print(f"❌ Failed to load Whisper model: {e}")
+            return None
+
+    async def download_video(self, url: str, session: aiohttp.ClientSession) -> Tuple[Optional[str], int]:
+        """
+        Download video to temporary file.
+
+        Args:
+            url: Video URL to download
+            session: aiohttp session to use (Note: Notion S3 URLs don't need auth headers)
+
+        Returns:
+            Tuple of (path to downloaded file or None, HTTP status code)
+        """
+        try:
+            # Create temp file
+            suffix = ".mp4"  # Most Notion videos are mp4
+            if ".webm" in url:
+                suffix = ".webm"
+            elif ".mov" in url:
+                suffix = ".mov"
+
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp_path = tmp.name
+
+            # Download video - use a fresh session without Notion headers
+            # Notion S3 signed URLs don't need/want the Notion auth headers
+            print(f"   📥 Downloading video...")
+            async with aiohttp.ClientSession() as download_session:
+                async with download_session.get(url) as response:
+                    if response.status != 200:
+                        print(f"   ❌ Failed to download video: HTTP {response.status}")
+                        return None, response.status
+
+                    # Check size - skip very large videos
+                    content_length = response.headers.get('Content-Length')
+                    if content_length:
+                        size_mb = int(content_length) / (1024 * 1024)
+                        if size_mb > 500:  # Skip videos > 500MB
+                            print(f"   ⚠️ Video too large ({size_mb:.1f}MB), skipping transcription")
+                            return None, 200  # Not an error, just skipped
+                        print(f"   Size: {size_mb:.1f}MB")
+
+                    # Stream to file
+                    with open(tmp_path, 'wb') as f:
+                        async for chunk in response.content.iter_chunked(8192):
+                            f.write(chunk)
+
+            return tmp_path, 200
+
+        except Exception as e:
+            print(f"   ❌ Error downloading video: {e}")
+            return None, 0
+
+    def extract_audio(self, video_path: str) -> Optional[str]:
+        """
+        Extract audio from video using ffmpeg.
+
+        Args:
+            video_path: Path to video file
+
+        Returns:
+            Path to extracted audio file, or None on failure
+        """
+        try:
+            audio_path = video_path.rsplit('.', 1)[0] + '.wav'
+
+            # Use ffmpeg to extract audio
+            cmd = [
+                'ffmpeg', '-i', video_path,
+                '-vn',  # No video
+                '-acodec', 'pcm_s16le',  # PCM format
+                '-ar', '16000',  # 16kHz sample rate (Whisper optimal)
+                '-ac', '1',  # Mono
+                '-y',  # Overwrite
+                audio_path
+            ]
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+
+            if result.returncode != 0:
+                print(f"   ❌ ffmpeg error: {result.stderr[:200]}")
+                return None
+
+            return audio_path
+
+        except subprocess.TimeoutExpired:
+            print(f"   ❌ Audio extraction timed out")
+            return None
+        except Exception as e:
+            print(f"   ❌ Error extracting audio: {e}")
+            return None
+
+    def transcribe_audio(self, audio_path: str) -> Optional[str]:
+        """
+        Transcribe audio file using Whisper.
+
+        Args:
+            audio_path: Path to audio file
+
+        Returns:
+            Transcription text, or None on failure
+        """
+        model = self._load_model()
+        if model is None:
+            return None
+
+        try:
+            print(f"   🎙️ Transcribing audio...")
+            result = model.transcribe(audio_path, language="en")
+            text = result.get("text", "").strip()
+
+            if text:
+                print(f"   ✓ Transcribed {len(text)} characters")
+            else:
+                print(f"   ⚠️ No speech detected in audio")
+
+            return text if text else None
+
+        except Exception as e:
+            print(f"   ❌ Transcription error: {e}")
+            return None
+
+    async def transcribe_video_url(
+        self,
+        url: str,
+        session: aiohttp.ClientSession,
+        refresh_url_callback: Optional[Any] = None
+    ) -> Optional[str]:
+        """
+        Download and transcribe a video from URL.
+
+        Args:
+            url: Video URL
+            session: aiohttp session
+            refresh_url_callback: Optional async callback to get a fresh URL if the current one expired.
+                                  Should return a new URL string or None.
+
+        Returns:
+            Transcription text, or None on failure
+        """
+        if not self.enabled:
+            return None
+
+        if not self._check_whisper_available():
+            return None
+
+        video_path = None
+        audio_path = None
+        current_url = url
+
+        try:
+            # Download video (with retry on expired URL)
+            video_path, status = await self.download_video(current_url, session)
+
+            # If URL expired (400/403), try refreshing
+            if video_path is None and status in (400, 403) and refresh_url_callback:
+                print(f"   🔄 URL expired, refreshing...")
+                fresh_url = await refresh_url_callback()
+                if fresh_url:
+                    current_url = fresh_url
+                    video_path, status = await self.download_video(current_url, session)
+
+            if not video_path:
+                return None
+
+            # Extract audio
+            audio_path = self.extract_audio(video_path)
+            if not audio_path:
+                return None
+
+            # Transcribe
+            transcript = self.transcribe_audio(audio_path)
+            return transcript
+
+        finally:
+            # Cleanup temp files
+            if video_path and os.path.exists(video_path):
+                try:
+                    os.unlink(video_path)
+                except:
+                    pass
+            if audio_path and os.path.exists(audio_path):
+                try:
+                    os.unlink(audio_path)
+                except:
+                    pass
 
 
 class NotionKOISensor:
@@ -72,25 +386,48 @@ class NotionKOISensor:
     NOTION_API_VERSION = "2022-06-28"
     NOTION_API_BASE = "https://api.notion.com/v1"
     
-    def __init__(self, 
+    def __init__(self,
                  node_id: str = "koi-notion-sensor",
                  coordinator_url: str = "http://localhost:8005",
-                 notion_token: str = None):
+                 notion_token: str = None,
+                 workspace_id: str = "regen",
+                 pii_filter_enabled: bool = True,
+                 pii_filter_types: List[str] = None,
+                 transcribe_videos: bool = False,
+                 whisper_model: str = "base",
+                 skip_sections: List[str] = None,
+                 skip_pages: List[str] = None):
+        """
+        Initialize Notion sensor.
+
+        Args:
+            node_id: Unique identifier for this sensor
+            coordinator_url: KOI coordinator URL
+            notion_token: Notion API token
+            workspace_id: Workspace identifier for RIDs
+            pii_filter_enabled: Enable PII filtering
+            pii_filter_types: List of PII types to filter
+            transcribe_videos: Enable video transcription with Whisper
+            whisper_model: Whisper model size (tiny, base, small, medium, large)
+            skip_sections: List of heading names whose content should be skipped
+                          (e.g., ["Projects"] to skip child_database under Projects heading)
+            skip_pages: List of page IDs to skip entirely (e.g., archive pages with many videos)
+        """
         self.node_id = node_id
         self.coordinator_url = coordinator_url
-        
+
         # Use provided token or get from environment
         self.notion_token = notion_token or os.getenv('NOTION_INTEGRATION_SECRET')
         if not self.notion_token:
             raise ValueError("Notion integration secret required. Set NOTION_INTEGRATION_SECRET env var.")
-        
+
         # Initialize KOI node
         self.koi_node = KOIPartialNode(
             node_name="notion-sensor",
             coordinator_url=self.coordinator_url,
             poll_interval=30
         )
-        
+
         # Monitoring state
         self.monitored_databases: Dict[str, Dict[str, Any]] = {}
         self.monitored_pages: Dict[str, Dict[str, Any]] = {}
@@ -99,14 +436,39 @@ class NotionKOISensor:
         self.state = PersistentSensorState('notion', Path(__file__).parent)
 
         self.session: Optional[aiohttp.ClientSession] = None
-        
+
         # Workspace identifier (extracted from pages/databases)
-        self.workspace_id = "regen"  # Default workspace name
-        
+        self.workspace_id = workspace_id
+
+        # PII Filter for protecting personal data
+        self.pii_filter = PIIFilter(
+            enabled=pii_filter_enabled,
+            redact_types=pii_filter_types
+        )
+
+        # Video transcription
+        self.video_transcriber = VideoTranscriber(
+            model_size=whisper_model,
+            enabled=transcribe_videos
+        )
+
+        # Sections to skip (e.g., "Projects" to skip embedded project databases)
+        self.skip_sections = [s.lower() for s in (skip_sections or [])]
+
+        # Pages to skip entirely (e.g., archive pages with many videos)
+        self.skip_pages = set(skip_pages or [])
+
         print(f"📝 KOI Notion Sensor initialized")
         print(f"   Node ID: {self.node_id}")
         print(f"   Coordinator: {self.coordinator_url}")
+        print(f"   Workspace: {self.workspace_id}")
         print(f"   API Version: {self.NOTION_API_VERSION}")
+        print(f"   PII Filter: {'enabled' if pii_filter_enabled else 'disabled'}")
+        print(f"   Video Transcription: {'enabled' if transcribe_videos else 'disabled'}")
+        if self.skip_sections:
+            print(f"   Skip Sections: {', '.join(self.skip_sections)}")
+        if self.skip_pages:
+            print(f"   Skip Pages: {len(self.skip_pages)} page(s)")
     
     async def __aenter__(self):
         """Async context manager entry"""
@@ -265,28 +627,149 @@ class NotionKOISensor:
         except Exception as e:
             print(f"❌ Error getting page: {e}")
             return None
-    
+
+    async def get_block(self, block_id: str) -> Optional[Dict]:
+        """Fetch a single block to get fresh signed URLs (for video downloads)"""
+        if not self.session:
+            raise RuntimeError("Session not initialized. Use async context manager.")
+
+        try:
+            async with self.session.get(
+                f"{self.NOTION_API_BASE}/blocks/{block_id}"
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    error = await response.text()
+                    print(f"❌ Failed to get block {block_id}: {error}")
+                    return None
+        except Exception as e:
+            print(f"❌ Error getting block: {e}")
+            return None
+
     async def get_page_content(self, page_id: str) -> str:
         """
-        Get the full content of a page as text
-        
+        Get the full content of a page as text, with PII filtering applied.
+        Also handles:
+        - Skipping content under configured section headings (e.g., "Projects")
+        - Transcribing videos when enabled (unless page already has a transcript)
+
         Args:
             page_id: The page ID to retrieve content from
         """
         if not self.session:
             raise RuntimeError("Session not initialized. Use async context manager.")
-        
+
         # Get blocks from the page
         blocks = await self.get_blocks(page_id)
-        
-        # Convert blocks to text
-        content_parts = []
+
+        # First pass: check if page already has a transcript section
+        # This avoids expensive video transcription when a human transcript exists
+        has_existing_transcript = False
         for block in blocks:
-            text = self.extract_text_from_block(block)
+            block_type = block.get("type", "")
+            if block_type in ["heading_1", "heading_2", "heading_3"]:
+                block_data = block.get(block_type, {})
+                heading_text = self.extract_text_from_rich_text(block_data.get("rich_text", []))
+                if heading_text and "transcript" in heading_text.lower():
+                    has_existing_transcript = True
+                    break
+
+        if has_existing_transcript:
+            print(f"   📝 Page has existing transcript, skipping video transcription")
+
+        # Convert blocks to text with section awareness
+        content_parts = []
+        current_section = None  # Track which section we're in
+        skip_until_next_heading = False
+
+        for block in blocks:
+            block_type = block.get("type", "")
+
+            # Check if this is a heading block
+            if block_type in ["heading_1", "heading_2", "heading_3"]:
+                block_data = block.get(block_type, {})
+                heading_text = self.extract_text_from_rich_text(block_data.get("rich_text", []))
+                current_section = heading_text.lower() if heading_text else None
+
+                # Check if this section should be skipped
+                skip_until_next_heading = current_section in self.skip_sections
+                if skip_until_next_heading:
+                    print(f"   ⏭️ Skipping section: {heading_text}")
+                    continue
+
+            # Skip content if in a skipped section
+            if skip_until_next_heading:
+                continue
+
+            # Handle video blocks with transcription (skip if page has existing transcript)
+            if block_type == "video" and self.video_transcriber.enabled and not has_existing_transcript:
+                text = await self._extract_video_with_transcription(block)
+            else:
+                text = self.extract_text_from_block(block)
+
             if text:
                 content_parts.append(text)
-        
-        return "\n\n".join(content_parts)
+
+        content = "\n\n".join(content_parts)
+
+        # Apply PII filtering
+        return self.pii_filter.filter_content(content)
+
+    async def _extract_video_with_transcription(self, block: Dict) -> Optional[str]:
+        """
+        Extract video block with optional transcription.
+
+        Args:
+            block: Video block from Notion API
+
+        Returns:
+            Text representation including transcription if available
+        """
+        block_id = block.get("id", "")
+        block_data = block.get("video", {})
+        video_type = block_data.get("type", "")
+        caption = self.extract_text_from_rich_text(block_data.get("caption", []))
+
+        # Get video URL
+        video_url = None
+        if video_type == "file":
+            video_url = block_data.get("file", {}).get("url", "")
+        elif video_type == "external":
+            video_url = block_data.get("external", {}).get("url", "")
+
+        # Build base text
+        if video_type == "external":
+            base_text = f"[Video: {video_url}]"
+        elif video_type == "file":
+            base_text = "[Video Recording]"
+        else:
+            base_text = "[Video]"
+
+        if caption:
+            base_text += f" - {caption}"
+
+        # Try to transcribe if we have a file URL
+        if video_url and video_type == "file" and self.video_transcriber.enabled:
+            print(f"   🎬 Found video recording, attempting transcription...")
+
+            # Create callback to refresh URL if it expired
+            async def refresh_url():
+                """Fetch fresh block data to get a new signed URL"""
+                fresh_block = await self.get_block(block_id)
+                if fresh_block:
+                    fresh_data = fresh_block.get("video", {})
+                    if fresh_data.get("type") == "file":
+                        return fresh_data.get("file", {}).get("url", "")
+                return None
+
+            transcript = await self.video_transcriber.transcribe_video_url(
+                video_url, self.session, refresh_url_callback=refresh_url
+            )
+            if transcript:
+                return f"{base_text}\n\n**Transcript:**\n{transcript}"
+
+        return base_text
     
     async def get_blocks(self, block_id: str, page_size: int = 100) -> List[Dict]:
         """Get all blocks (content) from a page or block"""
@@ -337,35 +820,107 @@ class NotionKOISensor:
         block_type = block.get("type")
         if not block_type:
             return None
-        
+
         block_data = block.get(block_type, {})
-        
+
         # Handle text-based blocks
         text_types = [
             "paragraph", "heading_1", "heading_2", "heading_3",
             "bulleted_list_item", "numbered_list_item", "to_do",
             "toggle", "quote", "callout"
         ]
-        
+
         if block_type in text_types:
             rich_text = block_data.get("rich_text", [])
             return self.extract_text_from_rich_text(rich_text)
-        
+
         # Handle code blocks
         elif block_type == "code":
             rich_text = block_data.get("rich_text", [])
             language = block_data.get("language", "")
             code = self.extract_text_from_rich_text(rich_text)
             return f"```{language}\n{code}\n```" if code else None
-        
+
         # Handle tables
         elif block_type == "table":
             return "[Table]"
-        
+
         # Handle dividers
         elif block_type == "divider":
             return "---"
-        
+
+        # Handle video blocks - extract URL for reference
+        elif block_type == "video":
+            video_type = block_data.get("type", "")
+            caption = self.extract_text_from_rich_text(block_data.get("caption", []))
+            if video_type == "external":
+                url = block_data.get("external", {}).get("url", "")
+                return f"[Video: {url}]" + (f" - {caption}" if caption else "")
+            elif video_type == "file":
+                # File URLs are temporary S3 signed URLs - note this for reference
+                url = block_data.get("file", {}).get("url", "")
+                # Extract a cleaner reference (the URL will expire)
+                return f"[Video Recording]" + (f" - {caption}" if caption else "")
+            return "[Video]"
+
+        # Handle embed blocks (YouTube, Loom, etc.)
+        elif block_type == "embed":
+            url = block_data.get("url", "")
+            caption = self.extract_text_from_rich_text(block_data.get("caption", []))
+            if url:
+                return f"[Embed: {url}]" + (f" - {caption}" if caption else "")
+            return "[Embed]"
+
+        # Handle bookmark blocks
+        elif block_type == "bookmark":
+            url = block_data.get("url", "")
+            caption = self.extract_text_from_rich_text(block_data.get("caption", []))
+            if url:
+                return f"[Link: {url}]" + (f" - {caption}" if caption else "")
+            return "[Bookmark]"
+
+        # Handle audio blocks
+        elif block_type == "audio":
+            audio_type = block_data.get("type", "")
+            caption = self.extract_text_from_rich_text(block_data.get("caption", []))
+            if audio_type == "external":
+                url = block_data.get("external", {}).get("url", "")
+                return f"[Audio: {url}]" + (f" - {caption}" if caption else "")
+            return "[Audio Recording]" + (f" - {caption}" if caption else "")
+
+        # Handle file blocks
+        elif block_type == "file":
+            file_type = block_data.get("type", "")
+            caption = self.extract_text_from_rich_text(block_data.get("caption", []))
+            name = block_data.get("name", "")
+            if file_type == "external":
+                url = block_data.get("external", {}).get("url", "")
+                return f"[File: {name or url}]" + (f" - {caption}" if caption else "")
+            return f"[File: {name}]" if name else "[File]"
+
+        # Handle PDF blocks
+        elif block_type == "pdf":
+            pdf_type = block_data.get("type", "")
+            caption = self.extract_text_from_rich_text(block_data.get("caption", []))
+            if pdf_type == "external":
+                url = block_data.get("external", {}).get("url", "")
+                return f"[PDF: {url}]" + (f" - {caption}" if caption else "")
+            return "[PDF Document]" + (f" - {caption}" if caption else "")
+
+        # Handle image blocks - reference but don't include binary
+        elif block_type == "image":
+            caption = self.extract_text_from_rich_text(block_data.get("caption", []))
+            image_type = block_data.get("type", "")
+            if image_type == "external":
+                url = block_data.get("external", {}).get("url", "")
+                return f"[Image: {url}]" + (f" - {caption}" if caption else "")
+            return "[Image]" + (f" - {caption}" if caption else "")
+
+        # Handle link preview blocks
+        elif block_type == "link_preview":
+            url = block_data.get("url", "")
+            return f"[Link Preview: {url}]" if url else "[Link Preview]"
+
         return None
     
     def extract_text_from_rich_text(self, rich_text: List[Dict]) -> str:
@@ -377,56 +932,63 @@ class NotionKOISensor:
         return "".join(text_parts)
     
     def extract_properties(self, properties: Dict) -> Dict[str, Any]:
-        """Extract key-value pairs from Notion properties"""
+        """Extract key-value pairs from Notion properties, with PII filtering"""
         extracted = {}
-        
+
         for prop_name, prop_data in properties.items():
             prop_type = prop_data.get("type")
-            
+
+            # Skip PII property types if filter is enabled
+            if self.pii_filter.should_skip_property(prop_type):
+                continue
+
             if prop_type == "title":
                 title_text = self.extract_text_from_rich_text(
                     prop_data.get("title", [])
                 )
                 if title_text:
                     extracted[prop_name] = title_text
-            
+
             elif prop_type == "rich_text":
                 text = self.extract_text_from_rich_text(
                     prop_data.get("rich_text", [])
                 )
                 if text:
-                    extracted[prop_name] = text
-            
+                    # Apply PII filtering to rich text content
+                    extracted[prop_name] = self.pii_filter.filter_content(text)
+
             elif prop_type == "number":
                 extracted[prop_name] = prop_data.get("number")
-            
+
             elif prop_type == "select":
                 select = prop_data.get("select")
                 if select:
                     extracted[prop_name] = select.get("name")
-            
+
             elif prop_type == "multi_select":
                 options = prop_data.get("multi_select", [])
                 if options:
                     extracted[prop_name] = [opt.get("name") for opt in options]
-            
+
             elif prop_type == "date":
                 date_obj = prop_data.get("date")
                 if date_obj:
                     extracted[prop_name] = date_obj.get("start")
-            
+
             elif prop_type == "checkbox":
                 extracted[prop_name] = prop_data.get("checkbox", False)
-            
+
             elif prop_type == "url":
                 extracted[prop_name] = prop_data.get("url")
-            
+
             elif prop_type == "email":
-                extracted[prop_name] = prop_data.get("email")
-            
+                # PII: Skip email properties (handled by should_skip_property)
+                pass
+
             elif prop_type == "phone_number":
-                extracted[prop_name] = prop_data.get("phone_number")
-        
+                # PII: Skip phone properties (handled by should_skip_property)
+                pass
+
         return extracted
     
     async def monitor_database(self, database_id: str, 
@@ -482,6 +1044,12 @@ class NotionKOISensor:
                 
                 for page in pages:
                     page_id = page["id"]
+
+                    # Check if page should be skipped
+                    if page_id in self.skip_pages or page_id.replace('-', '') in self.skip_pages:
+                        print(f"      ⏭️ Skipping page {page_id[:8]}... (in skip list)")
+                        continue
+
                     print(f"      Fetching content for page {page_id[:8]}...")
                     content = await self.get_page_content(page_id)
                     print(f"      Retrieved {len(content)} chars of content")
