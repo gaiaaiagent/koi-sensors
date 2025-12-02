@@ -299,7 +299,19 @@ def document_to_bundle(document: Dict[str, Any], source_node: str = "regen-colle
         bundle_metadata["published_confidence"] = doc_metadata.get("published_confidence", 0.5)
     if "last_modified" in doc_metadata:
         bundle_metadata["last_modified"] = doc_metadata["last_modified"]
-    
+
+    # CRITICAL: Pass through Code Graph metadata for provenance tracking
+    if "file_path" in doc_metadata:
+        bundle_metadata["file_path"] = doc_metadata["file_path"]
+    if "repo" in doc_metadata:
+        bundle_metadata["repo"] = doc_metadata["repo"]
+    if "branch" in doc_metadata:
+        bundle_metadata["branch"] = doc_metadata["branch"]
+    if "commit_sha" in doc_metadata:
+        bundle_metadata["commit_sha"] = doc_metadata["commit_sha"]
+    if "commit_date" in doc_metadata:
+        bundle_metadata["commit_date"] = doc_metadata["commit_date"]
+
     return Bundle.generate(
         rid=rid,
         contents=bundle_contents,

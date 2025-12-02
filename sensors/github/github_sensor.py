@@ -117,7 +117,7 @@ class GitHubSensor:
         self.koi_node = KOIPartialNode(
             node_name="github-sensor",
             coordinator_url=config.coordinator_url,
-            poll_interval=30
+            poll_interval=300  # 5 minutes - reduced from 30s to minimize heartbeat events
         )
 
         # Persistent state for content hash tracking
@@ -366,30 +366,34 @@ class GitHubSensor:
             # Use git log to get last commit info for this file
             commit_message = None
             commit_author = None
+            commit_sha = None
+            commit_date_str = None
             if not published_at:
                 try:
                     # Get the last commit info for this file
-                    # Format: commit date|author|subject|body
+                    # Format: commit hash|commit date|author|subject|body
                     import subprocess
                     result = subprocess.run(
-                        ['git', 'log', '-1', '--format=%cI|%an|%s|%b', str(file_path)],
+                        ['git', 'log', '-1', '--format=%H|%cI|%an|%s|%b', str(file_path)],
                         cwd=file_path.parent.parent.parent,  # repo root
                         capture_output=True,
                         text=True
                     )
                     if result.returncode == 0 and result.stdout.strip():
-                        parts = result.stdout.strip().split('|', 3)
+                        parts = result.stdout.strip().split('|', 4)
                         if len(parts) >= 1:
-                            commit_date = parts[0]
-                            published_at = datetime.fromisoformat(commit_date.replace('Z', '+00:00'))
-                            confidence = 1.0  # Git commit dates are 100% verifiable
+                            commit_sha = parts[0]
                         if len(parts) >= 2:
-                            commit_author = parts[1]
+                            commit_date_str = parts[1]
+                            published_at = datetime.fromisoformat(commit_date_str.replace('Z', '+00:00'))
+                            confidence = 1.0  # Git commit dates are 100% verifiable
                         if len(parts) >= 3:
+                            commit_author = parts[2]
+                        if len(parts) >= 4:
                             # Combine subject and body
-                            commit_message = parts[2]
-                            if len(parts) >= 4 and parts[3].strip():
-                                commit_message += "\n" + parts[3]
+                            commit_message = parts[3]
+                            if len(parts) >= 5 and parts[4].strip():
+                                commit_message += "\n" + parts[4]
                 except Exception as e:
                     self.logger.debug(f"Could not get git info for {file_path}: {e}")
 
@@ -430,11 +434,14 @@ class GitHubSensor:
                     # Git commit metadata for context
                     "commit_message": commit_message,
                     "commit_author": commit_author,
+                    "commit_sha": commit_sha,
+                    "commit_date": commit_date_str,
 
                     # GitHub specific metadata
                     "repo": repo_name,
                     "branch": branch,
-                    "file_path": str(relative_path),
+                    # Full file path format for Code Graph Processor: org/repo/path/to/file
+                    "file_path": f"regen-network/{repo_name}/{relative_path}",
 
                     # File metadata
                     "file_type": file_path.suffix or "no_extension",
@@ -649,6 +656,7 @@ async def main():
     # Configure repositories
     config = GitHubConfig(
         repos=[
+            # Regen Network Org
             {
                 "name": "regen-ledger",
                 "url": "https://github.com/regen-network/regen-ledger",
@@ -659,7 +667,7 @@ async def main():
                 "name": "regen-web",
                 "url": "https://github.com/regen-network/regen-web",
                 "branch": "main",
-                "paths": ["docs", "README.md"]
+                "paths": ["."]  # Changed from ["docs", "README.md"] to scan entire codebase
             },
             {
                 "name": "regen-data-standards",
@@ -677,7 +685,32 @@ async def main():
                 "name": "mcp",
                 "url": "https://github.com/regen-network/mcp",
                 "branch": "main",
-                "paths": ["docs", "README.md", "src"]
+                "paths": ["."]  # Changed from ["docs", "README.md", "src"] for complete coverage
+            },
+            # GAIA AI Agent Org - KOI Protocol repositories
+            {
+                "name": "koi-sensors",
+                "url": "https://github.com/gaiaaiagent/koi-sensors",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "koi-processor",
+                "url": "https://github.com/gaiaaiagent/koi-processor",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "koi-research",
+                "url": "https://github.com/gaiaaiagent/koi-research",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "regen-koi-mcp",
+                "url": "https://github.com/gaiaaiagent/regen-koi-mcp",
+                "branch": "main",
+                "paths": ["."]
             }
         ]
     )
