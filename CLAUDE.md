@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code when working specifically in the koi-sensors project.
 
-## 🚨 Current System State (Sept 28, 2025)
+## 🚨 Current System State (Dec 2, 2025)
 
 - **12 Active Sensors**: Website, GitHub, GitHub Activity, GitLab, Medium, Discourse, Telegram, Twitter, Discord, Podcast, Notion, Ledger
 - **Health Monitoring**: Smart Hybrid system with 30-min heartbeats and on-demand ping
@@ -11,6 +11,19 @@ This file provides guidance to Claude Code when working specifically in the koi-
 - **Twitter Sensor**: Uses `twitter_sensor_koi.py` (Playwright-based, no auth required)
 - **GitLab Sensor**: Fixed to use KOIPartialNode and document_to_bundle (Sept 26 fix)
 - **GitHub Activity Sensor**: Comprehensive GitHub tracking for daily/weekly curation (Sept 28 addition)
+
+### Twitter Sensor Configuration
+The Twitter sensor monitors these accounts (configurable via `TWITTER_ACCOUNTS` env var):
+- `regen_network` - Main Regen Network account (works reliably)
+- `RegenFdn` - Regen Foundation
+- `Regentokenomics` - Tokenomics discussions
+- `gregory_landua` - Co-founder
+
+**Note**: Twitter's anti-scraping measures block some accounts for unauthenticated Playwright access. Only `@regen_network` works consistently. Configure accounts in `.env`:
+```bash
+TWITTER_ACCOUNTS=regen_network,RegenFdn,Regentokenomics,gregory_landua
+TWITTER_HASHTAGS=#RegenNetwork,#RegenLedger
+```
 
 ## 🔧 CRITICAL: Dependency Management Rules
 

@@ -184,13 +184,18 @@ class WebsiteKOISensor:
     async def send_heartbeat_event(self, response_to: str = None):
         """Send a heartbeat event to register with coordinator"""
         try:
+            # Only include enabled sites in the monitoring list
+            enabled_sites = [
+                site['name'] for site in self.config.websites
+                if site.get('enabled', True) is not False
+            ]
             heartbeat_data = {
                 "type": "sensor_heartbeat",
                 "sensor_id": "website-sensor",
                 "sensor_type": "websites",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "status": "active",
-                "monitoring": [site['name'] for site in self.config.websites],
+                "monitoring": enabled_sites,
                 "pages_tracked": len(self.page_hashes)
             }
 
@@ -378,10 +383,15 @@ class WebsiteKOISensor:
 
         # Initialize crawl queues for each website
         for website in self.config.websites:
+            # Skip disabled websites
+            if website.get('enabled', True) is False:
+                self.logger.info(f"⏭️ Skipping disabled website: {website.get('name', website['url'])}")
+                continue
+
             domain = urlparse(website["url"]).netloc
             self.crawl_queues[domain] = set()
             self.pages_crawled[domain] = 0
-            
+
             # Add initial URLs to queue
             if "paths" in website:
                 for path in website["paths"]:
@@ -389,10 +399,13 @@ class WebsiteKOISensor:
                     self.crawl_queues[domain].add(full_url)
             else:
                 self.crawl_queues[domain].add(website["url"])
-        
+
         # Start monitoring loops for each website
         tasks = []
         for website in self.config.websites:
+            # Skip disabled websites
+            if website.get('enabled', True) is False:
+                continue
             task = asyncio.create_task(self.monitor_website(website))
             tasks.append(task)
         

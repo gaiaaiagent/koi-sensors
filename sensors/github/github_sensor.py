@@ -658,8 +658,8 @@ async def main():
             {
                 "name": "regen-web",
                 "url": "https://github.com/regen-network/regen-web",
-                "branch": "main",
-                "paths": ["docs", "README.md"]
+                "branch": "master",
+                "paths": ["."]
             },
             {
                 "name": "regen-data-standards",
@@ -668,16 +668,40 @@ async def main():
                 "paths": ["."]
             },
             {
-                "name": "regenie-corpus",
-                "url": "https://github.com/regen-network/regenie-corpus",
+                "name": "regen-registry-handbook",
+                "url": "https://github.com/regen-network/regen-registry-handbook",
                 "branch": "main",
                 "paths": ["."]
             },
             {
-                "name": "mcp",
-                "url": "https://github.com/regen-network/mcp",
+                "name": "regen-registry-methodology-library",
+                "url": "https://github.com/regen-network/regen-registry-methodology-library",
                 "branch": "main",
-                "paths": ["docs", "README.md", "src"]
+                "paths": ["."]
+            },
+            {
+                "name": "koi-sensors",
+                "url": "https://github.com/gaiaaiagent/koi-sensors",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "koi-processor",
+                "url": "https://github.com/gaiaaiagent/koi-processor",
+                "branch": "regen-prod",
+                "paths": ["."]
+            },
+            {
+                "name": "koi-research",
+                "url": "https://github.com/gaiaaiagent/koi-research",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "regen-koi-mcp",
+                "url": "https://github.com/gaiaaiagent/regen-koi-mcp",
+                "branch": "main",
+                "paths": ["."]
             }
         ]
     )

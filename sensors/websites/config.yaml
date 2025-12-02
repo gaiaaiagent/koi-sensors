@@ -123,8 +123,9 @@ websites:
     max_pages: 1000
     check_interval: 7200
     priority: high
-    current_status: "crawling successfully - automatic link discovery working"
-    notes: "Tokenomics research and documentation - weekly meetup notes with videos"
+    enabled: false  # Disabled - now using Notion sensor instead
+    current_status: "DEPRECATED - switched to Notion sensor for direct API access"
+    notes: "Tokenomics research and documentation. Now monitored via Notion sensor (run_regentokenomics.py) for better content access and PII filtering."
 
   - name: regen-handbook
     url: https://handbook.regen.network/

@@ -58,9 +58,9 @@ class TwitterKOISensor:
         else:
             self.accounts = [
                 "regen_network",
-                "RegenFoundation",
-                "RegenProposed",
-                "RNDRegistry"
+                "RegenFdn",
+                "Regentokenomics",
+                "gregory_landua"
             ]
 
         # Search queries for relevant content - read from environment or use defaults

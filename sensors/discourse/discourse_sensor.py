@@ -249,16 +249,32 @@ class DiscourseSensor:
     
     def extract_text_from_html(self, html: str) -> str:
         """
-        Extract plain text from HTML content
-        
+        Extract plain text from HTML content, preserving URLs
+
         Args:
             html: HTML content
-            
+
         Returns:
-            Plain text
+            Plain text with URLs preserved
         """
-        # Remove HTML tags
-        text = re.sub('<[^<]+?>', '', html)
+        # Extract URLs from anchor tags before stripping HTML
+        # Pattern: <a href="URL">text</a> -> text (URL)
+        url_pattern = r'<a\s+(?:[^>]*?\s+)?href=["\']([^"\']+)["\'][^>]*>(.*?)</a>'
+
+        def replace_link(match):
+            url = match.group(1)
+            text = match.group(2)
+            # Skip emoji/cdn URLs
+            if 'emoji.discourse-cdn.com' in url or 'cdn' in url and 'emoji' in url:
+                return text
+            # Preserve URL inline: "text (URL)"
+            return f"{text} ({url})"
+
+        # Replace anchor tags with text + URL
+        text = re.sub(url_pattern, replace_link, html, flags=re.IGNORECASE | re.DOTALL)
+
+        # Remove remaining HTML tags
+        text = re.sub('<[^<]+?>', '', text)
         # Decode HTML entities
         text = text.replace('&nbsp;', ' ').replace('&amp;', '&')
         text = text.replace('&lt;', '<').replace('&gt;', '>')

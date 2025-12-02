@@ -5,16 +5,65 @@ sensor:
   name: notion-sensor
   type: partial_node
   coordinator_url: http://localhost:8005
-  
+
   # Notion API settings
   api_version: "2022-06-28"
-  
+
   # Default monitoring settings
   default_check_interval: 3600  # 1 hour
   default_priority: medium
 
-# Databases to monitor
-# Add database IDs here after discovering them with test script
+# PII (Personal Identifiable Information) filtering
+# Protects personal data like emails, phone numbers, telegram handles
+pii_filter:
+  enabled: true
+  # Types of PII to redact: email, telegram, phone, discord
+  redact_types:
+    - email
+    - telegram
+    - phone
+    - discord
+
+# Workspace configurations
+# Each workspace has its own API key and databases to monitor
+workspaces:
+  # Regen Tokenomics workspace (regentokenomics.org source)
+  regentokenomics:
+    enabled: true
+    workspace_id: "regentokenomics"
+    # API key from environment variable
+    api_key_env: "REGENTOKENOMICS_NOTION_API_KEY"
+    # Poll interval from environment or default 30 min
+    poll_interval_env: "REGENTOKENOMICS_SITE_POLL_INTERVAL"
+    poll_interval_default: 1800
+
+    # Databases discovered from the workspace
+    databases:
+      - id: "1f9a7551-41ee-80a4-8d44-d4b676cdcb30"
+        name: "Weekly Meetups"
+        check_interval: 1800  # 30 minutes
+        priority: high
+        notes: "Weekly tokenomics meetup notes with videos"
+
+      - id: "1f9a7551-41ee-8056-8343-fdfb23d8e70e"
+        name: "Reports"
+        check_interval: 3600  # 1 hour
+        priority: high
+        notes: "Tokenomics reports and analysis"
+
+      - id: "a3ad5540-195f-4dc9-b530-935ec549c57e"
+        name: "Projects"
+        check_interval: 3600  # 1 hour
+        priority: medium
+        notes: "Project tracking database"
+
+      - id: "1f9a7551-41ee-816f-856f-e8baffb9332a"
+        name: "Q2 Kanban"
+        check_interval: 7200  # 2 hours
+        priority: low
+        notes: "Internal project kanban board"
+
+# Legacy format - databases to monitor (for backward compatibility)
 databases:
   # Example format:
   # - id: "database-id-here"
@@ -38,7 +87,7 @@ extraction:
   include_properties: true
   include_comments: false
   max_depth: 10  # Maximum nesting depth for blocks
-  
+
 # Tags to auto-apply based on content
 auto_tags:
   - pattern: "governance|proposal|vote"
@@ -53,6 +102,8 @@ auto_tags:
     tag: "community"
   - pattern: "technical|developer|api|code"
     tag: "technical"
+  - pattern: "tokenomics|token|staking|liquidity"
+    tag: "tokenomics"
 
 # Export settings for KOI Event Bridge
 export:
