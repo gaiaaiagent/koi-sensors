@@ -17,8 +17,11 @@ from urllib.parse import quote
 import sys
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from parent .env file
+# The .env file is at the koi-sensors root, not in the twitter sensor folder
+_script_dir = Path(__file__).parent
+_env_path = _script_dir.parent.parent / ".env"
+load_dotenv(_env_path)
 
 # Add parent directories to path for imports
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -62,6 +65,7 @@ class TwitterKOISensor:
                 "Regentokenomics",
                 "gregory_landua"
             ]
+        print(f"📋 Configured to monitor {len(self.accounts)} accounts: {', '.join(self.accounts)}")
 
         # Search queries for relevant content - read from environment or use defaults
         env_hashtags = os.getenv("TWITTER_HASHTAGS", "")
