@@ -396,7 +396,9 @@ class NotionKOISensor:
                  transcribe_videos: bool = False,
                  whisper_model: str = "base",
                  skip_sections: List[str] = None,
-                 skip_pages: List[str] = None):
+                 skip_pages: List[str] = None,
+                 is_private: bool = False,
+                 access_source: str = None):
         """
         Initialize Notion sensor.
 
@@ -412,6 +414,8 @@ class NotionKOISensor:
             skip_sections: List of heading names whose content should be skipped
                           (e.g., ["Projects"] to skip child_database under Projects heading)
             skip_pages: List of page IDs to skip entirely (e.g., archive pages with many videos)
+            is_private: If True, data from this workspace requires OAuth authentication
+            access_source: Identifier for which configuration determined privacy level
         """
         self.node_id = node_id
         self.coordinator_url = coordinator_url
@@ -440,6 +444,10 @@ class NotionKOISensor:
         # Workspace identifier (extracted from pages/databases)
         self.workspace_id = workspace_id
 
+        # Privacy settings for access control
+        self.is_private = is_private
+        self.access_source = access_source or f"notion-{workspace_id}"
+
         # PII Filter for protecting personal data
         self.pii_filter = PIIFilter(
             enabled=pii_filter_enabled,
@@ -463,6 +471,8 @@ class NotionKOISensor:
         print(f"   Coordinator: {self.coordinator_url}")
         print(f"   Workspace: {self.workspace_id}")
         print(f"   API Version: {self.NOTION_API_VERSION}")
+        print(f"   Privacy: {'🔒 PRIVATE (requires OAuth)' if self.is_private else '🌐 PUBLIC'}")
+        print(f"   Access Source: {self.access_source}")
         print(f"   PII Filter: {'enabled' if pii_filter_enabled else 'disabled'}")
         print(f"   Video Transcription: {'enabled' if transcribe_videos else 'disabled'}")
         if self.skip_sections:
@@ -1097,6 +1107,11 @@ class NotionKOISensor:
                                 "published_at": created_time,  # Notion provides ISO format timestamps
                                 "published_confidence": 0.85,  # Good confidence for API data
                                 "last_modified": last_edited_time,
+
+                                # Privacy/access control metadata
+                                "is_private": self.is_private,
+                                "access_source": self.access_source,
+                                "workspace_id": self.workspace_id,
 
                                 # Original metadata
                                 "database_id": db_id,

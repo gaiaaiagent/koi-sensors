@@ -27,7 +27,23 @@ pii_filter:
 # Workspace configurations
 # Each workspace has its own API key and databases to monitor
 workspaces:
-  # Regen Tokenomics workspace (regentokenomics.org source)
+  # Main Regen workspace - PRIVATE (requires OAuth)
+  regen_main:
+    enabled: true
+    workspace_id: "regen"
+    # API key from environment variable
+    api_key_env: "NOTION_API_KEY"
+    # Poll interval from environment or default 1 hour
+    poll_interval_env: "NOTION_POLL_INTERVAL"
+    poll_interval_default: 3600
+    # Privacy settings - data from this workspace requires authentication
+    is_private: true
+    access_source: "notion-main-workspace"
+
+    # Note: Databases are auto-discovered from this workspace
+    # See run_regen_main.py for the specific databases monitored
+
+  # Regen Tokenomics workspace (regentokenomics.org source) - PUBLIC
   regentokenomics:
     enabled: true
     workspace_id: "regentokenomics"
@@ -36,6 +52,9 @@ workspaces:
     # Poll interval from environment or default 30 min
     poll_interval_env: "REGENTOKENOMICS_SITE_POLL_INTERVAL"
     poll_interval_default: 1800
+    # Privacy settings - data from this workspace is PUBLIC
+    is_private: false
+    access_source: "notion-regentokenomics"
 
     # Databases discovered from the workspace
     databases:
