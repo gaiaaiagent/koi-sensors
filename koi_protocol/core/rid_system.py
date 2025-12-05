@@ -235,6 +235,15 @@ def document_to_rid(document: Dict[str, Any]) -> Optional[RID]:
                 return DiscoursePostRID(domain, topic_id, post_id)
     
     # Notion documents
+    # YouTube documents
+    elif source_type == "youtube":
+        metadata = document.get("metadata", {})
+        video_id = metadata.get("video_id")
+        channel_id = metadata.get("channel_id")
+        
+        if video_id and channel_id:
+            return YouTubeVideoRID(channel_id, video_id)
+
     elif source_type == 'notion':
         metadata = document.get('metadata', {})
         page_id = metadata.get('id') or metadata.get('page_id')

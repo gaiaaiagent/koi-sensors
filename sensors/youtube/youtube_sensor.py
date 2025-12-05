@@ -345,6 +345,7 @@ class YouTubeKOISensor:
         # Build KOI document
         document = {
             'rid': rid,
+            'id': video_id,
             'source': f"youtube:{video_metadata['channel_id']}",
             'source_type': 'youtube',
             'url': video_metadata['url'],
