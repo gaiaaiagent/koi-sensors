@@ -1,7 +1,6 @@
-openai-whisper>=20231117
+# YouTube Sensor - Lightweight version (uses remote transcription API)
+# No whisper/torch needed - transcription done on remote Scribe server
 yt-dlp>=2023.12.30
-torch>=2.0.0
-aiohttp>=3.9.0
 httpx>=0.24.0
 python-dotenv>=1.0.0
-ffmpeg-python>=0.2.0
+aiohttp>=3.9.0

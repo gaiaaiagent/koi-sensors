@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
 YouTube Sensor for KOI System
-Monitors YouTube channels and transcribes videos using Whisper
+Monitors YouTube channels and sends videos to remote transcription service
 
 Features:
-- Channel monitoring via YouTube Data API or yt-dlp
-- Audio extraction from videos
-- Whisper transcription (large model for high accuracy)
+- Channel monitoring via yt-dlp
+- Remote transcription via Scribe API (no local Whisper needed)
 - KOI protocol integration
 - Persistent state management
 """
@@ -14,7 +13,6 @@ Features:
 import os
 import sys
 import json
-import hashlib
 import asyncio
 import logging
 from pathlib import Path
@@ -30,7 +28,7 @@ from koi_protocol.core.rid_system import ORN
 from koi_protocol.core.bundle_system import document_to_bundle
 from shared.persistent_state import PersistentSensorState
 
-# YouTube and transcription dependencies
+# YouTube dependencies (lightweight - no Whisper/torch needed)
 try:
     import yt_dlp
     YTDLP_AVAILABLE = True
@@ -39,11 +37,11 @@ except ImportError:
     print("⚠️  yt-dlp not available. Install with: pip install yt-dlp")
 
 try:
-    import whisper
-    WHISPER_AVAILABLE = True
+    import httpx
+    HTTPX_AVAILABLE = True
 except ImportError:
-    WHISPER_AVAILABLE = False
-    print("⚠️  Whisper not available. Install with: pip install openai-whisper")
+    HTTPX_AVAILABLE = False
+    print("⚠️  httpx not available. Install with: pip install httpx")
 
 # Setup logging
 logging.basicConfig(
@@ -69,7 +67,7 @@ class YouTubeVideoRID(ORN):
 
 class YouTubeKOISensor:
     """
-    YouTube sensor using yt-dlp for video/metadata fetching and Whisper transcription
+    YouTube sensor using yt-dlp for video discovery and remote Scribe API for transcription
     """
 
     def __init__(self):
@@ -78,9 +76,19 @@ class YouTubeKOISensor:
 
         # Configuration
         self.channel_url = os.getenv("YOUTUBE_CHANNEL_URL", "https://www.youtube.com/@RegenNetwork")
-        self.whisper_model_name = os.getenv("WHISPER_MODEL", "large")
         self.max_videos_first_run = int(os.getenv("YOUTUBE_MAX_VIDEOS_FIRST_RUN", "5"))
         self.check_interval = int(os.getenv("YOUTUBE_CHECK_INTERVAL", "86400"))  # 24 hours
+
+        # Remote transcription API configuration
+        self.transcription_api_url = os.getenv(
+            "TRANSCRIPTION_API_URL",
+            "http://37.27.48.12:8080/api"
+        )
+        self.transcription_api_key = os.getenv(
+            "TRANSCRIPTION_API_KEY",
+            "2936f1f72ab7c042e0ace10cb815800bafce2a6fa55a642f4109a00b501b6b15"
+        )
+        self.whisper_model = os.getenv("WHISPER_MODEL", "large")
 
         # Initialize KOI node
         self.koi_node = KOIPartialNode(
@@ -91,30 +99,27 @@ class YouTubeKOISensor:
         # Persistent state
         self.state = PersistentSensorState('youtube', Path(__file__).parent)
 
-        # Whisper model (loaded on first use)
-        self.whisper_model = None
-
-        # Output directories
-        self.videos_dir = Path(__file__).parent / 'videos'
-        self.videos_dir.mkdir(exist_ok=True)
+        # HTTP client for transcription API
+        self.http_client = None
 
         logger.info(f"YouTube Sensor initialized")
         logger.info(f"  Channel: {self.channel_url}")
-        logger.info(f"  Whisper model: {self.whisper_model_name}")
+        logger.info(f"  Transcription API: {self.transcription_api_url}")
+        logger.info(f"  Whisper model: {self.whisper_model}")
         logger.info(f"  Max videos (first run): {self.max_videos_first_run}")
         logger.info(f"  Check interval: {self.check_interval}s ({self.check_interval/3600:.1f}h)")
 
-    def _load_whisper_model(self):
-        """Lazy-load Whisper model"""
-        if not WHISPER_AVAILABLE:
-            raise ImportError("Whisper is required. Install with: pip install openai-whisper")
-
-        if self.whisper_model is None:
-            logger.info(f"Loading Whisper model: {self.whisper_model_name}")
-            import torch
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.whisper_model = whisper.load_model(self.whisper_model_name, device=device)
-            logger.info(f"✓ Whisper model loaded on {device}")
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """Get or create HTTP client"""
+        if self.http_client is None:
+            self.http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, read=600.0),  # Long read timeout for transcription
+                headers={
+                    "X-API-Key": self.transcription_api_key,
+                    "Content-Type": "application/json"
+                }
+            )
+        return self.http_client
 
     async def fetch_channel_videos(self, max_videos: Optional[int] = None) -> List[Dict[str, Any]]:
         """
@@ -138,7 +143,7 @@ class YouTubeKOISensor:
             'no_warnings': True,
             'extract_flat': 'in_playlist',  # Don't download, just get metadata
             'playlistend': max_videos,      # Limit number of videos
-            'ignoreerrors': True,            # Continue on errors
+            'ignoreerrors': True,           # Continue on errors
         }
 
         try:
@@ -161,10 +166,6 @@ class YouTubeKOISensor:
                 video_id = entry.get('id')
                 if not video_id:
                     continue
-
-                # Filter out non-video entries
-                # When using extract_flat, entries are URLs to videos
-                # We don't skip based on duration since extract_flat doesn't fetch full metadata
 
                 # Extract metadata
                 videos.append({
@@ -189,109 +190,107 @@ class YouTubeKOISensor:
             logger.error(traceback.format_exc())
             return []
 
-    async def download_audio(self, video_url: str, video_id: str) -> Optional[Path]:
+    async def transcribe_via_api(self, video_url: str, video_title: str) -> Optional[Dict[str, Any]]:
         """
-        Download audio from YouTube video
+        Send video URL to remote transcription API and wait for result
 
         Args:
             video_url: YouTube video URL
-            video_id: Video ID for filename
+            video_title: Video title for logging
 
         Returns:
-            Path to downloaded audio file or None if failed
+            Transcription result or None if failed
         """
-        audio_path = self.videos_dir / f"{video_id}.mp3"
+        if not HTTPX_AVAILABLE:
+            raise ImportError("httpx is required. Install with: pip install httpx")
 
-        # Skip if already downloaded
-        if audio_path.exists():
-            logger.info(f"Using cached audio: {audio_path.name}")
-            return audio_path
+        client = await self._get_http_client()
 
-        logger.info(f"Downloading audio from: {video_url}")
-
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': str(audio_path.with_suffix('')),  # yt-dlp adds extension
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'quiet': True,
-            'no_warnings': True,
-        }
+        logger.info(f"Submitting to transcription API: {video_url}")
 
         try:
-            def download():
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([video_url])
+            # Submit URL for transcription
+            response = await client.post(
+                f"{self.transcription_api_url}/transcribe/url",
+                json={
+                    "url": video_url,
+                    "model": self.whisper_model
+                }
+            )
 
-            await asyncio.to_thread(download)
-
-            if audio_path.exists():
-                file_size_mb = audio_path.stat().st_size / 1024 / 1024
-                logger.info(f"✓ Downloaded audio: {audio_path.name} ({file_size_mb:.1f} MB)")
-                return audio_path
-            else:
-                logger.error(f"Audio file not created: {audio_path}")
+            if response.status_code != 200:
+                logger.error(f"API error: {response.status_code} - {response.text}")
                 return None
 
-        except Exception as e:
-            logger.error(f"Failed to download audio: {e}")
-            return None
+            result = response.json()
+            job_id = result.get("job_id")
 
-    async def transcribe_audio(self, audio_path: Path) -> Optional[Dict[str, Any]]:
-        """
-        Transcribe audio using Whisper
+            if not job_id:
+                logger.error(f"No job_id in response: {result}")
+                return None
 
-        Args:
-            audio_path: Path to audio file
+            logger.info(f"Job submitted: {job_id}")
 
-        Returns:
-            Transcription result with text and metadata
-        """
-        logger.info(f"Transcribing: {audio_path.name}")
+            # Poll for completion
+            max_polls = 180  # 30 minutes max (10s intervals)
+            poll_interval = 10  # seconds
 
-        try:
-            # Load model if needed
-            self._load_whisper_model()
+            for i in range(max_polls):
+                await asyncio.sleep(poll_interval)
 
-            # Run transcription in thread pool (blocking operation)
-            def transcribe():
-                return self.whisper_model.transcribe(
-                    str(audio_path),
-                    word_timestamps=True,
-                    verbose=False
+                status_response = await client.get(
+                    f"{self.transcription_api_url}/transcribe/{job_id}"
                 )
 
-            result = await asyncio.to_thread(transcribe)
+                if status_response.status_code != 200:
+                    logger.warning(f"Status check failed: {status_response.status_code}")
+                    continue
 
-            # Build formatted transcript with timestamps
-            segments = []
-            for seg in result['segments']:
-                segments.append({
-                    'start': seg['start'],
-                    'end': seg['end'],
-                    'text': seg['text'].strip()
-                })
+                status_data = status_response.json()
+                status = status_data.get("status")
 
-            full_transcript = "\n\n".join([
-                f"[{seg['start']:.1f}s - {seg['end']:.1f}s]: {seg['text']}"
-                for seg in segments
-            ])
+                if status == "completed":
+                    logger.info(f"✓ Transcription complete for: {video_title}")
 
-            logger.info(f"✓ Transcription complete: {len(segments)} segments, {result.get('duration', 0):.1f}s")
+                    # Extract transcript from result
+                    transcription = status_data.get("result", {})
+                    text = transcription.get("text", "")
+                    segments = transcription.get("segments", [])
 
-            return {
-                'full_transcript': full_transcript,
-                'segments': segments,
-                'language': result.get('language', 'en'),
-                'duration': result.get('duration', 0),
-                'model': self.whisper_model_name,
-            }
+                    # Format transcript with timestamps if segments available
+                    if segments:
+                        formatted_transcript = "\n\n".join([
+                            f"[{seg.get('start', 0):.1f}s - {seg.get('end', 0):.1f}s]: {seg.get('text', '').strip()}"
+                            for seg in segments
+                        ])
+                    else:
+                        formatted_transcript = text
+
+                    return {
+                        'full_transcript': formatted_transcript,
+                        'text': text,
+                        'segments': segments,
+                        'language': transcription.get('language', 'en'),
+                        'duration': transcription.get('duration', 0),
+                        'model': self.whisper_model,
+                    }
+
+                elif status == "failed":
+                    error = status_data.get("error", "Unknown error")
+                    logger.error(f"Transcription failed: {error}")
+                    return None
+
+                elif status in ["queued", "processing", "downloading"]:
+                    if i % 6 == 0:  # Log every minute
+                        logger.info(f"Still {status}... ({i * poll_interval}s elapsed)")
+                else:
+                    logger.warning(f"Unknown status: {status}")
+
+            logger.error(f"Transcription timed out after {max_polls * poll_interval}s")
+            return None
 
         except Exception as e:
-            logger.error(f"Transcription failed: {e}")
+            logger.error(f"Transcription API error: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return None
@@ -306,7 +305,7 @@ class YouTubeKOISensor:
 
         Args:
             video_metadata: Video metadata from yt-dlp
-            transcription: Whisper transcription result
+            transcription: Transcription result from API
 
         Returns:
             KOI document dictionary or None if already processed
@@ -363,7 +362,7 @@ class YouTubeKOISensor:
                 'thumbnail': video_metadata.get('thumbnail', ''),
                 'transcribed': transcription is not None,
                 'transcription_language': transcription.get('language') if transcription else None,
-                'whisper_model': self.whisper_model_name if transcription else None,
+                'whisper_model': self.whisper_model if transcription else None,
             }
         }
 
@@ -428,7 +427,7 @@ class YouTubeKOISensor:
 
     async def process_video(self, video_metadata: Dict[str, Any]) -> bool:
         """
-        Process a single video: download audio, transcribe, send to KOI
+        Process a single video: send to transcription API, then to KOI
 
         Args:
             video_metadata: Video metadata dictionary
@@ -445,14 +444,17 @@ class YouTubeKOISensor:
         logger.info(f"{'='*80}")
 
         try:
-            # Download audio
-            audio_path = await self.download_audio(video_metadata['url'], video_id)
-            if not audio_path:
-                logger.error("Failed to download audio, skipping transcription")
-                return False
+            # Check if already processed
+            if self.state.is_processed(video_id):
+                logger.info("Video already processed, skipping")
+                return True
 
-            # Transcribe audio
-            transcription = await self.transcribe_audio(audio_path)
+            # Send to remote transcription API
+            transcription = await self.transcribe_via_api(
+                video_metadata['url'],
+                title
+            )
+
             if not transcription:
                 logger.warning("Transcription failed, continuing without transcript")
 
@@ -464,12 +466,6 @@ class YouTubeKOISensor:
 
             # Send to KOI
             success = await self.send_to_koi(document)
-
-            # Clean up audio file to save space
-            if audio_path.exists() and not os.getenv("KEEP_AUDIO_FILES"):
-                audio_path.unlink()
-                logger.info(f"Cleaned up audio file: {audio_path.name}")
-
             return success
 
         except Exception as e:
@@ -547,6 +543,8 @@ class YouTubeKOISensor:
             logger.error(traceback.format_exc())
         finally:
             logger.info("Shutting down...")
+            if self.http_client:
+                await self.http_client.aclose()
             await self.koi_node.stop()
             logger.info("✓ YouTube sensor stopped")
 
