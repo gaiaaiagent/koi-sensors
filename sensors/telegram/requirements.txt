@@ -1,0 +1,3 @@
+# Telegram Sensor Dependencies
+python-telegram-bot>=20.0
+aiohttp>=3.8.0

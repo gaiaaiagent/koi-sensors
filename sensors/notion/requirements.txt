@@ -1,0 +1,9 @@
+# Notion Sensor Dependencies
+aiohttp>=3.8.0
+httpx>=0.24.0
+python-dotenv>=0.19.0
+requests>=2.28.0
+
+# Video transcription (optional - for meeting recordings)
+# Note: openai-whisper requires ffmpeg to be installed on the system
+openai-whisper>=20230314

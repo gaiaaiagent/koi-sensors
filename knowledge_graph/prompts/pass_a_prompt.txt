@@ -1,0 +1,34 @@
+Extract entities and statements from the following text.
+
+Return your response as a JSON object with two arrays: "entities" and "statements".
+
+Entity Types:
+- Person (schema:Person): Individual humans mentioned by name
+- Organization (schema:Organization): Companies, NGOs, government bodies
+- Project (reg:Project): Specific initiatives or programs
+
+For each entity in the "entities" array, provide:
+- name: The entity's name as mentioned in the text
+- type: One of the entity types above (Person, Organization, or Project)
+- confidence: A score between 0.0 and 1.0 indicating your confidence in the extraction
+
+For each statement in the "statements" array, provide:
+- subject: The entity making or associated with the statement
+- predicate: The relationship or claim type
+- object: What is being claimed
+- statementType: One of "claim", "evidence", or "question"
+- confidence: A score between 0.0 and 1.0 indicating your confidence in the extraction
+
+Example response format:
+{
+  "entities": [
+    {"name": "Regen Network", "type": "Organization", "confidence": 0.95},
+    {"name": "Jane Doe", "type": "Person", "confidence": 0.90}
+  ],
+  "statements": [
+    {"subject": "Regen Network", "predicate": "develops", "object": "blockchain for ecological data", "statementType": "claim", "confidence": 0.85}
+  ]
+}
+
+Text to analyze:
+{content}

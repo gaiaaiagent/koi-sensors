@@ -74,9 +74,10 @@ class YouTubeKOISensor:
         # Load environment variables
         load_dotenv(Path(__file__).parent.parent.parent / '.env')
 
-        # Configuration
-        self.channel_url = os.getenv("YOUTUBE_CHANNEL_URL", "https://www.youtube.com/@RegenNetwork")
-        self.max_videos_first_run = int(os.getenv("YOUTUBE_MAX_VIDEOS_FIRST_RUN", "5"))
+        # Configuration - support multiple channels (comma-separated)
+        channel_urls_str = os.getenv("YOUTUBE_CHANNEL_URLS", os.getenv("YOUTUBE_CHANNEL_URL", "https://www.youtube.com/@RegenNetwork"))
+        self.channel_urls = [url.strip() for url in channel_urls_str.split(",") if url.strip()]
+        self.max_videos_per_channel = int(os.getenv("YOUTUBE_MAX_VIDEOS_PER_CHANNEL", os.getenv("YOUTUBE_MAX_VIDEOS_FIRST_RUN", "50")))
         self.check_interval = int(os.getenv("YOUTUBE_CHECK_INTERVAL", "86400"))  # 24 hours
 
         # Remote transcription API configuration
@@ -103,10 +104,12 @@ class YouTubeKOISensor:
         self.http_client = None
 
         logger.info(f"YouTube Sensor initialized")
-        logger.info(f"  Channel: {self.channel_url}")
+        logger.info(f"  Channels ({len(self.channel_urls)}):")
+        for url in self.channel_urls:
+            logger.info(f"    - {url}")
         logger.info(f"  Transcription API: {self.transcription_api_url}")
         logger.info(f"  Whisper model: {self.whisper_model}")
-        logger.info(f"  Max videos (first run): {self.max_videos_first_run}")
+        logger.info(f"  Max videos per channel: {self.max_videos_per_channel}")
         logger.info(f"  Check interval: {self.check_interval}s ({self.check_interval/3600:.1f}h)")
 
     async def _get_http_client(self) -> httpx.AsyncClient:
@@ -121,11 +124,12 @@ class YouTubeKOISensor:
             )
         return self.http_client
 
-    async def fetch_channel_videos(self, max_videos: Optional[int] = None) -> List[Dict[str, Any]]:
+    async def fetch_channel_videos(self, channel_url: str, max_videos: Optional[int] = None) -> List[Dict[str, Any]]:
         """
-        Fetch videos from the YouTube channel using yt-dlp
+        Fetch videos from a YouTube channel using yt-dlp
 
         Args:
+            channel_url: YouTube channel URL to fetch from
             max_videos: Maximum number of videos to fetch (None = all)
 
         Returns:
@@ -135,7 +139,7 @@ class YouTubeKOISensor:
             raise ImportError("yt-dlp is required. Install with: pip install yt-dlp")
 
         # Make sure we're fetching from the videos tab
-        videos_url = self.channel_url.rstrip('/') + '/videos'
+        videos_url = channel_url.rstrip('/') + '/videos'
         logger.info(f"Fetching videos from: {videos_url}")
 
         ydl_opts = {
@@ -400,7 +404,7 @@ class YouTubeKOISensor:
             "sensor": "youtube",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "active",
-            "channel": self.channel_url
+            "channels": self.channel_urls
         }
 
         heartbeat_doc = {
@@ -483,7 +487,9 @@ class YouTubeKOISensor:
             continuous: If True, run continuously with periodic checks
         """
         logger.info("🎥 YOUTUBE SENSOR STARTING")
-        logger.info(f"Channel: {self.channel_url}")
+        logger.info(f"Channels ({len(self.channel_urls)}):")
+        for url in self.channel_urls:
+            logger.info(f"  - {url}")
         logger.info(f"Continuous mode: {continuous}")
 
         # Start KOI node
@@ -501,17 +507,23 @@ class YouTubeKOISensor:
                 logger.info(f"ITERATION {iteration}")
                 logger.info(f"{'='*80}\n")
 
-                # Determine max videos to fetch
-                # First run: process last N videos
-                # Subsequent runs: check all recent videos (but skip already processed)
-                max_videos = self.max_videos_first_run if iteration == 1 else 20
+                # Process each channel
+                total_videos = 0
+                total_success = 0
 
-                # Fetch videos
-                videos = await self.fetch_channel_videos(max_videos=max_videos)
+                for channel_idx, channel_url in enumerate(self.channel_urls, 1):
+                    logger.info(f"\n📺 CHANNEL {channel_idx}/{len(self.channel_urls)}: {channel_url}")
+                    logger.info(f"{'─'*60}")
 
-                if not videos:
-                    logger.warning("No videos found")
-                else:
+                    # Fetch videos from this channel
+                    videos = await self.fetch_channel_videos(channel_url, max_videos=self.max_videos_per_channel)
+
+                    if not videos:
+                        logger.warning(f"No videos found for channel: {channel_url}")
+                        continue
+
+                    total_videos += len(videos)
+
                     # Process videos (newest first)
                     success_count = 0
                     for i, video in enumerate(videos, 1):
@@ -525,7 +537,12 @@ class YouTubeKOISensor:
                         if i < len(videos):
                             await asyncio.sleep(2)
 
-                    logger.info(f"\n✅ Processed {success_count}/{len(videos)} videos")
+                    total_success += success_count
+                    logger.info(f"\n✅ Channel complete: {success_count}/{len(videos)} videos processed")
+
+                logger.info(f"\n{'='*80}")
+                logger.info(f"📊 ITERATION {iteration} SUMMARY: {total_success}/{total_videos} total videos across {len(self.channel_urls)} channels")
+                logger.info(f"{'='*80}")
 
                 # Break if not continuous
                 if not continuous:

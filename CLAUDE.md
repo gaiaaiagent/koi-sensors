@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code when working specifically in the koi-sensors project.
 
-## 🚨 Current System State (Dec 2, 2025)
+## 🚨 Current System State (Dec 17, 2025)
 
-- **12 Active Sensors**: Website, GitHub, GitHub Activity, GitLab, Medium, Discourse, Telegram, Twitter, Discord, Podcast, Notion, Ledger
+- **13 Active Sensors**: Website, GitHub, GitHub Activity, GitLab, Medium, Discourse, Telegram, Twitter, Discord, Podcast, Notion, Ledger, YouTube
 - **Health Monitoring**: Smart Hybrid system with 30-min heartbeats and on-demand ping
 - **Coordinator**: Running on port 8005 with event routing and sensor tracking
 - **Dashboard**: Live at https://regen.gaiaai.xyz/koi showing real-time sensor status
@@ -24,6 +24,22 @@ The Twitter sensor monitors these accounts (configurable via `TWITTER_ACCOUNTS` 
 TWITTER_ACCOUNTS=regen_network,RegenFdn,Regentokenomics,gregory_landua
 TWITTER_HASHTAGS=#RegenNetwork,#RegenLedger
 ```
+
+### YouTube Sensor Configuration
+The YouTube sensor monitors multiple channels and transcribes videos via remote Scribe API:
+- `@RegenNetwork` - Main Regen Network channel
+- `@FirstPrinciplesAI` - First Principles AI channel
+- `@regenfoundation` - Regen Foundation channel
+
+Configure in `.env`:
+```bash
+# Multiple channels (comma-separated)
+YOUTUBE_CHANNEL_URLS=https://www.youtube.com/@RegenNetwork,https://www.youtube.com/@FirstPrinciplesAI,https://www.youtube.com/@regenfoundation
+YOUTUBE_MAX_VIDEOS_PER_CHANNEL=50
+YOUTUBE_CHECK_INTERVAL=86400
+```
+
+**Note**: Uses remote transcription API (no local GPU needed). Each video is transcribed and sent to KOI with full transcript included.
 
 ## 🔧 CRITICAL: Dependency Management Rules
 

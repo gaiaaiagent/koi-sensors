@@ -78,8 +78,9 @@ $RECYCLE.BIN/
 
 # Logs
 *.log
+*.log.*
+*.log.*.gz
 logs/
-*.txt
 !logs/.gitkeep
 
 # Temporary files
