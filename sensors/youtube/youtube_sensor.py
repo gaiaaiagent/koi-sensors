@@ -256,10 +256,10 @@ class YouTubeKOISensor:
                 if status == "completed":
                     logger.info(f"✓ Transcription complete for: {video_title}")
 
-                    # Extract transcript from result
-                    transcription = status_data.get("result", {})
-                    text = transcription.get("text", "")
-                    segments = transcription.get("segments", [])
+                    # Extract transcript from response (fields are at top level, not nested)
+                    # API returns transcript_text and transcript_segments at top level
+                    text = status_data.get("transcript_text", "")
+                    segments = status_data.get("transcript_segments", []) or []
 
                     # Format transcript with timestamps if segments available
                     if segments:
@@ -274,8 +274,8 @@ class YouTubeKOISensor:
                         'full_transcript': formatted_transcript,
                         'text': text,
                         'segments': segments,
-                        'language': transcription.get('language', 'en'),
-                        'duration': transcription.get('duration', 0),
+                        'language': 'en',  # Language not in current API response
+                        'duration': status_data.get('duration_seconds', 0),
                         'model': self.whisper_model,
                     }
 
@@ -332,6 +332,8 @@ class YouTubeKOISensor:
             content_parts.append("\n\n=== TRANSCRIPT ===\n\n")
             content_parts.append(transcription['full_transcript'])
 
+        # Handle None values in content_parts
+        content_parts = [p if p is not None else '' for p in content_parts]
         content = "".join(content_parts)
 
         # Parse upload date to ISO format
@@ -371,10 +373,7 @@ class YouTubeKOISensor:
             }
         }
 
-        # Mark as processed
-        self.state.mark_processed("youtube", video_id)
-        self.state.save()
-
+        # NOTE: Don't mark as processed here - wait until send_to_koi succeeds
         return document
 
     async def send_to_koi(self, document: Dict[str, Any]) -> bool:
@@ -471,6 +470,12 @@ class YouTubeKOISensor:
 
             # Send to KOI
             success = await self.send_to_koi(document)
+
+            # Only mark as processed AFTER successful send
+            if success:
+                self.state.mark_processed("youtube", video_id)
+                self.state.save()
+
             return success
 
         except Exception as e:

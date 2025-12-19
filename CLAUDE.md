@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code when working specifically in the koi-sensors project.
 
-## 🚨 Current System State (Dec 17, 2025)
+## 🚨 Current System State (Dec 19, 2025)
 
 - **13 Active Sensors**: Website, GitHub, GitHub Activity, GitLab, Medium, Discourse, Telegram, Twitter, Discord, Podcast, Notion, Ledger, YouTube
 - **Health Monitoring**: Smart Hybrid system with 30-min heartbeats and on-demand ping
@@ -11,6 +11,7 @@ This file provides guidance to Claude Code when working specifically in the koi-
 - **Twitter Sensor**: Uses `twitter_sensor_koi.py` (Playwright-based, no auth required)
 - **GitLab Sensor**: Fixed to use KOIPartialNode and document_to_bundle (Sept 26 fix)
 - **GitHub Activity Sensor**: Comprehensive GitHub tracking for daily/weekly curation (Sept 28 addition)
+- **YouTube Sensor**: Fixed transcription parsing (Dec 19, 2025) - now correctly reads `transcript_text` from Scribe API
 
 ### Twitter Sensor Configuration
 The Twitter sensor monitors these accounts (configurable via `TWITTER_ACCOUNTS` env var):
