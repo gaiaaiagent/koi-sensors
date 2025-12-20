@@ -9,7 +9,8 @@ This file provides guidance to Claude Code when working specifically in the koi-
 - **Coordinator**: Running on port 8005 with event routing and sensor tracking
 - **Dashboard**: Live at https://regen.gaiaai.xyz/koi showing real-time sensor status
 - **Twitter Sensor**: Uses `twitter_sensor_koi.py` (Playwright-based, no auth required)
-- **GitLab Sensor**: Fixed to use KOIPartialNode and document_to_bundle (Sept 26 fix)
+- **GitLab Sensor**: Fixed to use KOIPartialNode and document_to_bundle (Sept 26 fix), canonical RIDs (Dec 20 fix)
+- **GitHub Sensor**: Canonical RIDs (Dec 20 fix) - paths no longer include temp dir names
 - **GitHub Activity Sensor**: Comprehensive GitHub tracking for daily/weekly curation (Sept 28 addition)
 - **YouTube Sensor**: Fixed transcription parsing (Dec 19, 2025) - now correctly reads `transcript_text` from Scribe API
 
