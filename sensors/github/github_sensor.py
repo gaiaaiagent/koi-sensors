@@ -375,7 +375,7 @@ class GitHubSensor:
                     import subprocess
                     result = subprocess.run(
                         ['git', 'log', '-1', '--format=%H|%cI|%an|%s|%b', str(file_path)],
-                        cwd=file_path.parent.parent.parent,  # repo root
+                        cwd=repo_path,  # repo root
                         capture_output=True,
                         text=True
                     )

@@ -163,7 +163,7 @@ class GitLabSensor:
             files = self.find_files(repo_path, path_pattern)
             
             for file_path in files:
-                doc = self.process_file(file_path, repo_name, repo_url, branch)
+                doc = self.process_file(file_path, repo_name, repo_url, branch, repo_path)
                 if doc:
                     documents.append(doc)
         
@@ -228,16 +228,17 @@ class GitLabSensor:
         
         return filtered_files
     
-    def process_file(self, file_path: Path, repo_name: str, repo_url: str, branch: str) -> Optional[Dict[str, Any]]:
+    def process_file(self, file_path: Path, repo_name: str, repo_url: str, branch: str, repo_path: Path) -> Optional[Dict[str, Any]]:
         """
         Process a single file into a document
-        
+
         Args:
             file_path: Path to file
             repo_name: Repository name
             repo_url: Repository URL
             branch: Git branch
-            
+            repo_path: Path to cloned repository root
+
         Returns:
             Document dictionary or None if processing fails
         """
@@ -275,7 +276,8 @@ class GitLabSensor:
                 }
             
             # Generate document metadata
-            relative_path = file_path.relative_to(file_path.parent.parent.parent)
+            # Use repo_path to get clean relative path (avoids temp dir name in path)
+            relative_path = file_path.relative_to(repo_path)
             
             # Construct GitLab URL (different format than GitHub)
             # GitLab uses /-/blob/ instead of /blob/
@@ -316,7 +318,7 @@ class GitLabSensor:
                     # Format: commit date|author|subject|body
                     result = subprocess.run(
                         ['git', 'log', '-1', '--format=%cI|%an|%s|%b', str(file_path)],
-                        cwd=file_path.parent.parent.parent,  # repo root
+                        cwd=repo_path,  # repo root
                         capture_output=True,
                         text=True
                     )
