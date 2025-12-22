@@ -410,8 +410,10 @@ class DiscourseSensor:
         # Check if topic already processed
         topic_key = f"{forum_name}:topic:{topic_id}"
         if not self.state.is_processed(topic_key):
+            parent_document.setdefault("metadata", {})
+            parent_document["metadata"]["state_key"] = topic_key
+            parent_document["metadata"]["state_source"] = forum_url
             documents.append(parent_document)
-            self.state.mark_processed(forum_url, topic_key)
 
         # Create a document for each post as children of the topic
         for post in posts:
@@ -458,6 +460,8 @@ class DiscourseSensor:
                 'metadata': {
                     # PROVENANCE: Link to parent topic document
                     'parent_rid': topic_rid,  # Reference to parent topic RID
+                    'state_key': post_key,
+                    'state_source': forum_url,
                     'parent_url': topic_url_full,  # Direct URL to topic
 
                     # Publication date for this specific post
@@ -488,8 +492,10 @@ class DiscourseSensor:
                 }
             }
 
+            document.setdefault("metadata", {})
+            document["metadata"]["state_key"] = post_key
+            document["metadata"]["state_source"] = forum_url
             documents.append(document)
-            self.state.mark_processed(forum_url, post_key)
 
         return documents
 
@@ -617,9 +623,9 @@ class DiscourseSensor:
                 'archived': topic_data.get('archived', False)
             }
         }
-        
-        # Mark as processed
-        self.state.mark_processed(forum_url, topic_key)
+        document.setdefault("metadata", {})
+        document["metadata"]["state_key"] = topic_key
+        document["metadata"]["state_source"] = forum_url
         
         return document
     
@@ -758,6 +764,10 @@ class DiscourseSensor:
             # Send each document as an event
             for doc in documents:
                 try:
+                    state_key = doc.get("metadata", {}).get("state_key") or doc.get("id", "unknown")
+                    state_source = doc.get("metadata", {}).get("state_source") or doc.get("source", "discourse")
+                    self.state.mark_pending(state_source, state_key)
+
                     # Use the RID from the document if available
                     if 'rid' in doc:
                         rid_str = doc['rid']
@@ -791,20 +801,28 @@ class DiscourseSensor:
 
                     if previous_hash and previous_hash != content_hash:
                         # Content changed - emit UPDATE
-                        await self.koi_node.emit_update_event(bundle)
-                        logger.info(f"UPDATE: {doc.get('title', rid_str)[:50]}")
+                        success = await self.koi_node.emit_update_event(bundle)
+                        if success:
+                            logger.info(f"UPDATE: {doc.get('title', rid_str)[:50]}")
                     elif not previous_hash:
                         # New content - emit NEW
-                        await self.koi_node.emit_new_event(bundle)
-                        logger.info(f"NEW: {doc.get('title', rid_str)[:50]}")
+                        success = await self.koi_node.emit_new_event(bundle)
+                        if success:
+                            logger.info(f"NEW: {doc.get('title', rid_str)[:50]}")
                     else:
                         # No change - skip
+                        self.state.mark_processed(state_source, state_key)
                         continue
 
-                    # Store hash
-                    self.state.metadata[f"hash_{rid_str}"] = content_hash
+                    if success:
+                        # Store hash
+                        self.state.metadata[f"hash_{rid_str}"] = content_hash
+                        self.state.mark_processed(state_source, state_key)
+                    else:
+                        self.state.clear_pending(state_source, state_key)
 
                 except Exception as e:
+                    self.state.clear_pending(state_source, state_key)
                     logger.error(f"Error sending document to KOI: {e}")
                     logger.error(f"Document ID: {doc.get('id', 'NO_ID')}")
                     logger.error(f"Document keys: {list(doc.keys())}")

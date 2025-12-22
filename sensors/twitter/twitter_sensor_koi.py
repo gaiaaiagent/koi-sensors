@@ -463,12 +463,15 @@ class TwitterKOISensor:
             }
         }
         
-        self.state.mark_processed("twitter", tweet_id)
         return document
     
     async def send_to_koi(self, document: Dict) -> bool:
         """Send document to KOI coordinator as bundle"""
         try:
+            tweet_id = document.get("metadata", {}).get("tweet_id") or document.get("rid")
+            if tweet_id:
+                self.state.mark_pending("twitter", tweet_id)
+
             # Create bundle from document
             bundle = document_to_bundle(document)
 
@@ -482,22 +485,33 @@ class TwitterKOISensor:
 
             if previous_hash and previous_hash != content_hash:
                 # Content changed - emit UPDATE
-                await self.koi_node.emit_update_event(bundle)
+                success = await self.koi_node.emit_update_event(bundle)
                 print(f"      🔄 UPDATE: {document['title']}")
             elif not previous_hash:
                 # New content - emit NEW
-                await self.koi_node.emit_new_event(bundle)
+                success = await self.koi_node.emit_new_event(bundle)
                 print(f"      📤 NEW: {document['title']}")
             else:
                 # No change - skip
                 print(f"      ⏭️  SKIP (no change): {document['title']}")
+                if tweet_id:
+                    self.state.mark_processed("twitter", tweet_id)
                 return True
 
             # Store hash
             self.state.metadata[f"hash_{rid}"] = content_hash
+            if not success:
+                if tweet_id:
+                    self.state.clear_pending("twitter", tweet_id)
+                return False
+
+            if tweet_id:
+                self.state.mark_processed("twitter", tweet_id)
             return True
 
         except Exception as e:
+            if tweet_id:
+                self.state.clear_pending("twitter", tweet_id)
             print(f"      ❌ Failed to send to KOI: {e}")
             return False
     

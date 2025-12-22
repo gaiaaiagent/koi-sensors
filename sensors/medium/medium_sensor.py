@@ -299,7 +299,6 @@ class MediumKOISensor:
                 try:
                     self.logger.info(f"Processing historical article {i}/{len(article_urls)}: {url}")
                     await self.process_article(url, source_config["name"])
-                    self.state.mark_processed(source_name, url)
                     
                     # Rate limiting
                     await asyncio.sleep(self.config.request_delay)
@@ -335,7 +334,6 @@ class MediumKOISensor:
             for url in new_articles[:self.config.max_articles_per_check]:
                 try:
                     await self.process_article(url, source_config["name"])
-                    self.state.mark_processed(source_name, url)
                     
                     # Rate limiting
                     await asyncio.sleep(self.config.request_delay)
@@ -500,17 +498,17 @@ class MediumKOISensor:
         
         return False
     
-    async def process_article(self, article_url: str, source_name: str):
+    async def process_article(self, article_url: str, source_name: str) -> bool:
         """Process a single article"""
         try:
             if not self.session:
-                return
+                return False
             
             # Fetch article content
             async with self.session.get(article_url) as response:
                 if response.status != 200:
                     self.logger.warning(f"HTTP {response.status} for {article_url}")
-                    return
+                    return False
                 
                 html_content = await response.text()
             
@@ -522,7 +520,7 @@ class MediumKOISensor:
             
             if not article_data or len(article_data.get("content", "")) < self.config.min_content_length:
                 self.logger.warning(f"Article too short or empty: {article_url}")
-                return
+                return False
             
             # Calculate content hash
             content_hash = hashlib.sha256(article_data["content"].encode('utf-8')).hexdigest()
@@ -533,20 +531,23 @@ class MediumKOISensor:
             
             if content_changed or previous_hash is None:
                 # Emit KOI event
-                await self.emit_article_event(
+                success = await self.emit_article_event(
                     article_url,
                     article_data,
                     source_name,
                     "NEW" if previous_hash is None else "UPDATE"
                 )
-                
-                # Update hash
-                self.state.metadata[f"hash_{article_url}"] = content_hash
-                
-                self.logger.info(f"Processed article: {article_data.get('title', 'Untitled')}")
+                if success:
+                    # Update hash
+                    self.state.metadata[f"hash_{article_url}"] = content_hash
+                    self.logger.info(f"Processed article: {article_data.get('title', 'Untitled')}")
+                return success
+
+            return True
         
         except Exception as e:
             self.logger.error(f"Error processing article {article_url}: {e}")
+            return False
     
     def extract_article_data(self, soup: BeautifulSoup, url: str) -> Dict[str, Any]:
         """Extract article content and metadata from HTML"""
@@ -687,9 +688,11 @@ class MediumKOISensor:
         
         return article_data
     
-    async def emit_article_event(self, url: str, article_data: Dict[str, Any], source_name: str, event_type: str):
+    async def emit_article_event(self, url: str, article_data: Dict[str, Any], source_name: str, event_type: str) -> bool:
         """Emit KOI event for article"""
         try:
+            self.state.mark_pending(source_name, url)
+
             # Create RID
             rid = MediumArticleRID(url)
             
@@ -736,14 +739,22 @@ class MediumKOISensor:
             
             # Emit appropriate KOI event
             if event_type == "NEW":
-                await self.koi_node.emit_new_event(bundle)
+                success = await self.koi_node.emit_new_event(bundle)
             else:
-                await self.koi_node.emit_update_event(bundle)
+                success = await self.koi_node.emit_update_event(bundle)
             
-            self.logger.info(f"Emitted {event_type} event for article: {article_data.get('title', 'Untitled')} (RID: {rid.to_string()})")
+            if success:
+                self.state.mark_processed(source_name, url)
+                self.logger.info(f"Emitted {event_type} event for article: {article_data.get('title', 'Untitled')} (RID: {rid.to_string()})")
+                return True
+
+            self.state.clear_pending(source_name, url)
+            return False
         
         except Exception as e:
+            self.state.clear_pending(source_name, url)
             self.logger.error(f"Error emitting event for {url}: {e}")
+            return False
     
     def generate_auto_tags(self, content: str) -> List[str]:
         """Generate automatic tags based on content"""

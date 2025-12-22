@@ -93,15 +93,18 @@ async def emit_page(page_id: str):
 
         # Emit to coordinator
         print("📡 Emitting to KOI coordinator...")
-        await sensor.koi_node.emit_new_event(bundle)
-        print("✅ Event emitted successfully!")
+        success = await sensor.koi_node.emit_new_event(bundle)
+        if success:
+            print("✅ Event emitted successfully!")
 
-        # Update state so sensor doesn't re-process
-        content_hash = hashlib.sha256(content.encode()).hexdigest()
-        sensor.state.metadata[f"hash_{page_id}"] = content_hash
-        sensor.state.mark_processed("regentokenomics", page_id)
-        sensor.state.save()
-        print("💾 State updated")
+            # Update state so sensor doesn't re-process
+            content_hash = hashlib.sha256(content.encode()).hexdigest()
+            sensor.state.metadata[f"hash_{page_id}"] = content_hash
+            sensor.state.mark_processed("regentokenomics", page_id)
+            sensor.state.save()
+            print("💾 State updated")
+        else:
+            print("❌ Event emission failed")
 
 
 if __name__ == "__main__":

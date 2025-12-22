@@ -8,10 +8,10 @@
 
 ### Required Endpoints (Full Nodes)
 - `POST /events/broadcast` - Broadcast events to network
-- `GET /events/poll` - Poll for new events
-- `GET /bundles/fetch/{rid}` - Fetch bundle by RID
-- `GET /manifests/fetch/{rid}` - Fetch manifest by RID
-- `GET /rids/fetch` - List available RIDs
+- `POST /events/poll` - Poll for new events (KOI-net compliant; GET supported for legacy)
+- `POST /bundles/fetch` - Fetch bundle by RID
+- `POST /manifests/fetch` - Fetch manifest by RID
+- `POST /rids/fetch` - List available RIDs
 - `GET /health` - Health check
 
 ### Event System (FUN Events)

@@ -5,6 +5,7 @@ Base classes for Full and Partial KOI nodes following KOI-net specification
 
 import asyncio
 import json
+import os
 import aiohttp
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, Set, Tuple
@@ -12,6 +13,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 import logging
 import uuid
+from pathlib import Path
 
 from ..core.rid_system import RID
 from ..core.bundle_system import Bundle, KOIEvent, Manifest
@@ -55,7 +57,7 @@ class KOINodeBase(ABC):
         self.node_name = node_name
         self.node_type = node_type
         self.port = port
-        self.node_id = f"{node_name}-{datetime.now().timestamp()}"
+        self.node_id = os.getenv("KOI_NODE_ID") or f"{node_name}-{datetime.now().timestamp()}"
 
         # Node state
         self.running = False
@@ -66,6 +68,7 @@ class KOINodeBase(ABC):
         # Event delivery tracking
         self.pending_deliveries: Dict[str, QueuedEvent] = {}  # event_id -> QueuedEvent
         self.delivery_timeout_seconds = 300  # 5 minutes
+        self.event_queue_path: Optional[Path] = None
 
         # Logging
         self.logger = logging.getLogger(f"koi.node.{node_name}")
@@ -78,6 +81,9 @@ class KOINodeBase(ABC):
         self.logger.info(f"Starting {self.node_type} node: {self.node_name}")
         self.running = True
         self.session = aiohttp.ClientSession()
+
+        if self.event_queue_path and not self.event_queue:
+            self._load_event_queue()
 
         if self.node_type == "PARTIAL":
             # Partial nodes start polling loop
@@ -101,6 +107,70 @@ class KOINodeBase(ABC):
 
         if self.session:
             await self.session.close()
+
+        self._persist_event_queue()
+
+    def configure_event_queue_persistence(self, path: Path):
+        """Enable persistence for event queue state."""
+        self.event_queue_path = path
+        self._load_event_queue()
+
+    def _persist_event_queue(self):
+        if self.event_queue_path:
+            self._save_event_queue(self.event_queue_path)
+
+    def _load_event_queue(self):
+        """Load queued events from disk if present."""
+        if not self.event_queue_path or not self.event_queue_path.exists():
+            return
+
+        try:
+            with open(self.event_queue_path, "r") as f:
+                data = json.load(f)
+
+            self.event_queue = []
+            self.pending_deliveries = {}
+
+            for item in data.get("events", []):
+                event = KOIEvent.from_dict(item["event"])
+                queued_event = QueuedEvent(
+                    event=event,
+                    event_id=item["event_id"],
+                    queued_at=datetime.fromisoformat(item["queued_at"]),
+                    delivered_to=set(item.get("delivered_to", [])),
+                    confirmed_by=set(item.get("confirmed_by", []))
+                )
+                self.event_queue.append(queued_event)
+                self.pending_deliveries[queued_event.event_id] = queued_event
+
+            self.logger.info(f"Loaded {len(self.event_queue)} queued events from {self.event_queue_path}")
+        except Exception as e:
+            self.logger.error(f"Error loading event queue: {e}")
+
+    def _save_event_queue(self, path: Path):
+        """Persist queued events to disk."""
+        try:
+            payload = {
+                "node_id": self.node_id,
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+                "events": [
+                    {
+                        "event": qe.event.to_dict(),
+                        "event_id": qe.event_id,
+                        "queued_at": qe.queued_at.isoformat(),
+                        "delivered_to": list(qe.delivered_to),
+                        "confirmed_by": list(qe.confirmed_by)
+                    }
+                    for qe in self.event_queue
+                ]
+            }
+
+            temp_path = path.with_suffix(".tmp")
+            with open(temp_path, "w") as f:
+                json.dump(payload, f, indent=2)
+            temp_path.replace(path)
+        except Exception as e:
+            self.logger.error(f"Error saving event queue: {e}")
     
     def get_profile(self) -> NodeProfile:
         """Get node profile"""
@@ -173,6 +243,7 @@ class KOINodeBase(ABC):
         self.event_queue.append(queued_event)
         self.pending_deliveries[event_id] = queued_event
         self.logger.debug(f"Queued {event.event_type} event for {event.rid} with ID {event_id}")
+        self._persist_event_queue()
         return event_id
     
     def get_queued_events(self, max_events: int = None) -> List[KOIEvent]:
@@ -201,6 +272,8 @@ class KOINodeBase(ABC):
                 count += 1
 
         self.logger.debug(f"Delivering {len(events)} events to {node_id}")
+        if events:
+            self._persist_event_queue()
         return events, event_ids
     
     def clear_event_queue(self, max_events: int = None):
@@ -224,6 +297,7 @@ class KOINodeBase(ABC):
         # Clean up fully confirmed events
         self._cleanup_confirmed_events()
 
+        self._persist_event_queue()
         return confirmed_count
 
     def _cleanup_confirmed_events(self):
@@ -245,6 +319,7 @@ class KOINodeBase(ABC):
 
         if events_to_remove:
             self.logger.info(f"Cleaned up {len(events_to_remove)} confirmed events")
+            self._persist_event_queue()
 
     def _cleanup_expired_events(self):
         """Remove events that have exceeded the delivery timeout"""
@@ -263,6 +338,7 @@ class KOINodeBase(ABC):
 
         if events_to_remove:
             self.logger.info(f"Cleaned up {len(events_to_remove)} expired events")
+            self._persist_event_queue()
     
     # Abstract methods for node-specific behavior
     @abstractmethod
@@ -283,6 +359,24 @@ class KOIPartialNode(KOINodeBase):
         super().__init__(node_name, "PARTIAL")
         self.coordinator_url = coordinator_url
         self.poll_interval = poll_interval
+        self.coordinator_node_id = os.getenv("KOI_COORDINATOR_NODE_ID")
+        self.envelope_private_key = None
+        self.envelope_sign = False
+        self.envelope_public_keys = {}
+        self.envelope_verify = False
+        self._configure_envelope_signing()
+
+    def _configure_envelope_signing(self):
+        from shared.koi_envelope import load_private_key_from_env, load_public_keys_from_env
+
+        self.envelope_private_key = load_private_key_from_env()
+        self.envelope_public_keys = load_public_keys_from_env()
+        sign_env = os.getenv("KOI_ENVELOPE_SIGN")
+        if self.envelope_private_key and (sign_env is None or sign_env.lower() not in ("0", "false", "no")):
+            self.envelope_sign = True
+        verify_env = os.getenv("KOI_ENVELOPE_VERIFY")
+        if self.envelope_public_keys and (verify_env is None or verify_env.lower() not in ("0", "false", "no")):
+            self.envelope_verify = True
     
     async def handle_event(self, event: KOIEvent):
         """Handle event received from coordinator"""
@@ -300,24 +394,33 @@ class KOIPartialNode(KOINodeBase):
         self.logger.info(f"broadcast_event called for {event.event_type} event, RID: {event.rid}")
         if not self.session:
             self.logger.error("No active session for broadcasting")
-            return
+            return False
         
         url = f"{self.coordinator_url}/events/broadcast"
         self.logger.info(f"POSTing to {url}")
+
+        payload = event.to_dict()
+        if self.envelope_sign:
+            from shared.koi_envelope import sign_envelope
+            target_node = self.coordinator_node_id or "coordinator"
+            payload = sign_envelope(payload, self.node_id, target_node, self.envelope_private_key)
         
         try:
             async with self.session.post(
                 url,
-                json=event.to_dict(),
+                json=payload,
                 timeout=30
             ) as response:
                 if response.status == 200:
                     self.logger.info(f"Successfully broadcast {event.event_type} event for {event.rid}")
+                    return True
                 else:
                     text = await response.text()
                     self.logger.error(f"Failed to broadcast event: {response.status} - {text}")
+                    return False
         except Exception as e:
             self.logger.error(f"Error broadcasting event: {e}")
+            return False
     
     async def polling_loop(self):
         """Poll coordinator for new events"""
@@ -337,19 +440,55 @@ class KOIPartialNode(KOINodeBase):
             return
         
         try:
-            params = {"node_id": self.node_id, "max_events": 50}
-            async with self.session.get(
+            payload = {
+                "type": "poll_events",
+                "limit": 50,
+                "node_id": self.node_id
+            }
+            if self.envelope_sign:
+                from shared.koi_envelope import sign_envelope
+                target_node = self.coordinator_node_id or "coordinator"
+                payload = sign_envelope(payload, self.node_id, target_node, self.envelope_private_key)
+
+            async with self.session.post(
                 f"{self.coordinator_url}/events/poll",
-                params=params,
+                json=payload,
                 timeout=30
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    events = [KOIEvent.from_dict(event_data) for event_data in data.get("events", [])]
+                    if isinstance(data, dict) and "payload" in data:
+                        if self.envelope_verify:
+                            from shared.koi_envelope import verify_envelope
+                            data, _source_node = verify_envelope(
+                                data,
+                                self.envelope_public_keys,
+                                expected_target=self.node_id,
+                                enforce_target=True
+                            )
+                        else:
+                            data = data.get("payload", {})
+
+                    events = []
+                    for event_data in data.get("events", []):
+                        if "bundle" in event_data:
+                            events.append(KOIEvent.from_dict(event_data))
+                        else:
+                            events.append(KOIEvent.from_dict({
+                                "event_type": event_data.get("event_type"),
+                                "rid": event_data.get("rid"),
+                                "timestamp": event_data.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+                                "source_node": event_data.get("source_node", "unknown"),
+                                "bundle": {
+                                    "rid": event_data.get("rid"),
+                                    "manifest": event_data.get("manifest"),
+                                    "contents": event_data.get("contents")
+                                } if event_data.get("manifest") or event_data.get("contents") else None
+                            }))
                     
                     for event in events:
                         await self.handle_event(event)
-                        
+                    
                     if events:
                         self.logger.info(f"Processed {len(events)} events from coordinator")
         except Exception as e:
@@ -361,20 +500,21 @@ class KOIPartialNode(KOINodeBase):
         event = KOIEvent.new_event(bundle, self.node_id)
         self.queue_event(event)
         self.logger.info(f"About to broadcast NEW event for RID: {event.rid}")
-        await self.broadcast_event(event)
+        success = await self.broadcast_event(event)
         self.logger.info(f"Finished broadcasting NEW event for RID: {event.rid}")
+        return success
     
     async def emit_update_event(self, bundle: Bundle):
         """Emit UPDATE event for a bundle"""
         event = KOIEvent.update_event(bundle, self.node_id)
         self.queue_event(event)
-        await self.broadcast_event(event)
+        return await self.broadcast_event(event)
     
     async def emit_forget_event(self, rid: RID, reason: str = None):
         """Emit FORGET event for a RID"""
         event = KOIEvent.forget_event(rid, self.node_id, reason)
         self.queue_event(event)
-        await self.broadcast_event(event)
+        return await self.broadcast_event(event)
 
 
 class KOIFullNode(KOINodeBase):

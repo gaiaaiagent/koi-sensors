@@ -4,12 +4,13 @@ Full KOI node implementing complete KOI-net protocol with FastAPI
 """
 
 import asyncio
+import hashlib
 import json
 import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -22,6 +23,13 @@ from ..core.bundle_system import Bundle, KOIEvent, Manifest
 from ..integration.koi_collector_adapter import (
     TwitterKOIAdapter, DiscourseKOIAdapter, 
     NotionKOIAdapter, WebScraperKOIAdapter
+)
+from shared.koi_envelope import (
+    EnvelopeError,
+    load_private_key_from_env,
+    load_public_keys_from_env,
+    sign_envelope,
+    verify_envelope
 )
 
 
@@ -95,6 +103,8 @@ class KOICoordinator:
 
         # Initialize KOI full node
         self.koi_node = KOIFullNode(node_name, port)
+        self.event_queue_file = Path(__file__).parent / "coordinator_event_queue.json"
+        self.koi_node.configure_event_queue_persistence(self.event_queue_file)
 
         # Store sensor monitoring data
         self.sensor_monitoring = {}
@@ -117,6 +127,17 @@ class KOICoordinator:
         
         # Setup logging
         self.logger = logging.getLogger("koi.coordinator")
+
+        # Envelope signing/verification
+        self.envelope_private_key = load_private_key_from_env()
+        self.envelope_public_keys = load_public_keys_from_env()
+        self.envelope_sign = bool(self.envelope_private_key)
+        self.envelope_verify = bool(self.envelope_public_keys)
+        self.envelope_verify_target = os.getenv("KOI_ENVELOPE_VERIFY_TARGET", "false").lower() in ("1", "true", "yes")
+        if os.getenv("KOI_ENVELOPE_SIGN") is not None:
+            self.envelope_sign = os.getenv("KOI_ENVELOPE_SIGN", "").lower() in ("1", "true", "yes")
+        if os.getenv("KOI_ENVELOPE_VERIFY") is not None:
+            self.envelope_verify = os.getenv("KOI_ENVELOPE_VERIFY", "").lower() in ("1", "true", "yes")
         
         # Sensor adapters
         self.sensor_adapters: Dict[str, Any] = {}
@@ -153,194 +174,295 @@ class KOICoordinator:
     
     def _setup_routes(self):
         """Setup FastAPI routes for KOI-net protocol"""
+
+        def _unwrap_envelope(payload: Dict[str, Any]) -> tuple[Dict[str, Any], Optional[str], bool]:
+            """Accept SignedEnvelope-style payloads with optional signature verification."""
+            if isinstance(payload, dict) and "payload" in payload and "source_node" in payload:
+                if self.envelope_verify:
+                    try:
+                        payload, source_node = verify_envelope(
+                            payload,
+                            self.envelope_public_keys,
+                            expected_target=self.koi_node.node_id,
+                            enforce_target=self.envelope_verify_target
+                        )
+                    except EnvelopeError as exc:
+                        raise HTTPException(status_code=400, detail=str(exc))
+                else:
+                    source_node = payload.get("source_node")
+                    payload = payload.get("payload", {})
+                return payload, source_node, True
+            return payload, None, False
+
+        def _wrap_response(payload: Dict[str, Any], target_node: Optional[str], use_envelope: bool):
+            if use_envelope and self.envelope_sign and target_node:
+                return sign_envelope(payload, self.koi_node.node_id, target_node, self.envelope_private_key)
+            return payload
+
+        def _koi_net_event_to_koi_event_data(event: Dict[str, Any], source_node: Optional[str]) -> Dict[str, Any]:
+            """Convert KOI-net event shape into local KOIEvent-compatible dict."""
+            event_type = event.get("event_type")
+            rid = event.get("rid")
+            timestamp = event.get("timestamp") or datetime.now(timezone.utc).isoformat()
+            event_data = {
+                "event_type": event_type,
+                "rid": rid,
+                "timestamp": timestamp,
+                "source_node": event.get("source_node") or source_node or "unknown"
+            }
+
+            manifest = event.get("manifest") or {}
+            contents = event.get("contents") or {}
+            if manifest or contents:
+                content_hash = manifest.get("sha256_hash") or manifest.get("content_hash")
+                if not content_hash:
+                    content_hash = hashlib.sha256(json.dumps(contents, sort_keys=True).encode()).hexdigest()
+
+                manifest_payload = {
+                    "rid": rid,
+                    "timestamp": manifest.get("timestamp") or timestamp,
+                    "content_hash": content_hash,
+                    "size_bytes": manifest.get("size_bytes") or len(json.dumps(contents).encode()),
+                    "content_type": manifest.get("content_type") or "application/json",
+                    "version": manifest.get("version") or "1.0",
+                    "metadata": manifest.get("metadata") or {}
+                }
+                event_data["bundle"] = {
+                    "rid": rid,
+                    "manifest": manifest_payload,
+                    "contents": contents
+                }
+
+            if event.get("reason"):
+                event_data["reason"] = event["reason"]
+
+            return event_data
+
+        def _manifest_to_koi_net(manifest: Manifest) -> Dict[str, Any]:
+            """Convert local Manifest to KOI-net manifest shape."""
+            return {
+                "rid": manifest.rid,
+                "timestamp": manifest.timestamp,
+                "sha256_hash": manifest.content_hash,
+                "size_bytes": manifest.size_bytes,
+                "content_type": manifest.content_type,
+                "version": manifest.version,
+                "metadata": manifest.metadata or {}
+            }
+
+        def _normalize_broadcast_events(payload: Dict[str, Any], source_node: Optional[str]) -> List[Dict[str, Any]]:
+            """Accept KOI-net EventsPayload or legacy single-event payloads."""
+            if isinstance(payload, dict) and isinstance(payload.get("events"), list):
+                events = []
+                for event in payload["events"]:
+                    if isinstance(event, dict):
+                        if "bundle" in event or "timestamp" in event or "source_node" in event:
+                            if source_node and "source_node" not in event:
+                                event["source_node"] = source_node
+                            events.append(event)
+                        else:
+                            events.append(_koi_net_event_to_koi_event_data(event, source_node))
+                return events
+            if isinstance(payload, dict):
+                if source_node and "source_node" not in payload:
+                    payload["source_node"] = source_node
+                return [payload]
+            return []
         
         @self.app.post("/events/broadcast")
-        async def broadcast_event(request: EventBroadcastRequest):
+        async def broadcast_event(request: Dict[str, Any] = Body(...)):
             """Broadcast event to network (KOI-net endpoint)"""
             try:
-                # Convert request to KOIEvent
-                event_data = request.dict()
-                self.logger.debug(f"Received event data keys: {event_data.keys()}")
-                self.logger.debug(f"Event type: {event_data.get('event_type')}")
+                payload, envelope_source, envelope_used = _unwrap_envelope(request)
+                events_data = _normalize_broadcast_events(payload, envelope_source)
+                if not events_data:
+                    raise ValueError("No events found in broadcast payload")
 
-                # Check if this is a sensor heartbeat with monitoring data
-                if event_data and event_data.get("data") and event_data.get("data", {}).get("type") == "sensor_heartbeat":
-                    heartbeat_data = event_data.get("data", {})
-                    sensor_id = heartbeat_data.get("sensor_id")
-                    monitoring_list = heartbeat_data.get("monitoring", [])
+                results = []
+                for event_data in events_data:
+                    self.logger.debug(f"Received event data keys: {event_data.keys()}")
+                    self.logger.debug(f"Event type: {event_data.get('event_type')}")
 
-                    if sensor_id and monitoring_list:
-                        self.sensor_monitoring[sensor_id] = monitoring_list
-                        self.logger.info(f"Updated monitoring data for {sensor_id}: {len(monitoring_list)} items")
-                        # Show first few items for debugging
-                        if len(monitoring_list) > 0:
-                            self.logger.debug(f"First monitoring item: {monitoring_list[0]}")
+                    # Check if this is a sensor heartbeat with monitoring data
+                    if event_data and event_data.get("data") and event_data.get("data", {}).get("type") == "sensor_heartbeat":
+                        heartbeat_data = event_data.get("data", {})
+                        sensor_id = heartbeat_data.get("sensor_id")
+                        monitoring_list = heartbeat_data.get("monitoring", [])
+
+                        if sensor_id and monitoring_list:
+                            self.sensor_monitoring[sensor_id] = monitoring_list
+                            self.logger.info(f"Updated monitoring data for {sensor_id}: {len(monitoring_list)} items")
+                            # Show first few items for debugging
+                            if len(monitoring_list) > 0:
+                                self.logger.debug(f"First monitoring item: {monitoring_list[0]}")
                 
-                # Handle bundle if present, or create one from sensor data
-                if event_data.get("bundle"):
-                    bundle_data = event_data["bundle"]
-                    self.logger.debug(f"Bundle data keys: {bundle_data.keys() if isinstance(bundle_data, dict) else 'not a dict'}")
-                    # Keep bundle as dictionary for KOIEvent.from_dict()
-                    # It will be converted to Bundle object inside KOIEvent.from_dict()
-                    if not isinstance(bundle_data, dict):
-                        self.logger.error(f"Bundle data is not a dictionary: {type(bundle_data)}")
-                        raise ValueError("Bundle must be a dictionary")
-                elif "data" in event_data:
-                    self.logger.debug(f"Creating bundle from sensor data")
-                    # Create bundle from sensor data
-                    from ..core.bundle_system import Bundle, Manifest
+                    # Handle bundle if present, or create one from sensor data
+                    if event_data.get("bundle"):
+                        bundle_data = event_data["bundle"]
+                        self.logger.debug(f"Bundle data keys: {bundle_data.keys() if isinstance(bundle_data, dict) else 'not a dict'}")
+                        # Keep bundle as dictionary for KOIEvent.from_dict()
+                        # It will be converted to Bundle object inside KOIEvent.from_dict()
+                        if not isinstance(bundle_data, dict):
+                            self.logger.error(f"Bundle data is not a dictionary: {type(bundle_data)}")
+                            raise ValueError("Bundle must be a dictionary")
+                    elif "data" in event_data:
+                        self.logger.debug(f"Creating bundle from sensor data")
+                        # Create bundle from sensor data
+                        from ..core.bundle_system import Bundle, Manifest
+                        
+                        # Extract data from the sensor event
+                        sensor_data = event_data.pop("data", {})
+                        
+                        # Create a simple manifest without using RID object
+                        # Just create the necessary fields directly
+                        content_str = json.dumps(sensor_data, sort_keys=True)
+                        content_hash = hashlib.sha256(content_str.encode()).hexdigest()
+                        
+                        manifest = Manifest(
+                            rid=event_data["rid"],
+                            timestamp=event_data["timestamp"],
+                            content_hash=content_hash,
+                            size_bytes=len(content_str.encode()),
+                            content_type="application/json",
+                            version="1.0",
+                            metadata=sensor_data.get("metadata", {})
+                        )
+                        
+                        # Create bundle with the sensor content
+                        self.logger.debug(f"Creating Bundle with rid={event_data['rid']}")
+                        bundle = Bundle(
+                            rid=event_data["rid"],
+                            manifest=manifest,
+                            contents=sensor_data
+                        )
+                        self.logger.debug(f"Bundle created successfully, type: {type(bundle)}")
+                        # Convert Bundle to dictionary for KOIEvent.from_dict()
+                        event_data["bundle"] = bundle.to_dict()
+                        
+                        # Clean up extra fields not needed by KOIEvent
+                        event_data.pop("node_id", None)
+                        event_data.pop("node_type", None)
+                        event_data.pop("event_id", None)
+                        event_data.pop("data", None)
                     
-                    # Extract data from the sensor event
-                    sensor_data = event_data.pop("data", {})
+                    self.logger.debug(f"Creating KOIEvent from data")
+                    event = KOIEvent.from_dict(event_data)
+                    self.logger.debug(f"KOIEvent created: type={type(event)}, has_bundle={event.bundle is not None}")
                     
-                    # Create a simple manifest without using RID object
-                    # Just create the necessary fields directly
-                    import hashlib
-                    
-                    content_str = json.dumps(sensor_data, sort_keys=True)
-                    content_hash = hashlib.sha256(content_str.encode()).hexdigest()
-                    
-                    manifest = Manifest(
-                        rid=event_data["rid"],
-                        timestamp=event_data["timestamp"],
-                        content_hash=content_hash,
-                        size_bytes=len(content_str.encode()),
-                        content_type="application/json",
-                        version="1.0",
-                        metadata=sensor_data.get("metadata", {})
-                    )
-                    
-                    # Create bundle with the sensor content
-                    self.logger.debug(f"Creating Bundle with rid={event_data['rid']}")
-                    bundle = Bundle(
-                        rid=event_data["rid"],
-                        manifest=manifest,
-                        contents=sensor_data
-                    )
-                    self.logger.debug(f"Bundle created successfully, type: {type(bundle)}")
-                    # Convert Bundle to dictionary for KOIEvent.from_dict()
-                    event_data["bundle"] = bundle.to_dict()
-                    
-                    # Clean up extra fields not needed by KOIEvent
-                    event_data.pop("node_id", None)
-                    event_data.pop("node_type", None)
-                    event_data.pop("event_id", None)
-                    event_data.pop("data", None)
-                
-                self.logger.debug(f"Creating KOIEvent from data")
-                event = KOIEvent.from_dict(event_data)
-                self.logger.debug(f"KOIEvent created: type={type(event)}, has_bundle={event.bundle is not None}")
-                
-                # Track the broadcast sensor
-                if "source_node" in event_data:
-                    source_node = event_data["source_node"]
-                    
-                    # Extract sensor type from node_id (e.g., "website-sensor-12345" -> "website-sensor")
-                    # Handle multi-word sensors like "github-activity-sensor"
-                    import re
-                    sensor_type_match = re.match(r'^(.*?-sensor)', source_node)
-                    if sensor_type_match:
-                        sensor_type = sensor_type_match.group(1)
-                    else:
-                        # Fallback for sensors without standard naming
-                        sensor_type = source_node.split('-')[0] if '-' in source_node else source_node
-                    
-                    # Update or create sensor entry using type as key
-                    current_time = datetime.now(timezone.utc)
-                    if sensor_type in self.broadcast_sensors:
-                        # Update existing sensor
-                        self.broadcast_sensors[sensor_type]["node_id"] = source_node  # Update to latest node_id
-                        self.broadcast_sensors[sensor_type]["last_event"] = current_time.isoformat()
-                        self.broadcast_sensors[sensor_type]["event_count"] += 1
-                        self.broadcast_sensors[sensor_type]["status"] = "active"  # Mark as active when we receive events
-                        self.logger.debug(f"Updated existing sensor: {sensor_type} (node: {source_node})")
-                    else:
-                        # New sensor type
-                        self.broadcast_sensors[sensor_type] = {
-                            "node_id": source_node,
-                            "sensor_type": sensor_type,
-                            "last_event": current_time.isoformat(),
-                            "event_count": 1,
-                            "event_type": event_data.get("event_type", "unknown"),
-                            "status": "active"  # New sensors start as active
-                        }
-                        self.logger.debug(f"Tracked new sensor: {sensor_type} (node: {source_node})")
-                        # Save registry when new sensor appears
-                        self._save_sensor_registry()
+                    # Track the broadcast sensor
+                    if "source_node" in event_data:
+                        source_node = event_data["source_node"]
+                        
+                        # Extract sensor type from node_id (e.g., "website-sensor-12345" -> "website-sensor")
+                        # Handle multi-word sensors like "github-activity-sensor"
+                        import re
+                        sensor_type_match = re.match(r'^(.*?-sensor)', source_node)
+                        if sensor_type_match:
+                            sensor_type = sensor_type_match.group(1)
+                        else:
+                            # Fallback for sensors without standard naming
+                            sensor_type = source_node.split('-')[0] if '-' in source_node else source_node
+                        
+                        # Update or create sensor entry using type as key
+                        current_time = datetime.now(timezone.utc)
+                        if sensor_type in self.broadcast_sensors:
+                            # Update existing sensor
+                            self.broadcast_sensors[sensor_type]["node_id"] = source_node  # Update to latest node_id
+                            self.broadcast_sensors[sensor_type]["last_event"] = current_time.isoformat()
+                            self.broadcast_sensors[sensor_type]["event_count"] += 1
+                            self.broadcast_sensors[sensor_type]["status"] = "active"  # Mark as active when we receive events
+                            self.logger.debug(f"Updated existing sensor: {sensor_type} (node: {source_node})")
+                        else:
+                            # New sensor type
+                            self.broadcast_sensors[sensor_type] = {
+                                "node_id": source_node,
+                                "sensor_type": sensor_type,
+                                "last_event": current_time.isoformat(),
+                                "event_count": 1,
+                                "event_type": event_data.get("event_type", "unknown"),
+                                "status": "active"  # New sensors start as active
+                            }
+                            self.logger.debug(f"Tracked new sensor: {sensor_type} (node: {source_node})")
+                            # Save registry when new sensor appears
+                            self._save_sensor_registry()
 
-                # Check for duplicate content before processing
-                if event.bundle and event.rid:
-                    content_hash = event.bundle.manifest.content_hash if event.bundle else ""
-                    metadata = event.bundle.manifest.metadata if event.bundle else {}
-                    source_url = metadata.get("url") or metadata.get("source_url")
-
-                    # Check if this is duplicate content
-                    is_duplicate = False if "podcast" in event.rid else self._check_duplicate_content(event.rid, content_hash, source_url)
-
-                    if is_duplicate:
-                        self.logger.info(f"Skipping duplicate content for RID {event.rid} (hash: {content_hash[:8]}...)")
-                        return {"status": "skipped_duplicate", "event_id": event.rid, "reason": "duplicate_content"}
-
-                # Create CAT receipt for sensor collection (only for new/changed content)
-                try:
-                    # Import the receipt manager
-                    import sys
-                    import os
-                    sys.path.append(os.path.join(os.path.dirname(__file__), '../../../koi-processor/src'))
-                    from cat.coordinator_receipt_integration import CoordinatorReceiptManager
-
-                    receipt_manager = CoordinatorReceiptManager()
-
-                    # Create sensor collection receipt
+                    # Check for duplicate content before processing
                     if event.bundle and event.rid:
-                        sensor_name = event_data.get("source_node", "unknown")
                         content_hash = event.bundle.manifest.content_hash if event.bundle else ""
                         metadata = event.bundle.manifest.metadata if event.bundle else {}
+                        source_url = metadata.get("url") or metadata.get("source_url")
 
-                        collection_receipt = await receipt_manager.create_sensor_collection_receipt(
-                            sensor_name=sensor_name,
-                            rid=event.rid,
-                            content_hash=content_hash,
-                            source_url=metadata.get("url"),
-                            document_count=1,
-                            metadata=metadata
-                        )
+                        # Check if this is duplicate content
+                        is_duplicate = False if "podcast" in event.rid else self._check_duplicate_content(event.rid, content_hash, source_url)
 
-                        # Create forwarding receipt
-                        forwarding_receipt = await receipt_manager.create_coordinator_forwarding_receipt(
-                            input_rid=event.rid,
-                            output_rid=event.rid,
-                            target_service="event-bridge",
-                            sensor_name=sensor_name,
-                            event_type=event.event_type,
-                            metadata={"collection_receipt": collection_receipt}
-                        )
+                        if is_duplicate:
+                            self.logger.info(f"Skipping duplicate content for RID {event.rid} (hash: {content_hash[:8]}...)")
+                            results.append({"status": "skipped_duplicate", "event_id": event.rid, "reason": "duplicate_content"})
+                            continue
 
-                        self.logger.info(f"Created CAT receipts - collection: {collection_receipt}, forwarding: {forwarding_receipt}")
+                    # Create CAT receipt for sensor collection (only for new/changed content)
+                    try:
+                        # Import the receipt manager
+                        import sys
+                        import os
+                        sys.path.append(os.path.join(os.path.dirname(__file__), '../../../koi-processor/src'))
+                        from cat.coordinator_receipt_integration import CoordinatorReceiptManager
 
-                    await receipt_manager.close()
+                        receipt_manager = CoordinatorReceiptManager()
 
-                except Exception as e:
-                    self.logger.warning(f"Could not create CAT receipts: {e}")
-                    # Don't fail the event processing if receipt creation fails
+                        # Create sensor collection receipt
+                        if event.bundle and event.rid:
+                            sensor_name = event_data.get("source_node", "unknown")
+                            content_hash = event.bundle.manifest.content_hash if event.bundle else ""
+                            metadata = event.bundle.manifest.metadata if event.bundle else {}
 
-                # Process event through KOI node
-                await self.koi_node.handle_event(event)
+                            collection_receipt = await receipt_manager.create_sensor_collection_receipt(
+                                sensor_name=sensor_name,
+                                rid=event.rid,
+                                content_hash=content_hash,
+                                source_url=metadata.get("url"),
+                                document_count=1,
+                                metadata=metadata
+                            )
 
-                # CRITICAL: Queue the event for other nodes to poll (KOI protocol requirement)
-                self.koi_node.queue_event(event)
-                self.logger.info(f"Queued event for polling: {event.rid}")
+                            # Create forwarding receipt
+                            forwarding_receipt = await receipt_manager.create_coordinator_forwarding_receipt(
+                                input_rid=event.rid,
+                                output_rid=event.rid,
+                                target_service="event-bridge",
+                                sensor_name=sensor_name,
+                                event_type=event.event_type,
+                                metadata={"collection_receipt": collection_receipt}
+                            )
 
-                # Also broadcast to connected nodes
-                await self.koi_node.broadcast_event(event)
+                            self.logger.info(f"Created CAT receipts - collection: {collection_receipt}, forwarding: {forwarding_receipt}")
 
-                # Note: Processor forwarding is now handled via polling pattern
-                # The forwarder polls /events/poll and forwards to semantic bridge
-                # await self._forward_to_processor(event)
-                
-                self.logger.info(f"Broadcast {event.event_type} event for {event.rid}")
-                
-                return {"status": "success", "event_id": event.rid}
+                        await receipt_manager.close()
+
+                    except Exception as e:
+                        self.logger.warning(f"Could not create CAT receipts: {e}")
+                        # Don't fail the event processing if receipt creation fails
+
+                    # Process event through KOI node
+                    await self.koi_node.handle_event(event)
+
+                    # Broadcast queues for polling and forwards to connected nodes
+                    await self.koi_node.broadcast_event(event)
+
+                    # Note: Processor forwarding is now handled via polling pattern
+                    # The forwarder polls /events/poll and forwards to semantic bridge
+                    # await self._forward_to_processor(event)
+                    
+                    self.logger.info(f"Broadcast {event.event_type} event for {event.rid}")
+                    results.append({"status": "success", "event_id": event.rid})
+
+                if len(results) == 1:
+                    return _wrap_response(results[0], envelope_source, envelope_used)
+                return _wrap_response(
+                    {"status": "success", "event_count": len(results), "results": results},
+                    envelope_source,
+                    envelope_used
+                )
                 
             except Exception as e:
                 import traceback
@@ -379,22 +501,71 @@ class KOICoordinator:
                 self.logger.error(f"Error polling events: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @self.app.post("/events/confirm", response_model=DeliveryConfirmationResponse)
+        @self.app.post("/events/poll")
+        async def poll_events_post(request: Dict[str, Any] = Body(...)):
+            """KOI-net compatible poll endpoint (POST with optional envelope)."""
+            try:
+                payload, source_node, envelope_used = _unwrap_envelope(request)
+                if not isinstance(payload, dict):
+                    raise ValueError("Invalid poll payload")
+
+                node_id = source_node or payload.get("node_id")
+                if not node_id:
+                    raise ValueError("Missing node_id (use SignedEnvelope or include node_id)")
+
+                limit = payload.get("limit", 50)
+                include_event_ids = bool(payload.get("include_event_ids"))
+                max_events = 50 if not isinstance(limit, int) or limit <= 0 else limit
+
+                events, event_ids = self.koi_node.get_queued_events_for_delivery(node_id, max_events)
+                event_dicts = []
+                for event in events:
+                    manifest_payload = _manifest_to_koi_net(event.bundle.manifest) if event.bundle else None
+                    event_payload = {
+                        "rid": event.rid,
+                        "event_type": event.event_type,
+                        "timestamp": event.timestamp,
+                        "source_node": event.source_node,
+                        "manifest": manifest_payload,
+                        "contents": event.bundle.contents if event.bundle else None
+                    }
+                    event_dicts.append(event_payload)
+
+                # Add node as subscriber
+                self.koi_node.add_event_subscriber(node_id)
+
+                response_payload = {
+                    "type": "events_payload",
+                    "events": event_dicts
+                }
+                if include_event_ids:
+                    response_payload["event_ids"] = event_ids
+                return _wrap_response(response_payload, node_id, envelope_used)
+            except Exception as e:
+                self.logger.error(f"Error polling events (POST): {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/events/confirm")
         async def confirm_delivery(
-            request: DeliveryConfirmationRequest
+            request: Dict[str, Any] = Body(...)
         ):
             """Confirm delivery of events by a node (KOI-net endpoint)"""
             try:
+                payload, envelope_source, envelope_used = _unwrap_envelope(request)
+                if envelope_source:
+                    payload["node_id"] = payload.get("node_id") or envelope_source
+                confirm_request = DeliveryConfirmationRequest(**payload)
                 # Confirm delivery of events
-                confirmed_count = self.koi_node.confirm_delivery(request.node_id, request.event_ids)
+                confirmed_count = self.koi_node.confirm_delivery(confirm_request.node_id, confirm_request.event_ids)
 
-                self.logger.info(f"Node {request.node_id} confirmed {confirmed_count} events")
+                self.logger.info(f"Node {confirm_request.node_id} confirmed {confirmed_count} events")
 
-                return DeliveryConfirmationResponse(
+                response_payload = DeliveryConfirmationResponse(
                     confirmed_count=confirmed_count,
                     node_id=self.koi_node.node_id,
                     timestamp=datetime.now(timezone.utc).isoformat()
                 )
+                return _wrap_response(response_payload.model_dump(), confirm_request.node_id, envelope_used)
 
             except Exception as e:
                 self.logger.error(f"Error confirming delivery: {e}")
@@ -414,6 +585,33 @@ class KOICoordinator:
             except Exception as e:
                 self.logger.error(f"Error fetching bundle {rid}: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/bundles/fetch")
+        async def fetch_bundles_post(request: Dict[str, Any] = Body(...)):
+            """KOI-net compatible bundle fetch endpoint (POST with optional envelope)."""
+            try:
+                payload, source_node, envelope_used = _unwrap_envelope(request)
+                rids = payload.get("rids", []) if isinstance(payload, dict) else []
+                bundles = []
+                not_found = []
+                for rid in rids:
+                    bundle = self.koi_node.get_cached_bundle(rid)
+                    if bundle:
+                        bundle_payload = bundle.to_dict()
+                        bundle_payload["manifest"] = _manifest_to_koi_net(bundle.manifest)
+                        bundles.append(bundle_payload)
+                    else:
+                        not_found.append(rid)
+                response_payload = {
+                    "type": "bundles_payload",
+                    "bundles": bundles,
+                    "not_found": not_found,
+                    "deferred": []
+                }
+                return _wrap_response(response_payload, source_node, envelope_used)
+            except Exception as e:
+                self.logger.error(f"Error fetching bundles (POST): {e}")
+                raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.get("/manifests/fetch/{rid}", response_model=ManifestFetchResponse)
         async def fetch_manifest(rid: str):
@@ -430,6 +628,30 @@ class KOICoordinator:
             except Exception as e:
                 self.logger.error(f"Error fetching manifest {rid}: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/manifests/fetch")
+        async def fetch_manifests_post(request: Dict[str, Any] = Body(...)):
+            """KOI-net compatible manifest fetch endpoint (POST with optional envelope)."""
+            try:
+                payload, source_node, envelope_used = _unwrap_envelope(request)
+                rids = payload.get("rids", []) if isinstance(payload, dict) else []
+                manifests = []
+                not_found = []
+                for rid in rids:
+                    bundle = self.koi_node.get_cached_bundle(rid)
+                    if bundle and bundle.manifest:
+                        manifests.append(_manifest_to_koi_net(bundle.manifest))
+                    else:
+                        not_found.append(rid)
+                response_payload = {
+                    "type": "manifests_payload",
+                    "manifests": manifests,
+                    "not_found": not_found
+                }
+                return _wrap_response(response_payload, source_node, envelope_used)
+            except Exception as e:
+                self.logger.error(f"Error fetching manifests (POST): {e}")
+                raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.get("/rids/fetch", response_model=RIDSFetchResponse)
         async def fetch_rids():
@@ -444,6 +666,21 @@ class KOICoordinator:
                 
             except Exception as e:
                 self.logger.error(f"Error fetching RIDs: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
+        @self.app.post("/rids/fetch")
+        async def fetch_rids_post(request: Dict[str, Any] = Body(...)):
+            """KOI-net compatible RIDs fetch endpoint (POST with optional envelope)."""
+            try:
+                _payload, source_node, envelope_used = _unwrap_envelope(request)
+                rids = self.koi_node.get_cached_rids()
+                response_payload = {
+                    "type": "rids_payload",
+                    "rids": rids
+                }
+                return _wrap_response(response_payload, source_node, envelope_used)
+            except Exception as e:
+                self.logger.error(f"Error fetching RIDs (POST): {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
         @self.app.get("/health", response_model=HealthResponse)

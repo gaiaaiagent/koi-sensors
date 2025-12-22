@@ -41,6 +41,7 @@ class PersistentSensorState:
         # State data structures
         self.queues: Dict[str, Set[str]] = {}  # source -> set of item IDs to process
         self.processed: Set[str] = set()  # All processed item IDs
+        self.pending: Dict[str, Set[str]] = {}  # source -> items sent but not yet confirmed
         self.counters: Dict[str, int] = {}  # source -> count of items processed
         self.metadata: Dict[str, Any] = {}  # Additional metadata
 
@@ -66,6 +67,16 @@ class PersistentSensorState:
             # Restore processed set
             self.processed = set(data.get('processed', []))
 
+            # Restore pending set (support legacy list format)
+            pending_data = data.get('pending', {})
+            if isinstance(pending_data, dict):
+                self.pending = {
+                    source: set(items)
+                    for source, items in pending_data.items()
+                }
+            elif isinstance(pending_data, list):
+                self.pending = {"_legacy": set(pending_data)}
+
             # Restore counters
             self.counters = data.get('counters', {})
 
@@ -76,6 +87,7 @@ class PersistentSensorState:
             self.logger.info(
                 f"Loaded state: {len(self.queues)} sources, "
                 f"{len(self.processed)} processed, "
+                f"{sum(len(items) for items in self.pending.values())} pending, "
                 f"{total_queued} queued"
             )
 
@@ -91,6 +103,10 @@ class PersistentSensorState:
                     for source, items in self.queues.items()
                 },
                 'processed': list(self.processed),
+                'pending': {
+                    source: list(items)
+                    for source, items in self.pending.items()
+                },
                 'counters': self.counters,
                 'metadata': self.metadata,
                 'last_saved': datetime.now(timezone.utc).isoformat(),
@@ -107,6 +123,7 @@ class PersistentSensorState:
             self.logger.debug(
                 f"Saved state: {len(self.queues)} sources, "
                 f"{len(self.processed)} processed, "
+                f"{sum(len(items) for items in self.pending.values())} pending, "
                 f"{total_queued} queued"
             )
 
@@ -149,6 +166,8 @@ class PersistentSensorState:
             item_id: Item ID that was processed
         """
         self.processed.add(item_id)
+        if source in self.pending:
+            self.pending[source].discard(item_id)
 
         # Remove from queue if present
         if source in self.queues:
@@ -162,6 +181,27 @@ class PersistentSensorState:
     def is_processed(self, item_id: str) -> bool:
         """Check if item has already been processed"""
         return item_id in self.processed
+
+    def mark_pending(self, source: str, item_id: str):
+        """
+        Mark item as pending confirmation after emission.
+
+        Removes from queue to avoid immediate re-processing.
+        """
+        if source not in self.pending:
+            self.pending[source] = set()
+        self.pending[source].add(item_id)
+        if source in self.queues:
+            self.queues[source].discard(item_id)
+
+    def clear_pending(self, source: str, item_id: str):
+        """Remove item from pending set (used when send fails)."""
+        if source in self.pending:
+            self.pending[source].discard(item_id)
+
+    def is_pending(self, item_id: str) -> bool:
+        """Check if item is awaiting confirmation"""
+        return any(item_id in items for items in self.pending.values())
 
     def get_queue(self, source: str) -> Set[str]:
         """Get queue for a specific source"""
@@ -181,6 +221,8 @@ class PersistentSensorState:
             del self.queues[source]
         if source in self.counters:
             del self.counters[source]
+        if source in self.pending:
+            del self.pending[source]
         self.logger.info(f"Cleared state for source: {source}")
 
     def get_stats(self) -> Dict[str, Any]:
@@ -188,11 +230,13 @@ class PersistentSensorState:
         return {
             'sources': len(self.queues),
             'total_processed': len(self.processed),
+            'total_pending': sum(len(items) for items in self.pending.values()),
             'total_queued': sum(len(q) for q in self.queues.values()),
             'by_source': {
                 source: {
                     'queued': len(self.queues.get(source, set())),
-                    'processed': self.counters.get(source, 0)
+                    'processed': self.counters.get(source, 0),
+                    'pending': len(self.pending.get(source, set()))
                 }
                 for source in set(list(self.queues.keys()) + list(self.counters.keys()))
             }

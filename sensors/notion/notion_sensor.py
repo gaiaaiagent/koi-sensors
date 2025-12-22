@@ -1125,8 +1125,10 @@ class NotionKOISensor:
                             }
                         }
                         
+                        change["state_key"] = page_id
+                        change["state_source"] = self.workspace_id
+                        change["content_hash"] = content_hash
                         changes.append(change)
-                        self.state.metadata[f"hash_{page_id}"] = content_hash; self.state.mark_processed(self.workspace_id, page_id)
                         
                         print(f"   {'🆕' if event_type == 'NEW' else '🔄'} {title}")
                 
@@ -1145,6 +1147,10 @@ class NotionKOISensor:
         for i, change in enumerate(changes, 1):
             try:
                 print(f"   [{i}/{len(changes)}] Processing {change.get('title', 'Unknown')}...")
+                state_key = change.get("state_key") or change.get("metadata", {}).get("page_id") or change.get("rid")
+                state_source = change.get("state_source") or self.workspace_id
+                if state_key:
+                    self.state.mark_pending(state_source, state_key)
                 
                 # Create bundle from document
                 print(f"   Creating bundle for RID: {change.get('rid', 'unknown')}")
@@ -1156,17 +1162,29 @@ class NotionKOISensor:
                 print(f"   Emitting {event_type} event...")
                 
                 if event_type == "NEW":
-                    await self.koi_node.emit_new_event(bundle)
+                    success = await self.koi_node.emit_new_event(bundle)
                 elif event_type == "UPDATE":
-                    await self.koi_node.emit_update_event(bundle)
+                    success = await self.koi_node.emit_update_event(bundle)
                 else:
                     # For other event types like FORGET
-                    await self.koi_node.emit_forget_event(bundle.rid, reason="Content removed")
+                    success = await self.koi_node.emit_forget_event(bundle.rid, reason="Content removed")
                 
-                print(f"   ✅ Sent to coordinator: {change['rid']}")
+                if success:
+                    if state_key:
+                        self.state.mark_processed(state_source, state_key)
+                    content_hash = change.get("content_hash")
+                    if content_hash:
+                        self.state.metadata[f"hash_{state_key}"] = content_hash
+                    print(f"   ✅ Sent to coordinator: {change['rid']}")
+                else:
+                    if state_key:
+                        self.state.clear_pending(state_source, state_key)
+                    print(f"   ❌ Failed to send event: {change['rid']}")
                 
             except Exception as e:
                 import traceback
+                if state_key:
+                    self.state.clear_pending(state_source, state_key)
                 print(f"   ❌ Failed to send event: {e}")
                 print(f"   Traceback: {traceback.format_exc()}")
     

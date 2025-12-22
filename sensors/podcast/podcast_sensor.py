@@ -411,9 +411,15 @@ class PodcastKOISensor:
         if not self.state.is_processed(episode_id):
             # New episode - process it
             event_type = "NEW"
-            self.state.mark_processed(podcast_name, episode_id)
-            await self.emit_episode_event(rid, episode_data, content, "NEW")
-            print(f"   📄 NEW: {title[:50]}...")
+            self.state.mark_pending(podcast_name, episode_id)
+            success = await self.emit_episode_event(rid, episode_data, content, "NEW")
+            if success:
+                self.state.mark_processed(podcast_name, episode_id)
+                self.state.metadata[f"hash_{episode_id}"] = hashlib.sha256(content.encode()).hexdigest()
+                print(f"   📄 NEW: {title[:50]}...")
+            else:
+                self.state.clear_pending(podcast_name, episode_id)
+                event_type = "FAILED"
 
         else:
             # Episode already processed - check for updates
@@ -423,9 +429,15 @@ class PodcastKOISensor:
             if stored_hash != content_hash:
                 # Content changed - emit update
                 event_type = "UPDATE"
-                self.state.metadata[f"hash_{episode_id}"] = content_hash
-                await self.emit_episode_event(rid, episode_data, content, "UPDATE")
-                print(f"   🔄 UPDATE: {title[:50]}...")
+                self.state.mark_pending(podcast_name, episode_id)
+                success = await self.emit_episode_event(rid, episode_data, content, "UPDATE")
+                if success:
+                    self.state.metadata[f"hash_{episode_id}"] = content_hash
+                    self.state.mark_processed(podcast_name, episode_id)
+                    print(f"   🔄 UPDATE: {title[:50]}...")
+                else:
+                    self.state.clear_pending(podcast_name, episode_id)
+                    event_type = "FAILED"
 
             else:
                 # No change
@@ -470,7 +482,7 @@ class PodcastKOISensor:
         return "\n".join(content_parts)
     
     async def emit_episode_event(self, rid: PodcastEpisodeRID, episode_data: Dict[str, Any], 
-                                content: str, event_type: str):
+                                content: str, event_type: str) -> bool:
         """Emit KOI event for podcast episode"""
         try:
             # Parse publication date from created_at
@@ -518,12 +530,14 @@ class PodcastKOISensor:
             
             # Emit appropriate event
             if event_type == "NEW":
-                await self.koi_node.emit_new_event(bundle)
+                return await self.koi_node.emit_new_event(bundle)
             elif event_type == "UPDATE":
-                await self.koi_node.emit_update_event(bundle)
+                return await self.koi_node.emit_update_event(bundle)
+            return False
             
         except Exception as e:
             print(f"❌ Error emitting episode event: {e}")
+            return False
 
 
 # Test configuration matching server setup

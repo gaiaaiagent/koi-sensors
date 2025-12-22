@@ -388,9 +388,10 @@ class YouTubeKOISensor:
         """
         try:
             bundle = document_to_bundle(document)
-            await self.koi_node.emit_new_event(bundle)
-            logger.info(f"✅ Sent to KOI: {document['title']}")
-            return True
+            success = await self.koi_node.emit_new_event(bundle)
+            if success:
+                logger.info(f"✅ Sent to KOI: {document['title']}")
+            return success
 
         except Exception as e:
             logger.error(f"❌ Failed to send to KOI: {e}")
@@ -469,12 +470,15 @@ class YouTubeKOISensor:
                 return True
 
             # Send to KOI
+            self.state.mark_pending("youtube", video_id)
             success = await self.send_to_koi(document)
 
             # Only mark as processed AFTER successful send
             if success:
                 self.state.mark_processed("youtube", video_id)
                 self.state.save()
+            else:
+                self.state.clear_pending("youtube", video_id)
 
             return success
 

@@ -96,10 +96,14 @@ async def emit_page_with_transcript(page_id: str, transcript_file: str):
     )
 
     print("📡 Emitting to KOI coordinator...")
+    success = False
     await koi_node.start()  # Creates the aiohttp session
     try:
-        await koi_node.emit_new_event(bundle)
-        print("✅ Event emitted successfully!")
+        success = await koi_node.emit_new_event(bundle)
+        if success:
+            print("✅ Event emitted successfully!")
+        else:
+            print("❌ Event emission failed!")
     finally:
         await koi_node.stop()
 
@@ -107,10 +111,11 @@ async def emit_page_with_transcript(page_id: str, transcript_file: str):
     from sensors.notion.notion_sensor import PersistentSensorState
     state = PersistentSensorState('notion', Path(__file__).parent)
     content_hash = hashlib.sha256(content.encode()).hexdigest()
-    state.metadata[f"hash_{page_id}"] = content_hash
-    state.mark_processed("regentokenomics", page_id)
-    state.save()
-    print("💾 State updated")
+    if success:
+        state.metadata[f"hash_{page_id}"] = content_hash
+        state.mark_processed("regentokenomics", page_id)
+        state.save()
+        print("💾 State updated")
 
 
 if __name__ == "__main__":

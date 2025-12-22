@@ -12,10 +12,12 @@ The KOI sensor network is **Phase 1 Complete** of the 3-repository architecture.
 ```
 📡 koi-sensors (THIS REPO)
 ├── KOI Coordinator (Full Node) - Port 8000
-│   ├── /events/broadcast - Receive events from sensors
-│   ├── /events/poll - Distribute events to processors  
-│   ├── /bundles/fetch/{rid} - Retrieve cached bundles
-│   └── /health - Node status
+│   ├── POST /events/broadcast - Receive events from sensors
+│   ├── POST /events/poll - Distribute events to processors (KOI-net compliant)
+│   ├── POST /bundles/fetch - Retrieve cached bundles
+│   ├── POST /manifests/fetch - Retrieve manifests
+│   ├── POST /rids/fetch - List available RIDs
+│   └── GET /health - Node status
 ├── Sensor Adapters (Partial Nodes)
 │   ├── TwitterKOIAdapter - Wraps existing Twitter collector
 │   ├── DiscourseKOIAdapter - Wraps existing Discourse collector

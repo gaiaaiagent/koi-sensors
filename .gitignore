@@ -158,6 +158,7 @@ test_outputs/
 *_sensor_state.json.backup
 
 koi_protocol/coordinator/coordinator_dedup_state.json
+koi_protocol/coordinator/coordinator_event_queue.json
 *.pid
 coordinator_sensor_registry.json
 .alert-config

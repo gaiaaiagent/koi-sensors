@@ -172,7 +172,6 @@ class TelegramSensor:
             # Skip if already processed
             if self.state.is_processed(rid):
                 return None
-            self.state.mark_processed(self.config.channel_username, rid)
             
             # Create content
             content = f"""# {chat.title}
@@ -219,7 +218,6 @@ Members: {chat.get_member_count() if hasattr(chat, 'get_member_count') else 'Unk
             # Skip if already processed
             if self.state.is_processed(rid):
                 return None
-            self.state.mark_processed(self.config.channel_username, rid)
             
             # Extract content
             content = ""
@@ -290,36 +288,45 @@ Members: {chat.get_member_count() if hasattr(chat, 'get_member_count') else 'Unk
 
         for doc in documents:
             try:
+                rid = doc.get("rid", "unknown")
+                self.state.mark_pending(self.config.channel_username, rid)
+
                 # Create bundle from document
                 bundle = document_to_bundle(doc, source_node=self.config.source_sensor)
 
                 # Calculate content hash
                 content = doc.get('content', '')
                 content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
-                rid = doc.get('rid', 'unknown')
-
                 # Check if content changed
                 previous_hash = self.state.metadata.get(f"hash_{rid}")
 
                 if previous_hash and previous_hash != content_hash:
                     # Content changed - emit UPDATE
-                    await self.koi_node.emit_update_event(bundle)
-                    self.logger.info(f"UPDATE: {rid}")
-                    success_count += 1
+                    success = await self.koi_node.emit_update_event(bundle)
+                    if success:
+                        self.logger.info(f"UPDATE: {rid}")
+                        success_count += 1
                 elif not previous_hash:
                     # New content - emit NEW
-                    await self.koi_node.emit_new_event(bundle)
-                    self.logger.info(f"NEW: {rid}")
-                    success_count += 1
+                    success = await self.koi_node.emit_new_event(bundle)
+                    if success:
+                        self.logger.info(f"NEW: {rid}")
+                        success_count += 1
                 else:
                     # No change - skip
                     self.logger.debug(f"SKIP (no change): {rid}")
+                    self.state.mark_processed(self.config.channel_username, rid)
                     continue
 
-                # Store hash
-                self.state.metadata[f"hash_{rid}"] = content_hash
+                if success:
+                    # Store hash
+                    self.state.metadata[f"hash_{rid}"] = content_hash
+                    self.state.mark_processed(self.config.channel_username, rid)
+                else:
+                    self.state.clear_pending(self.config.channel_username, rid)
 
             except Exception as e:
+                self.state.clear_pending(self.config.channel_username, rid)
                 self.logger.error(f"Error sending document {doc.get('rid', 'unknown')}: {e}")
                 continue
 

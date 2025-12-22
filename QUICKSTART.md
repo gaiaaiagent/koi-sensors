@@ -88,8 +88,10 @@ python test_website_sensor.py
 
 ### Monitor Processing
 ```bash
-# Watch events being processed
-curl http://localhost:8000/events/poll
+# Watch events being processed (POST polling per KOI-net protocol)
+curl -X POST http://localhost:8000/events/poll \
+  -H "Content-Type: application/json" \
+  -d '{"type":"poll_events","node_id":"monitor","limit":10}'
 
 # Check database for new content
 psql -U postgres -d eliza_db -c "SELECT COUNT(*) FROM memories WHERE type='koi_document';"
