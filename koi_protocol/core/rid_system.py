@@ -1,6 +1,13 @@
 """
 KOI Protocol - Resource Identifier (RID) System
 Implementation of RIDs compliant with KOI-net specification
+
+Phase 0 (P0) Alignment: Updated to support:
+- ORNs with multiple colons (orn:namespace:reference)
+- URIs with ports (https://example.com:8080/path)
+- All valid URI schemes as RID contexts
+
+Reference: koi-research/docs/KOI_PROTOCOL_ALIGNMENT_REFERENCE.md
 """
 
 import hashlib
@@ -9,52 +16,111 @@ from typing import Optional, Dict, Any, Union
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
+# Import rid-lib for authoritative parsing (P0 alignment)
+try:
+    from rid_lib import RID as RidLibRID
+    from rid_lib.utils import parse_rid_string as ridlib_parse_rid_string
+    from rid_lib.consts import NAMESPACE_SCHEMES
+    RID_LIB_AVAILABLE = True
+except ImportError:
+    RID_LIB_AVAILABLE = False
+    RidLibRID = None
+    ridlib_parse_rid_string = None
+    NAMESPACE_SCHEMES = ('orn', 'urn')  # Fallback
+
+
+def _parse_rid_components(rid_string: str) -> tuple[str, str]:
+    """
+    Parse RID string into context and reference components.
+
+    Handles:
+    - ORNs: orn:namespace:reference -> context="orn:namespace", reference="reference"
+    - URNs: urn:namespace:reference -> context="urn:namespace", reference="reference"
+    - URIs: https://example.com:8080/path -> context="https", reference="//example.com:8080/path"
+    - Generic: context:reference -> context="context", reference="reference"
+    """
+    if not isinstance(rid_string, str) or ':' not in rid_string:
+        raise ValueError(f"Invalid RID format: '{rid_string}' - missing ':' separator")
+
+    # Find the scheme (first colon-delimited component)
+    first_colon = rid_string.find(':')
+    scheme = rid_string[:first_colon]
+
+    # Check if this is a namespace scheme (orn, urn)
+    if scheme.lower() in NAMESPACE_SCHEMES:
+        # For ORN/URN, the format is scheme:namespace:reference
+        # The context is scheme:namespace, and reference is everything after
+        remaining = rid_string[first_colon + 1:]
+        second_colon = remaining.find(':')
+
+        if second_colon < 0:
+            # Only scheme:namespace, no reference (e.g., orn:slack.message)
+            # This is incomplete but we'll handle it gracefully
+            context = rid_string
+            reference = ""
+        else:
+            namespace = remaining[:second_colon]
+            reference = remaining[second_colon + 1:]
+            context = f"{scheme}:{namespace}"
+
+        return context, reference
+    else:
+        # For URIs and generic RIDs, context is the scheme
+        # and reference is everything after the first colon
+        context = scheme
+        reference = rid_string[first_colon + 1:]
+        return context, reference
+
 
 class RID(ABC):
-    """Base Resource Identifier class following KOI-net specification"""
-    
+    """
+    Base Resource Identifier class following KOI-net specification.
+
+    P0 Alignment: Updated to properly parse ORNs and URIs per rid-lib v3.
+    All URIs can be valid RIDs (scheme:reference format).
+    """
+
     def __init__(self, context: str, reference: str):
         self.context = context
         self.reference = reference
         self._validate()
-    
+
     def _validate(self):
         """Validate RID format compliance"""
-        if not self.context or not self.reference:
-            raise ValueError("Context and reference cannot be empty")
-        
-        if ':' in self.reference:
-            raise ValueError("Reference cannot contain ':' character")
-        
-        # Validate context format (letters, numbers, hyphens, dots)
-        if not re.match(r'^[a-zA-Z0-9\-\.]+$', self.context):
-            raise ValueError("Invalid context format")
-    
+        if not self.context:
+            raise ValueError("Context cannot be empty")
+        # Reference can be empty for some edge cases, but we'll warn
+        # Note: We no longer reject ':' in reference - URIs with ports need this
+
     def to_string(self) -> str:
         """Convert RID to string representation"""
         return f"{self.context}:{self.reference}"
-    
+
     def __str__(self) -> str:
         return self.to_string()
-    
+
     def __repr__(self) -> str:
         return f"RID('{self.to_string()}')"
-    
+
     def __hash__(self) -> int:
         return hash(self.to_string())
-    
+
     def __eq__(self, other) -> bool:
         if not isinstance(other, RID):
             return False
         return self.to_string() == other.to_string()
-    
+
     @classmethod
     def parse(cls, rid_string: str) -> 'RID':
-        """Parse RID from string format"""
-        if ':' not in rid_string:
-            raise ValueError("Invalid RID format: missing ':' separator")
-        
-        context, reference = rid_string.split(':', 1)
+        """
+        Parse RID from string format.
+
+        P0 Alignment: Updated to handle:
+        - ORNs: orn:namespace:reference (reference can contain ':')
+        - URIs: https://example.com:8080/path (ports allowed)
+        - Generic: context:reference
+        """
+        context, reference = _parse_rid_components(rid_string)
         return GenericRID(context, reference)
 
 
