@@ -547,3 +547,53 @@ An hourly cron job detects stale sensors (no log activity in 2+ hours):
    ```bash
    sudo systemctl status koi-sensor@<sensor-name>
    ```
+
+### Pipeline Services (Added December 2025)
+
+Critical pipeline components also run as systemd services:
+
+| Service | Description | Port |
+|---------|-------------|------|
+| `koi-coordinator` | Event routing hub | 8005 |
+| `koi-event-bridge` | Event processing pipeline | 8100 |
+| `koi-forwarder` | Coordinator to Event Bridge forwarder | - |
+
+```bash
+# Check pipeline services
+sudo systemctl status koi-coordinator koi-event-bridge koi-forwarder
+
+# View logs
+journalctl -u koi-event-bridge -f
+
+# Restart pipeline
+sudo systemctl restart koi-coordinator koi-event-bridge koi-forwarder
+```
+
+### Event Reconciliation
+
+A reconciliation script detects content scraped by sensors but not stored in the database (e.g., if Event Bridge was down):
+
+```bash
+# Run reconciliation check
+/opt/projects/koi-sensors/scripts/reconcile-events.sh
+
+# Fix a specific missing topic
+/opt/projects/koi-sensors/scripts/reconcile-events.sh --fix discourse 565
+sudo systemctl restart koi-sensor@discourse
+```
+
+**Cron job**: Runs every 6 hours to detect gaps and send email alerts.
+
+```
+0 */6 * * * /opt/projects/koi-sensors/scripts/reconcile-events.sh
+```
+
+### Architecture: Data Flow Protection
+
+```
+Sensor ──► Coordinator ──► Event Bridge ──► Database
+   │                            │
+   └── State: "processed" ◄─────┘ (reconciliation checks this)
+```
+
+The reconciliation script compares sensor state files with database content to identify gaps where events were lost (e.g., Event Bridge was down when sensor broadcast events).
