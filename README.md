@@ -373,3 +373,177 @@ Part of the Joint Development Agreement between Regen Network and partner organi
 **Built with 🌱 for the Regen Network ecosystem**
 
 *The KOI Sensor Network: Real-time knowledge monitoring for a regenerative future.*
+## 🛡️ Production Operations & Monitoring
+
+### Systemd Service Management (Added December 2025)
+
+All sensors now run as **systemd services** with automatic restart and failure alerting.
+
+#### Service Architecture
+- **Template Unit**:  - single template for all sensors
+- **Alert Service**:  - triggered on failures
+- **Wrapper Script**:  - handles venv and environment
+
+#### Quick Commands
+```bash
+# Check status of all sensors
+systemctl list-units 'koi-sensor@*'
+
+# Check specific sensor
+sudo systemctl status koi-sensor@discourse
+
+# View logs (real-time)
+journalctl -u koi-sensor@discourse -f
+
+# Restart a sensor
+sudo systemctl restart koi-sensor@discourse
+
+# Stop a sensor
+sudo systemctl stop koi-sensor@discourse
+
+# Start a new sensor
+sudo systemctl enable --now koi-sensor@gitlab
+
+# Disable a sensor from boot
+sudo systemctl disable koi-sensor@discourse
+```
+
+#### Currently Enabled Sensors
+- `koi-sensor@discourse` - Forum monitoring
+- `koi-sensor@github` - Repository monitoring
+- `koi-sensor@telegram` - Channel monitoring
+- `koi-sensor@twitter` - Social media monitoring
+- `koi-sensor@websites` - Website monitoring
+
+### Email Alerting System
+
+When a sensor fails repeatedly (5 times in 10 minutes), systemd stops retrying and sends an email alert.
+
+#### Configuration Files
+| File | Purpose |
+|------|---------|
+| `~/.msmtprc` | SMTP credentials (Mailjet) |
+| `.alert-config` | Alert recipient email |
+| `scripts/send-failure-alert.sh` | Alert email script |
+| `scripts/health-check.sh` | Hourly health check |
+
+#### Restart Behavior
+- **Restart Policy**: `on-failure` with 30-second delay
+- **Failure Limit**: 5 failures within 10 minutes
+- **On Exceed Limit**: Stops retrying, triggers `OnFailure=` alert
+
+### Health Check Cron
+
+An hourly cron job detects stale sensors (no log activity in 2+ hours):
+```
+0 * * * * /opt/projects/koi-sensors/scripts/health-check.sh
+```
+
+### Logs
+
+| Log Type | Location |
+|----------|----------|
+| Sensor logs | `sensors/<name>/<name>_sensor.log` |
+| Systemd logs | `journalctl -u koi-sensor@<name>` |
+| Alert log | `logs/alerts.log` |
+| SMTP log | `logs/msmtp.log` |
+| Health check | `logs/alerts.log` |
+
+### Adding a New Sensor to Systemd
+
+1. Ensure the sensor has a Python script matching the pattern in `scripts/run-sensor.sh`
+2. Enable and start:
+   ```bash
+   sudo systemctl enable --now koi-sensor@<sensor-name>
+   ```
+3. Verify:
+   ```bash
+   sudo systemctl status koi-sensor@<sensor-name>
+   ```
+
+## 🛡️ Production Operations & Monitoring
+
+### Systemd Service Management (Added December 2025)
+
+All sensors now run as **systemd services** with automatic restart and failure alerting.
+
+#### Service Architecture
+- **Template Unit**: `/etc/systemd/system/koi-sensor@.service` - single template for all sensors
+- **Alert Service**: `/etc/systemd/system/koi-sensor-alert@.service` - triggered on failures
+- **Wrapper Script**: `/opt/projects/koi-sensors/scripts/run-sensor.sh` - handles venv and environment
+
+#### Quick Commands
+```bash
+# Check status of all sensors
+systemctl list-units 'koi-sensor@*'
+
+# Check specific sensor
+sudo systemctl status koi-sensor@discourse
+
+# View logs (real-time)
+journalctl -u koi-sensor@discourse -f
+
+# Restart a sensor
+sudo systemctl restart koi-sensor@discourse
+
+# Stop a sensor
+sudo systemctl stop koi-sensor@discourse
+
+# Start a new sensor
+sudo systemctl enable --now koi-sensor@gitlab
+
+# Disable a sensor from boot
+sudo systemctl disable koi-sensor@discourse
+```
+
+#### Currently Enabled Sensors
+- `koi-sensor@discourse` - Forum monitoring
+- `koi-sensor@github` - Repository monitoring  
+- `koi-sensor@telegram` - Channel monitoring
+- `koi-sensor@twitter` - Social media monitoring
+- `koi-sensor@websites` - Website monitoring
+
+### Email Alerting System
+
+When a sensor fails repeatedly (5 times in 10 minutes), systemd stops retrying and sends an email alert.
+
+#### Configuration Files
+| File | Purpose |
+|------|---------|
+| `~/.msmtprc` | SMTP credentials (Mailjet) |
+| `.alert-config` | Alert recipient email |
+| `scripts/send-failure-alert.sh` | Alert email script |
+| `scripts/health-check.sh` | Hourly health check |
+
+#### Restart Behavior
+- **Restart Policy**: `on-failure` with 30-second delay
+- **Failure Limit**: 5 failures within 10 minutes
+- **On Exceed Limit**: Stops retrying, triggers `OnFailure=` alert
+
+### Health Check Cron
+
+An hourly cron job detects stale sensors (no log activity in 2+ hours):
+```
+0 * * * * /opt/projects/koi-sensors/scripts/health-check.sh
+```
+
+### Logs
+
+| Log Type | Location |
+|----------|----------|
+| Sensor logs | `sensors/<name>/<name>_sensor.log` |
+| Systemd logs | `journalctl -u koi-sensor@<name>` |
+| Alert log | `logs/alerts.log` |
+| SMTP log | `logs/msmtp.log` |
+
+### Adding a New Sensor to Systemd
+
+1. Ensure the sensor has a Python script matching the pattern in `scripts/run-sensor.sh`
+2. Enable and start:
+   ```bash
+   sudo systemctl enable --now koi-sensor@<sensor-name>
+   ```
+3. Verify:
+   ```bash
+   sudo systemctl status koi-sensor@<sensor-name>
+   ```

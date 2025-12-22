@@ -1,0 +1,62 @@
+# msmtp configuration template for KOI alerts
+# Copy this to ~/.msmtprc or /etc/msmtprc and fill in credentials
+# After editing, run: chmod 600 ~/.msmtprc
+
+# Default settings
+defaults
+auth           on
+tls            on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile        /opt/projects/koi-sensors/logs/msmtp.log
+
+# ============================================
+# OPTION 1: Gmail with App Password
+# ============================================
+# 1. Enable 2FA on your Google account
+# 2. Go to https://myaccount.google.com/apppasswords
+# 3. Create an app password for "Mail"
+# 4. Use that 16-character password below
+
+#account gmail
+#host smtp.gmail.com
+#port 587
+#from your-email@gmail.com
+#user your-email@gmail.com
+#password YOUR_16_CHAR_APP_PASSWORD
+
+# ============================================
+# OPTION 2: SendGrid (Free tier: 100 emails/day)
+# ============================================
+# 1. Sign up at https://sendgrid.com
+# 2. Create an API key with Mail Send permission
+# 3. Use "apikey" as username, your API key as password
+
+#account sendgrid
+#host smtp.sendgrid.net
+#port 587
+#from koi-alerts@your-domain.com
+#user apikey
+#password YOUR_SENDGRID_API_KEY
+
+# ============================================
+# OPTION 3: Mailgun (Free tier: 5000 emails/month)
+# ============================================
+#account mailgun
+#host smtp.mailgun.org
+#port 587
+#from koi-alerts@your-mailgun-domain.com
+#user postmaster@your-mailgun-domain.com
+#password YOUR_MAILGUN_SMTP_PASSWORD
+
+# ============================================
+# OPTION 4: Amazon SES
+# ============================================
+#account ses
+#host email-smtp.us-east-1.amazonaws.com
+#port 587
+#from koi-alerts@your-verified-domain.com
+#user YOUR_SES_SMTP_USERNAME
+#password YOUR_SES_SMTP_PASSWORD
+
+# Set default account (uncomment one of the above and this line)
+#account default : gmail

@@ -160,3 +160,5 @@ test_outputs/
 koi_protocol/coordinator/coordinator_dedup_state.json
 *.pid
 coordinator_sensor_registry.json
+.alert-config
+.sensor_pids
