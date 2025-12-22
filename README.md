@@ -432,11 +432,14 @@ When a sensor fails repeatedly (5 times in 10 minutes), systemd stops retrying a
 - **Failure Limit**: 5 failures within 10 minutes
 - **On Exceed Limit**: Stops retrying, triggers `OnFailure=` alert
 
-### Health Check Cron
+### Health Check Timer
 
-An hourly cron job detects stale sensors (no log activity in 2+ hours):
-```
-0 * * * * /opt/projects/koi-sensors/scripts/health-check.sh
+An hourly systemd timer detects stale sensors (no log activity in 2+ hours):
+```bash
+sudo cp systemd/koi-sensor-health-check.service /etc/systemd/system/
+sudo cp systemd/koi-sensor-health-check.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now koi-sensor-health-check.timer
 ```
 
 ### Logs
@@ -582,10 +585,13 @@ A reconciliation script detects content scraped by sensors but not stored in the
 sudo systemctl restart koi-sensor@discourse
 ```
 
-**Cron job**: Runs every 6 hours to detect gaps and send email alerts.
+**Systemd timer**: Runs every 6 hours to detect gaps and send email alerts.
 
-```
-0 */6 * * * /opt/projects/koi-sensors/scripts/reconcile-events.sh
+```bash
+sudo cp systemd/koi-reconcile-events.service /etc/systemd/system/
+sudo cp systemd/koi-reconcile-events.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now koi-reconcile-events.timer
 ```
 
 ### Architecture: Data Flow Protection

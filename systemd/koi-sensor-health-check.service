@@ -1,0 +1,14 @@
+[Unit]
+Description=KOI Sensor Health Check
+After=network.target
+
+[Service]
+Type=oneshot
+User=darren
+Group=gaia-devs
+WorkingDirectory=/opt/projects/koi-sensors
+EnvironmentFile=-/opt/projects/koi-sensors/.alert-config
+ExecStart=/opt/projects/koi-sensors/scripts/health-check.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run KOI Sensor Health Check hourly
+
+[Timer]
+OnBootSec=10m
+OnUnitActiveSec=1h
+AccuracySec=5m
+Unit=koi-sensor-health-check.service
+
+[Install]
+WantedBy=timers.target

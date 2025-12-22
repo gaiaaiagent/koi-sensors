@@ -1,0 +1,11 @@
+[Unit]
+Description=Run KOI Event Reconciliation every 6 hours
+
+[Timer]
+OnBootSec=15m
+OnUnitActiveSec=6h
+AccuracySec=10m
+Unit=koi-reconcile-events.service
+
+[Install]
+WantedBy=timers.target
