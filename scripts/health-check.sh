@@ -60,7 +60,7 @@ if [ ${#STALE_SENSORS[@]} -gt 0 ]; then
     if [ "$HAS_MSMTP" = true ] && [ -n "$ALERT_EMAIL" ]; then
         cat << EOF | msmtp "$ALERT_EMAIL"
 Subject: [KOI WARNING] Stale Sensors Detected on $HOSTNAME
-From: koi-alerts@$HOSTNAME
+From: zaldarren@gmail.com
 To: $ALERT_EMAIL
 
 ========================================

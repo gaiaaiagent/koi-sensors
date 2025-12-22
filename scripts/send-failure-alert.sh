@@ -33,7 +33,7 @@ RECENT_LOGS=$(journalctl -u koi-sensor@$SENSOR -n 100 --no-pager 2>/dev/null || 
 # Send email
 cat << EOF | msmtp "$ALERT_EMAIL"
 Subject: [KOI ALERT] Sensor Failure: $SENSOR on $HOSTNAME
-From: koi-alerts@$HOSTNAME
+From: zaldarren@gmail.com
 To: $ALERT_EMAIL
 Content-Type: text/plain; charset=utf-8
 
