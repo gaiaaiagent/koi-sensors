@@ -3,6 +3,9 @@ KOI SignedEnvelope utilities (minimal, protocol-aligned).
 
 Supports signing/verifying envelopes using ECDSA P-256 with raw r||s base64
 signatures to match KOI-net reference behavior.
+
+P1b: Uses Pydantic model_dump_json(exclude_none=True) for serialization
+to match KOI-net's UnsignedEnvelope.sign_with() behavior exactly.
 """
 
 from __future__ import annotations
@@ -11,6 +14,8 @@ import json
 import os
 from base64 import b64decode, b64encode
 from typing import Any, Dict, Optional, Tuple
+
+from pydantic import BaseModel, ConfigDict
 
 try:
     from cryptography.exceptions import InvalidSignature
@@ -31,17 +36,67 @@ class EnvelopeError(Exception):
     """Raised when envelope validation fails."""
 
 
+# ============================================================================
+# Pydantic models matching KOI-net protocol/envelope.py
+# CRITICAL: exclude_none=True ensures FORGET events (manifest=None) serialize
+# correctly - omitting the field rather than emitting "manifest": null
+# ============================================================================
+
+class UnsignedEnvelope(BaseModel):
+    """Unsigned envelope for signature computation.
+
+    Matches KOI-net's UnsignedEnvelope schema exactly.
+    Uses exclude_none=True to omit None fields (critical for FORGET events).
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    payload: Dict[str, Any]
+    source_node: str
+    target_node: str
+
+
+class SignedEnvelope(BaseModel):
+    """Signed envelope for wire transmission.
+
+    Matches KOI-net's SignedEnvelope schema exactly.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    payload: Dict[str, Any]
+    source_node: str
+    target_node: str
+    signature: str
+
+
+class ErrorResponse(BaseModel):
+    """KOI-net error response model.
+
+    MUST be used instead of FastAPI's default {"detail": ...} format
+    for /koi-net/* endpoints to maintain interoperability.
+    """
+    error: str
+    detail: Optional[str] = None
+
+
 def _normalize_pem(pem: str) -> str:
     return pem.replace("\\n", "\n")
 
 
 def _unsigned_envelope_bytes(payload: Dict[str, Any], source_node: str, target_node: str) -> bytes:
-    envelope = {
-        "payload": payload,
-        "source_node": source_node,
-        "target_node": target_node
-    }
-    return json.dumps(envelope, separators=(",", ":"), ensure_ascii=False).encode()
+    """Compute the bytes to sign/verify using Pydantic serialization.
+
+    CRITICAL: Uses model_dump_json(exclude_none=True) to match KOI-net exactly.
+    This ensures:
+    - Field ordering matches Pydantic's default (alphabetical by model definition)
+    - None fields are omitted, not serialized as null
+    - Consistent serialization for signature verification
+    """
+    unsigned = UnsignedEnvelope(
+        payload=payload,
+        source_node=source_node,
+        target_node=target_node
+    )
+    return unsigned.model_dump_json(exclude_none=True).encode("utf-8")
 
 
 def _der_to_raw_signature(der_signature: bytes) -> bytes:
@@ -166,3 +221,40 @@ def verify_envelope(
         raise EnvelopeError("Invalid envelope signature") from exc
 
     return envelope["payload"], source_node
+
+
+def verify_envelope_with_key(envelope: Dict[str, Any], public_key) -> bool:
+    """Verify envelope signature using a single public key.
+
+    This matches KOI-net's SignedEnvelope.verify_with() pattern for simpler
+    use cases where the public key is already known.
+
+    Args:
+        envelope: The signed envelope dict
+        public_key: ECDSA P-256 public key object
+
+    Returns:
+        True if signature is valid
+
+    Raises:
+        EnvelopeError: If signature verification fails
+    """
+    if not _CRYPTO_AVAILABLE:
+        raise EnvelopeError("cryptography is required for verifying envelopes")
+
+    source_node = envelope.get("source_node")
+    target_node = envelope.get("target_node")
+    signature = envelope.get("signature")
+
+    if not source_node or not target_node or not signature:
+        raise EnvelopeError("Envelope missing required fields")
+
+    message = _unsigned_envelope_bytes(envelope["payload"], source_node, target_node)
+    raw_signature = b64decode(signature)
+    der_signature = _raw_to_der_signature(raw_signature)
+
+    try:
+        public_key.verify(der_signature, message, ec.ECDSA(hashes.SHA256()))
+        return True
+    except InvalidSignature as exc:
+        raise EnvelopeError("Invalid envelope signature") from exc

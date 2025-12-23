@@ -10,9 +10,11 @@ import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict
+from typing import Literal
 import uvicorn
 import logging
 import httpx
@@ -26,6 +28,7 @@ from ..integration.koi_collector_adapter import (
 )
 from shared.koi_envelope import (
     EnvelopeError,
+    ErrorResponse,
     load_private_key_from_env,
     load_public_keys_from_env,
     sign_envelope,
@@ -129,8 +132,58 @@ class KoiNetWireEvent(BaseModel):
 
 class KoiNetEventsPayloadResponse(BaseModel):
     """Strict KOI-net EventsPayload response model."""
-    type: str = "events_payload"
+    type: Literal["events_payload"] = "events_payload"
     events: List[KoiNetWireEvent]
+
+
+# ============================================================================
+# P1b KOI-net Strict Request/Response Models (SignedEnvelope interop)
+# Reference: koi-research/docs/KOI_PROTOCOL_ALIGNMENT_REFERENCE.md
+# ============================================================================
+
+class KoiNetFetchRidsRequest(BaseModel):
+    """Strict KOI-net FetchRids request model."""
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["fetch_rids"] = "fetch_rids"
+
+
+class KoiNetFetchManifestsRequest(BaseModel):
+    """Strict KOI-net FetchManifests request model."""
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["fetch_manifests"] = "fetch_manifests"
+    rids: List[str]
+
+
+class KoiNetFetchBundlesRequest(BaseModel):
+    """Strict KOI-net FetchBundles request model."""
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["fetch_bundles"] = "fetch_bundles"
+    rids: List[str]
+
+
+class KoiNetEventsPayloadRequest(BaseModel):
+    """Strict KOI-net EventsPayload request model (for broadcast)."""
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["events_payload"] = "events_payload"
+    events: List[Dict[str, Any]]
+
+
+class KoiNetRidsPayloadResponse(BaseModel):
+    """Strict KOI-net RidsPayload response model."""
+    type: Literal["rids_payload"] = "rids_payload"
+    rids: List[str]
+
+
+class KoiNetManifestsPayloadResponse(BaseModel):
+    """Strict KOI-net ManifestsPayload response model."""
+    type: Literal["manifests_payload"] = "manifests_payload"
+    manifests: List[Dict[str, Any]]
+
+
+class KoiNetBundlesPayloadResponse(BaseModel):
+    """Strict KOI-net BundlesPayload response model."""
+    type: Literal["bundles_payload"] = "bundles_payload"
+    bundles: List[Dict[str, Any]]
 
 
 def _timestamp_to_z_format(ts: str) -> str:
@@ -682,34 +735,184 @@ class KOICoordinator:
                 raise HTTPException(status_code=500, detail=str(e))
 
         # ====================================================================
-        # P1a: Strict KOI-net interop surface (/koi-net/*)
+        # P1b: Strict KOI-net interop surface (/koi-net/*) with SignedEnvelope
         # Reference: koi-research/docs/KOI_PROTOCOL_ALIGNMENT_REFERENCE.md
+        #
+        # Key differences from internal endpoints:
+        # - Uses ErrorResponse (not HTTPException) for KOI-net interop
+        # - Supports SignedEnvelope with signature verification
+        # - Signed request → signed response required
+        # - Schema-exact wire models only
         # ====================================================================
 
-        @self.app.post("/koi-net/events/poll", response_model=KoiNetEventsPayloadResponse)
-        async def koi_net_poll_events(request: KoiNetPollEventsRequest = Body(...)):
-            """Strict KOI-net events poll endpoint (P1a Level 2 interop).
+        async def _handle_koi_net_envelope(
+            request: Request,
+            process_fn,
+            endpoint_name: str
+        ):
+            """Generic handler for /koi-net/* endpoints with SignedEnvelope support.
 
-            Requirements:
-            - Request: {"type": "poll_events", "limit": 0}
-            - Response: {"type": "events_payload", "events": [...]}
-            - Wire Event: {rid, event_type, manifest, contents} only
-            - Wire Manifest: {rid, timestamp, sha256_hash} only
-            - Timestamp: Z suffix (not +00:00)
-            - Hash: Recomputed via rid-lib JCS from contents
-            - Queue: Read-only (does NOT mark events as delivered)
+            Args:
+                request: FastAPI Request object
+                process_fn: Function(payload) -> response_payload (dict or Pydantic model)
+                endpoint_name: Endpoint name for logging
 
-            This endpoint is designed for external KOI-net node interoperability.
-            Internal clients should use /events/poll for delivery tracking.
+            Returns:
+                JSONResponse with signed or unsigned payload
             """
             try:
-                # Determine limit (0 means no limit, use reasonable default)
-                max_events = request.limit if request.limit > 0 else 100
+                body = await request.json()
+            except Exception:
+                return JSONResponse(
+                    status_code=400,
+                    content=ErrorResponse(
+                        error="invalid_json",
+                        detail="Request body is not valid JSON"
+                    ).model_dump()
+                )
 
-                # Read-only: use get_queued_events() which doesn't mark as delivered
+            # Check if request is a SignedEnvelope
+            is_signed = (
+                isinstance(body, dict) and
+                "signature" in body and
+                "payload" in body and
+                "source_node" in body and
+                "target_node" in body
+            )
+
+            if is_signed:
+                source_node = body.get("source_node")
+                target_node = body.get("target_node")
+
+                # Validate target_node matches our node_id
+                if target_node != self.koi_node.node_id:
+                    self.logger.warning(
+                        f"KOI-net {endpoint_name}: target_node mismatch "
+                        f"(got {target_node}, expected {self.koi_node.node_id})"
+                    )
+                    return JSONResponse(
+                        status_code=400,
+                        content=ErrorResponse(
+                            error="invalid_target",
+                            detail=f"target_node {target_node} does not match {self.koi_node.node_id}"
+                        ).model_dump()
+                    )
+
+                # Get public key for source_node
+                public_key = self.envelope_public_keys.get(source_node)
+                if not public_key:
+                    self.logger.warning(
+                        f"KOI-net {endpoint_name}: no public key for {source_node}"
+                    )
+                    return JSONResponse(
+                        status_code=400,
+                        content=ErrorResponse(
+                            error="unknown_source",
+                            detail=f"No public key for {source_node}"
+                        ).model_dump()
+                    )
+
+                # Verify signature
+                try:
+                    verify_envelope(
+                        body,
+                        self.envelope_public_keys,
+                        expected_target=self.koi_node.node_id,
+                        enforce_target=True
+                    )
+                except EnvelopeError as exc:
+                    self.logger.warning(
+                        f"KOI-net {endpoint_name}: signature verification failed - {exc}"
+                    )
+                    return JSONResponse(
+                        status_code=400,
+                        content=ErrorResponse(
+                            error="invalid_signature",
+                            detail="Signature verification failed"
+                        ).model_dump()
+                    )
+
+                payload = body["payload"]
+            else:
+                payload = body
+                source_node = None
+
+            # Process the request
+            try:
+                response_payload = process_fn(payload)
+                if hasattr(response_payload, "model_dump"):
+                    response_dict = response_payload.model_dump(exclude_none=True)
+                else:
+                    response_dict = response_payload
+            except ValueError as exc:
+                return JSONResponse(
+                    status_code=400,
+                    content=ErrorResponse(
+                        error="invalid_request",
+                        detail=str(exc)
+                    ).model_dump()
+                )
+            except Exception as exc:
+                self.logger.error(f"KOI-net {endpoint_name}: processing error - {exc}")
+                return JSONResponse(
+                    status_code=500,
+                    content=ErrorResponse(
+                        error="internal_error",
+                        detail=str(exc)
+                    ).model_dump()
+                )
+
+            # Sign response if request was signed
+            if is_signed:
+                if not self.envelope_private_key:
+                    self.logger.error(
+                        f"KOI-net {endpoint_name}: cannot sign response - no private key"
+                    )
+                    return JSONResponse(
+                        status_code=500,
+                        content=ErrorResponse(
+                            error="signing_unavailable",
+                            detail="Cannot sign response: no private key configured"
+                        ).model_dump()
+                    )
+                signed_response = sign_envelope(
+                    payload=response_dict,
+                    source_node=self.koi_node.node_id,
+                    target_node=source_node,
+                    private_key=self.envelope_private_key
+                )
+                return JSONResponse(content=signed_response)
+            else:
+                return JSONResponse(content=response_dict)
+
+        @self.app.post("/koi-net/events/poll")
+        async def koi_net_poll_events(request: Request):
+            """Strict KOI-net events poll endpoint (P1b Level 3 interop).
+
+            Request (unsigned or SignedEnvelope):
+                {"type": "poll_events", "limit": 0}
+
+            Response:
+                {"type": "events_payload", "events": [...]}
+
+            Wire Event: {rid, event_type, manifest, contents} only
+            Wire Manifest: {rid, timestamp, sha256_hash} only
+            Timestamp: Z suffix (not +00:00)
+            Hash: Recomputed via rid-lib JCS from contents
+            Queue: Read-only (does NOT mark events as delivered)
+
+            For signed requests, response is also signed.
+            """
+            def process_poll(payload: dict):
+                # Validate request type
+                req_type = payload.get("type", "poll_events")
+                if req_type != "poll_events":
+                    raise ValueError(f"Expected type='poll_events', got '{req_type}'")
+
+                limit = payload.get("limit", 0)
+                max_events = limit if isinstance(limit, int) and limit > 0 else 100
+
                 internal_events = self.koi_node.get_queued_events(max_events)
-
-                # Transform to strict KOI-net wire format
                 wire_events = [_to_koi_net_wire_event(event) for event in internal_events]
 
                 self.logger.info(f"KOI-net poll: returning {len(wire_events)} events (read-only)")
@@ -719,9 +922,192 @@ class KOICoordinator:
                     events=wire_events
                 )
 
-            except Exception as e:
-                self.logger.error(f"Error in /koi-net/events/poll: {e}")
-                raise HTTPException(status_code=500, detail=str(e))
+            return await _handle_koi_net_envelope(request, process_poll, "events/poll")
+
+        @self.app.post("/koi-net/events/broadcast")
+        async def koi_net_broadcast_events(request: Request):
+            """Strict KOI-net events broadcast endpoint (P1b Level 3 interop).
+
+            Request (unsigned or SignedEnvelope):
+                {"type": "events_payload", "events": [...]}
+
+            Response:
+                Empty on success (HTTP 200)
+                ErrorResponse on failure
+
+            Accepts events from external KOI-net nodes.
+            For signed requests, response is also signed.
+            """
+            def process_broadcast(payload: dict):
+                req_type = payload.get("type", "events_payload")
+                if req_type != "events_payload":
+                    raise ValueError(f"Expected type='events_payload', got '{req_type}'")
+
+                events = payload.get("events", [])
+                if not isinstance(events, list):
+                    raise ValueError("events must be a list")
+
+                processed = 0
+                for event_data in events:
+                    if not isinstance(event_data, dict):
+                        continue
+
+                    # Convert KOI-net event format to internal format
+                    rid = event_data.get("rid")
+                    event_type = event_data.get("event_type", "NEW")
+                    manifest = event_data.get("manifest")
+                    contents = event_data.get("contents")
+
+                    if not rid:
+                        continue
+
+                    # Build internal event
+                    internal_event_data = {
+                        "event_type": event_type,
+                        "rid": rid,
+                        "timestamp": manifest.get("timestamp") if manifest else datetime.now(timezone.utc).isoformat(),
+                        "source_node": "koi-net-external"
+                    }
+
+                    if manifest or contents:
+                        internal_event_data["bundle"] = {
+                            "rid": rid,
+                            "manifest": manifest or {},
+                            "contents": contents or {}
+                        }
+
+                    try:
+                        event = KOIEvent.from_dict(internal_event_data)
+                        # Store in cache and queue for internal processing
+                        asyncio.create_task(self.koi_node.handle_event(event))
+                        processed += 1
+                    except Exception as e:
+                        self.logger.warning(f"Failed to process event {rid}: {e}")
+
+                self.logger.info(f"KOI-net broadcast: processed {processed}/{len(events)} events")
+
+                # Return empty success response (KOI-net convention)
+                return {"status": "ok", "processed": processed}
+
+            return await _handle_koi_net_envelope(request, process_broadcast, "events/broadcast")
+
+        @self.app.post("/koi-net/rids/fetch")
+        async def koi_net_fetch_rids(request: Request):
+            """Strict KOI-net RIDs fetch endpoint (P1b Level 3 interop).
+
+            Request (unsigned or SignedEnvelope):
+                {"type": "fetch_rids"}
+
+            Response:
+                {"type": "rids_payload", "rids": [...]}
+
+            For signed requests, response is also signed.
+            """
+            def process_fetch_rids(payload: dict):
+                req_type = payload.get("type", "fetch_rids")
+                if req_type != "fetch_rids":
+                    raise ValueError(f"Expected type='fetch_rids', got '{req_type}'")
+
+                rids = self.koi_node.get_cached_rids()
+
+                return KoiNetRidsPayloadResponse(
+                    type="rids_payload",
+                    rids=rids
+                )
+
+            return await _handle_koi_net_envelope(request, process_fetch_rids, "rids/fetch")
+
+        @self.app.post("/koi-net/manifests/fetch")
+        async def koi_net_fetch_manifests(request: Request):
+            """Strict KOI-net manifests fetch endpoint (P1b Level 3 interop).
+
+            Request (unsigned or SignedEnvelope):
+                {"type": "fetch_manifests", "rids": [...]}
+
+            Response:
+                {"type": "manifests_payload", "manifests": [...]}
+
+            Wire Manifest: {rid, timestamp, sha256_hash} only
+            Timestamp: Z suffix (not +00:00)
+
+            For signed requests, response is also signed.
+            """
+            def process_fetch_manifests(payload: dict):
+                req_type = payload.get("type", "fetch_manifests")
+                if req_type != "fetch_manifests":
+                    raise ValueError(f"Expected type='fetch_manifests', got '{req_type}'")
+
+                rids = payload.get("rids", [])
+                if not isinstance(rids, list):
+                    raise ValueError("rids must be a list")
+
+                manifests = []
+                for rid in rids:
+                    bundle = self.koi_node.get_cached_bundle(rid)
+                    if bundle and bundle.manifest:
+                        # Return strict KOI-net wire manifest format
+                        ts = _timestamp_to_z_format(bundle.manifest.timestamp)
+                        sha256_hash = bundle.manifest.sha256_hash if hasattr(bundle.manifest, 'sha256_hash') else bundle.manifest.content_hash
+                        manifests.append({
+                            "rid": rid,
+                            "timestamp": ts,
+                            "sha256_hash": sha256_hash
+                        })
+
+                return KoiNetManifestsPayloadResponse(
+                    type="manifests_payload",
+                    manifests=manifests
+                )
+
+            return await _handle_koi_net_envelope(request, process_fetch_manifests, "manifests/fetch")
+
+        @self.app.post("/koi-net/bundles/fetch")
+        async def koi_net_fetch_bundles(request: Request):
+            """Strict KOI-net bundles fetch endpoint (P1b Level 3 interop).
+
+            Request (unsigned or SignedEnvelope):
+                {"type": "fetch_bundles", "rids": [...]}
+
+            Response:
+                {"type": "bundles_payload", "bundles": [...]}
+
+            Bundle: {manifest: {...}, contents: {...}}
+            Wire Manifest: {rid, timestamp, sha256_hash} only
+            Timestamp: Z suffix (not +00:00)
+
+            For signed requests, response is also signed.
+            """
+            def process_fetch_bundles(payload: dict):
+                req_type = payload.get("type", "fetch_bundles")
+                if req_type != "fetch_bundles":
+                    raise ValueError(f"Expected type='fetch_bundles', got '{req_type}'")
+
+                rids = payload.get("rids", [])
+                if not isinstance(rids, list):
+                    raise ValueError("rids must be a list")
+
+                bundles = []
+                for rid in rids:
+                    bundle = self.koi_node.get_cached_bundle(rid)
+                    if bundle:
+                        # Return strict KOI-net wire bundle format
+                        ts = _timestamp_to_z_format(bundle.manifest.timestamp)
+                        sha256_hash = bundle.manifest.sha256_hash if hasattr(bundle.manifest, 'sha256_hash') else bundle.manifest.content_hash
+                        bundles.append({
+                            "manifest": {
+                                "rid": rid,
+                                "timestamp": ts,
+                                "sha256_hash": sha256_hash
+                            },
+                            "contents": bundle.contents
+                        })
+
+                return KoiNetBundlesPayloadResponse(
+                    type="bundles_payload",
+                    bundles=bundles
+                )
+
+            return await _handle_koi_net_envelope(request, process_fetch_bundles, "bundles/fetch")
 
         @self.app.get("/bundles/fetch/{rid}", response_model=BundleFetchResponse)
         async def fetch_bundle(rid: str):
