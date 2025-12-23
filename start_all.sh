@@ -33,13 +33,13 @@ declare -a SENSORS=(
     "websites"
     "github"
     "github_activity"
-    "gitlab"
-    "medium"
+    #"gitlab"  # DISABLED
+    #"medium"  # DISABLED
     "discourse"
     "notion"
     "telegram"
     "twitter"
-    "podcast"
+    #"podcast"  # DISABLED - no new podcasts
 )
 
 # Function to check if sensor is configured

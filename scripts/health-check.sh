@@ -7,7 +7,7 @@ LOG_DIR="/opt/projects/koi-sensors/logs"
 ALERT_LOG="$LOG_DIR/alerts.log"
 
 # Sensors to monitor
-SENSORS=(discourse github telegram twitter websites gitlab medium notion podcast youtube)
+SENSORS=(discourse github telegram twitter websites notion youtube)  # gitlab, medium, podcast DISABLED  # gitlab and medium DISABLED
 
 # Check if msmtp is available
 HAS_MSMTP=false

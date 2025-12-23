@@ -408,12 +408,20 @@ sudo systemctl enable --now koi-sensor@gitlab
 sudo systemctl disable koi-sensor@discourse
 ```
 
-#### Currently Enabled Sensors
+#### Currently Enabled Sensors (Updated Dec 23, 2025)
 - `koi-sensor@discourse` - Forum monitoring
 - `koi-sensor@github` - Repository monitoring
+- `koi-sensor@github_activity` - GitHub activity tracking
+- `koi-sensor@notion` - Notion workspace monitoring
 - `koi-sensor@telegram` - Channel monitoring
 - `koi-sensor@twitter` - Social media monitoring
 - `koi-sensor@websites` - Website monitoring
+- `koi-sensor@youtube` - YouTube channel monitoring
+
+#### Disabled Sensors
+- `gitlab` - Disabled Dec 2025 (not needed)
+- `medium` - Disabled Dec 2025 (HTTP 403 blocks)
+- `podcast` - Disabled Dec 2025 (no new content)
 
 ### Email Alerting System
 
@@ -464,142 +472,3 @@ sudo systemctl enable --now koi-sensor-health-check.timer
    sudo systemctl status koi-sensor@<sensor-name>
    ```
 
-## 🛡️ Production Operations & Monitoring
-
-### Systemd Service Management (Added December 2025)
-
-All sensors now run as **systemd services** with automatic restart and failure alerting.
-
-#### Service Architecture
-- **Template Unit**: `/etc/systemd/system/koi-sensor@.service` - single template for all sensors
-- **Alert Service**: `/etc/systemd/system/koi-sensor-alert@.service` - triggered on failures
-- **Wrapper Script**: `/opt/projects/koi-sensors/scripts/run-sensor.sh` - handles venv and environment
-
-#### Quick Commands
-```bash
-# Check status of all sensors
-systemctl list-units 'koi-sensor@*'
-
-# Check specific sensor
-sudo systemctl status koi-sensor@discourse
-
-# View logs (real-time)
-journalctl -u koi-sensor@discourse -f
-
-# Restart a sensor
-sudo systemctl restart koi-sensor@discourse
-
-# Stop a sensor
-sudo systemctl stop koi-sensor@discourse
-
-# Start a new sensor
-sudo systemctl enable --now koi-sensor@gitlab
-
-# Disable a sensor from boot
-sudo systemctl disable koi-sensor@discourse
-```
-
-#### Currently Enabled Sensors
-- `koi-sensor@discourse` - Forum monitoring
-- `koi-sensor@github` - Repository monitoring  
-- `koi-sensor@telegram` - Channel monitoring
-- `koi-sensor@twitter` - Social media monitoring
-- `koi-sensor@websites` - Website monitoring
-
-### Email Alerting System
-
-When a sensor fails repeatedly (5 times in 10 minutes), systemd stops retrying and sends an email alert.
-
-#### Configuration Files
-| File | Purpose |
-|------|---------|
-| `~/.msmtprc` | SMTP credentials (Mailjet) |
-| `.alert-config` | Alert recipient email |
-| `scripts/send-failure-alert.sh` | Alert email script |
-| `scripts/health-check.sh` | Hourly health check |
-
-#### Restart Behavior
-- **Restart Policy**: `on-failure` with 30-second delay
-- **Failure Limit**: 5 failures within 10 minutes
-- **On Exceed Limit**: Stops retrying, triggers `OnFailure=` alert
-
-### Health Check Cron
-
-An hourly cron job detects stale sensors (no log activity in 2+ hours):
-```
-0 * * * * /opt/projects/koi-sensors/scripts/health-check.sh
-```
-
-### Logs
-
-| Log Type | Location |
-|----------|----------|
-| Sensor logs | `sensors/<name>/<name>_sensor.log` |
-| Systemd logs | `journalctl -u koi-sensor@<name>` |
-| Alert log | `logs/alerts.log` |
-| SMTP log | `logs/msmtp.log` |
-
-### Adding a New Sensor to Systemd
-
-1. Ensure the sensor has a Python script matching the pattern in `scripts/run-sensor.sh`
-2. Enable and start:
-   ```bash
-   sudo systemctl enable --now koi-sensor@<sensor-name>
-   ```
-3. Verify:
-   ```bash
-   sudo systemctl status koi-sensor@<sensor-name>
-   ```
-
-### Pipeline Services (Added December 2025)
-
-Critical pipeline components also run as systemd services:
-
-| Service | Description | Port |
-|---------|-------------|------|
-| `koi-coordinator` | Event routing hub | 8005 |
-| `koi-event-bridge` | Event processing pipeline | 8100 |
-| `koi-forwarder` | Coordinator to Event Bridge forwarder | - |
-
-```bash
-# Check pipeline services
-sudo systemctl status koi-coordinator koi-event-bridge koi-forwarder
-
-# View logs
-journalctl -u koi-event-bridge -f
-
-# Restart pipeline
-sudo systemctl restart koi-coordinator koi-event-bridge koi-forwarder
-```
-
-### Event Reconciliation
-
-A reconciliation script detects content scraped by sensors but not stored in the database (e.g., if Event Bridge was down):
-
-```bash
-# Run reconciliation check
-/opt/projects/koi-sensors/scripts/reconcile-events.sh
-
-# Fix a specific missing topic
-/opt/projects/koi-sensors/scripts/reconcile-events.sh --fix discourse 565
-sudo systemctl restart koi-sensor@discourse
-```
-
-**Systemd timer**: Runs every 6 hours to detect gaps and send email alerts.
-
-```bash
-sudo cp systemd/koi-reconcile-events.service /etc/systemd/system/
-sudo cp systemd/koi-reconcile-events.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now koi-reconcile-events.timer
-```
-
-### Architecture: Data Flow Protection
-
-```
-Sensor ──► Coordinator ──► Event Bridge ──► Database
-   │                            │
-   └── State: "processed" ◄─────┘ (reconciliation checks this)
-```
-
-The reconciliation script compares sensor state files with database content to identify gaps where events were lost (e.g., Event Bridge was down when sensor broadcast events).
