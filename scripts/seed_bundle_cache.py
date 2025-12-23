@@ -4,7 +4,15 @@ P2a Bundle Cache Seed Script
 
 Populates the persistent bundle cache from existing sources:
 - coordinator_event_queue.json (primary)
-- Optionally: Postgres koi_* tables
+
+BACKFILL SCOPE LIMITATION:
+    This script seeds from coordinator_event_queue.json, which only contains
+    RECENT PENDING events (those not yet confirmed by all subscribers).
+    It does NOT contain historical events that have been fully delivered.
+
+    For full historical backfill from Postgres (koi_* tables), you would need
+    a separate script that queries the database directly. This is a separate
+    step not covered by P2a.
 
 Usage:
     python scripts/seed_bundle_cache.py [--cache-dir PATH] [--event-queue PATH]
@@ -17,6 +25,9 @@ Examples:
     # Custom paths
     python scripts/seed_bundle_cache.py --cache-dir /opt/projects/koi-sensors/.rid_cache \
         --event-queue /opt/projects/koi-sensors/koi_protocol/coordinator/coordinator_event_queue.json
+
+    # Dry run to see what would be seeded
+    python scripts/seed_bundle_cache.py --dry-run
 """
 
 import argparse

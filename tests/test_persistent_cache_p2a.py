@@ -290,3 +290,261 @@ class TestTimestampZSuffix:
         # Timestamp should end with Z
         ts = read_bundle.manifest.timestamp
         assert ts.endswith("Z") or "+" in ts, f"Timestamp should have timezone: {ts}"
+
+
+@pytest.mark.skipif(not RID_LIB_CACHE_AVAILABLE, reason="rid_lib not available")
+class TestEventSemanticsPersistence:
+    """Test FORGET and UPDATE event semantics with persistent cache."""
+
+    def test_forget_event_deletes_from_disk(self, temp_cache_dir, sample_bundle):
+        """FORGET event deletes bundle from persistent cache."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+        from koi_protocol.core.bundle_system import KOIEvent
+        import asyncio
+
+        node = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
+
+        # First cache the bundle
+        node.cache_bundle(sample_bundle)
+        assert node.has_cached_bundle(sample_bundle.rid)
+        assert len(list(Path(temp_cache_dir).glob("*.json"))) == 1
+
+        # Create and handle FORGET event (use RID object, not string)
+        rid = RID.parse(sample_bundle.rid)
+        forget_event = KOIEvent.forget_event(rid, "test-node", "test deletion")
+        asyncio.get_event_loop().run_until_complete(node.handle_event(forget_event))
+
+        # Verify deleted from memory and disk
+        assert not node.has_cached_bundle(sample_bundle.rid)
+        assert len(list(Path(temp_cache_dir).glob("*.json"))) == 0
+
+    def test_forget_persists_across_restart(self, temp_cache_dir, sample_bundle):
+        """FORGET deletion persists across node restart."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+        from koi_protocol.core.bundle_system import KOIEvent
+        import asyncio
+
+        # First node: cache then forget
+        node1 = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
+        node1.cache_bundle(sample_bundle)
+
+        rid = RID.parse(sample_bundle.rid)
+        forget_event = KOIEvent.forget_event(rid, "test-node", "test deletion")
+        asyncio.get_event_loop().run_until_complete(node1.handle_event(forget_event))
+
+        # Second node: verify bundle is gone
+        node2 = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
+        asyncio.get_event_loop().run_until_complete(node2.start())
+        asyncio.get_event_loop().run_until_complete(node2.stop())
+
+        assert not node2.has_cached_bundle(sample_bundle.rid)
+
+    def test_update_overwrites_same_rid(self, temp_cache_dir, sample_bundle):
+        """UPDATE event overwrites existing bundle with same RID."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+        from koi_protocol.core.bundle_system import KOIEvent, Bundle
+        from koi_protocol.core.rid_system import RID
+        import asyncio
+
+        node = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
+
+        # Cache original bundle
+        node.cache_bundle(sample_bundle)
+        original_hash = sample_bundle.manifest.sha256_hash
+
+        # Create updated bundle with same RID but different contents
+        rid = RID.parse(sample_bundle.rid)
+        updated_contents = {"title": "Updated Bundle", "data": {"value": 999}}
+        updated_bundle = Bundle.generate(rid, updated_contents)
+
+        # Handle UPDATE event
+        update_event = KOIEvent.update_event(updated_bundle, "test-node")
+        asyncio.get_event_loop().run_until_complete(node.handle_event(update_event))
+
+        # Verify bundle was updated
+        read_bundle = node.get_cached_bundle(sample_bundle.rid)
+        assert read_bundle.contents == updated_contents
+        assert read_bundle.manifest.sha256_hash != original_hash
+
+        # Verify only one file on disk (overwritten, not duplicated)
+        assert len(list(Path(temp_cache_dir).glob("*.json"))) == 1
+
+    def test_update_persists_across_restart(self, temp_cache_dir, sample_bundle):
+        """Updated bundle persists with new contents across restart."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+        from koi_protocol.core.bundle_system import KOIEvent, Bundle
+        from koi_protocol.core.rid_system import RID
+        import asyncio
+
+        # First node: cache then update
+        node1 = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
+        node1.cache_bundle(sample_bundle)
+
+        rid = RID.parse(sample_bundle.rid)
+        updated_contents = {"title": "Persisted Update", "version": 2}
+        updated_bundle = Bundle.generate(rid, updated_contents)
+
+        update_event = KOIEvent.update_event(updated_bundle, "test-node")
+        asyncio.get_event_loop().run_until_complete(node1.handle_event(update_event))
+
+        # Second node: verify updated contents
+        node2 = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
+        asyncio.get_event_loop().run_until_complete(node2.start())
+        asyncio.get_event_loop().run_until_complete(node2.stop())
+
+        read_bundle = node2.get_cached_bundle(sample_bundle.rid)
+        assert read_bundle.contents == updated_contents
+
+
+@pytest.mark.skipif(not RID_LIB_CACHE_AVAILABLE, reason="rid_lib not available")
+class TestSeedScriptIdempotency:
+    """Test seed script idempotency."""
+
+    def test_seed_twice_no_duplicates(self, temp_cache_dir, sample_bundle):
+        """Running seed twice doesn't create duplicate entries."""
+        cache = PersistentBundleCache(temp_cache_dir)
+
+        # Seed first time
+        cache.write(sample_bundle)
+        assert cache.size() == 1
+        files_after_first = list(Path(temp_cache_dir).glob("*.json"))
+
+        # Seed second time (same bundle)
+        cache.write(sample_bundle)
+        assert cache.size() == 1  # Still 1, not 2
+        files_after_second = list(Path(temp_cache_dir).glob("*.json"))
+
+        # Same file, same count
+        assert len(files_after_first) == len(files_after_second) == 1
+        assert files_after_first[0].name == files_after_second[0].name
+
+    def test_seed_overwrites_deterministically(self, temp_cache_dir, sample_bundle):
+        """Seeding same RID with different contents overwrites."""
+        from koi_protocol.core.bundle_system import Bundle
+        from koi_protocol.core.rid_system import RID
+
+        cache = PersistentBundleCache(temp_cache_dir)
+
+        # First seed
+        cache.write(sample_bundle)
+        first_hash = cache.read(sample_bundle.rid).manifest.sha256_hash
+
+        # Create new bundle with same RID but different contents
+        rid = RID.parse(sample_bundle.rid)
+        new_contents = {"completely": "different", "data": 123}
+        new_bundle = Bundle.generate(rid, new_contents)
+
+        # Second seed with different contents
+        cache.write(new_bundle)
+
+        # Verify overwritten
+        read_bundle = cache.read(sample_bundle.rid)
+        assert read_bundle.contents == new_contents
+        assert read_bundle.manifest.sha256_hash != first_hash
+        assert cache.size() == 1
+
+
+@pytest.mark.skipif(not RID_LIB_CACHE_AVAILABLE, reason="rid_lib not available")
+class TestSignedPersistenceIntegration:
+    """Test SignedEnvelope + persistence integration."""
+
+    def test_signed_broadcast_persist_signed_fetch(self, temp_cache_dir, sample_bundle):
+        """Signed broadcast → persist → restart → signed fetch verifies."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+        from koi_protocol.core.bundle_system import KOIEvent
+        from shared.koi_envelope import sign_envelope, verify_envelope_with_key
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.backends import default_backend
+        import asyncio
+
+        # Generate keypairs for test
+        node_private = ec.generate_private_key(ec.SECP256R1(), default_backend())
+        node_public = node_private.public_key()
+        coordinator_private = ec.generate_private_key(ec.SECP256R1(), default_backend())
+        coordinator_public = coordinator_private.public_key()
+
+        node_id = "orn:koi-net.node:test-node+abc123"
+        coordinator_id = "orn:koi-net.node:test-coordinator+def456"
+
+        # First node instance: receive signed broadcast and persist
+        node1 = KOIFullNode("test-coordinator", port=8000, cache_dir=temp_cache_dir)
+        node1.node_id = coordinator_id
+
+        # Simulate signed broadcast
+        broadcast_payload = {
+            "type": "events_payload",
+            "events": [{
+                "rid": sample_bundle.rid,
+                "event_type": "NEW",
+                "manifest": {
+                    "rid": sample_bundle.rid,
+                    "timestamp": sample_bundle.manifest.timestamp,
+                    "sha256_hash": sample_bundle.manifest.sha256_hash
+                },
+                "contents": sample_bundle.contents
+            }]
+        }
+        signed_broadcast = sign_envelope(
+            broadcast_payload, node_id, coordinator_id, node_private
+        )
+
+        # Verify incoming signature
+        assert verify_envelope_with_key(signed_broadcast, node_public)
+
+        # Cache the bundle (simulating coordinator processing broadcast)
+        node1.cache_bundle(sample_bundle)
+
+        # Restart: create new node instance
+        node2 = KOIFullNode("test-coordinator", port=8000, cache_dir=temp_cache_dir)
+        node2.node_id = coordinator_id
+        asyncio.get_event_loop().run_until_complete(node2.start())
+        asyncio.get_event_loop().run_until_complete(node2.stop())
+
+        # Verify bundle persisted
+        read_bundle = node2.get_cached_bundle(sample_bundle.rid)
+        assert read_bundle is not None
+
+        # Sign fetch response
+        fetch_response = {
+            "type": "bundles_payload",
+            "bundles": [{
+                "manifest": {
+                    "rid": read_bundle.rid,
+                    "timestamp": read_bundle.manifest.timestamp,
+                    "sha256_hash": read_bundle.manifest.sha256_hash
+                },
+                "contents": read_bundle.contents
+            }]
+        }
+        signed_response = sign_envelope(
+            fetch_response, coordinator_id, node_id, coordinator_private
+        )
+
+        # Verify signed response
+        assert verify_envelope_with_key(signed_response, coordinator_public)
+
+        # Verify contents match original
+        response_bundle = signed_response["payload"]["bundles"][0]
+        assert response_bundle["contents"] == sample_bundle.contents
+        assert response_bundle["manifest"]["sha256_hash"] == sample_bundle.manifest.sha256_hash
+
+    def test_persisted_hash_matches_original(self, temp_cache_dir, sample_bundle):
+        """JCS hash is preserved exactly through persistence cycle."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+        import asyncio
+
+        original_hash = sample_bundle.manifest.sha256_hash
+
+        # First node: persist
+        node1 = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
+        node1.cache_bundle(sample_bundle)
+
+        # Second node: read back
+        node2 = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
+        asyncio.get_event_loop().run_until_complete(node2.start())
+        asyncio.get_event_loop().run_until_complete(node2.stop())
+
+        read_bundle = node2.get_cached_bundle(sample_bundle.rid)
+
+        # Hash must match exactly (no serialization drift)
+        assert read_bundle.manifest.sha256_hash == original_hash
