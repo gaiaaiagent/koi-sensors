@@ -1,0 +1,16 @@
+[Unit]
+Description=KOI Bundle Cache Prune (P2b Retention Policy)
+After=network.target
+
+[Service]
+Type=oneshot
+User=darren
+Group=gaia-devs
+WorkingDirectory=/opt/projects/koi-sensors
+EnvironmentFile=-/opt/projects/koi-sensors/.env
+ExecStart=/opt/projects/koi-sensors/venv/bin/python /opt/projects/koi-sensors/scripts/prune_bundle_cache.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
