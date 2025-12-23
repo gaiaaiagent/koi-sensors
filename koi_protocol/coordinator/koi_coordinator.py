@@ -21,7 +21,7 @@ from ..nodes.koi_node import KOIFullNode
 from ..core.rid_system import RID
 from ..core.bundle_system import Bundle, KOIEvent, Manifest
 from ..integration.koi_collector_adapter import (
-    TwitterKOIAdapter, DiscourseKOIAdapter, 
+    TwitterKOIAdapter, DiscourseKOIAdapter,
     NotionKOIAdapter, WebScraperKOIAdapter
 )
 from shared.koi_envelope import (
@@ -31,6 +31,14 @@ from shared.koi_envelope import (
     sign_envelope,
     verify_envelope
 )
+
+# Import rid-lib for JCS hash recomputation (P1a alignment)
+try:
+    from rid_lib.ext import Manifest as RidLibManifest
+    RID_LIB_AVAILABLE = True
+except ImportError:
+    RidLibManifest = None
+    RID_LIB_AVAILABLE = False
 
 
 # FastAPI models for request/response
@@ -91,6 +99,108 @@ class HealthResponse(BaseModel):
     event_queue_size: int
     connected_sensors: int
     delivery_stats: Optional[Dict[str, Any]] = None
+
+
+# ============================================================================
+# P1a KOI-net Strict Wire Models (schema-exact for interoperability)
+# Reference: koi-research/docs/KOI_PROTOCOL_ALIGNMENT_REFERENCE.md
+# ============================================================================
+
+class KoiNetPollEventsRequest(BaseModel):
+    """Strict KOI-net PollEvents request model."""
+    type: str = "poll_events"
+    limit: int = 0  # 0 means no limit
+
+
+class KoiNetWireManifest(BaseModel):
+    """Strict KOI-net wire manifest: {rid, timestamp, sha256_hash} only."""
+    rid: str
+    timestamp: str  # Must use Z suffix, not +00:00
+    sha256_hash: str
+
+
+class KoiNetWireEvent(BaseModel):
+    """Strict KOI-net wire event: {rid, event_type, manifest, contents} only."""
+    rid: str
+    event_type: str
+    manifest: Optional[KoiNetWireManifest] = None
+    contents: Optional[Dict[str, Any]] = None
+
+
+class KoiNetEventsPayloadResponse(BaseModel):
+    """Strict KOI-net EventsPayload response model."""
+    type: str = "events_payload"
+    events: List[KoiNetWireEvent]
+
+
+def _timestamp_to_z_format(ts: str) -> str:
+    """Convert timestamp to Z suffix format (e.g., 2025-12-23T12:00:00Z).
+
+    KOI-net Pydantic serializes UTC datetimes with Z suffix, not +00:00.
+    This is critical for SignedEnvelope signature matching.
+    """
+    if not ts:
+        return ts
+    # Handle +00:00 suffix
+    if ts.endswith("+00:00"):
+        return ts[:-6] + "Z"
+    # Handle timezone offset like +00:00 embedded in the string
+    if "+00:00" in ts:
+        return ts.replace("+00:00", "Z")
+    return ts
+
+
+def _to_koi_net_wire_event(internal_event: KOIEvent) -> KoiNetWireEvent:
+    """Transform internal KOIEvent to strict KOI-net wire format.
+
+    P1a Requirements:
+    - Wire Event: {rid, event_type, manifest, contents} only
+    - Wire Manifest: {rid, timestamp, sha256_hash} only
+    - Timestamp: Z suffix (not +00:00)
+    - Hash: Recompute sha256_hash via rid-lib JCS from contents
+
+    Reference: koi-research/docs/KOI_PROTOCOL_ALIGNMENT_REFERENCE.md
+    """
+    rid_str = internal_event.rid
+    contents = internal_event.bundle.contents if internal_event.bundle else {}
+
+    # Get timestamp from manifest, convert to Z format
+    ts = ""
+    if internal_event.bundle and internal_event.bundle.manifest:
+        ts = internal_event.bundle.manifest.timestamp
+    elif internal_event.timestamp:
+        ts = internal_event.timestamp
+    ts = _timestamp_to_z_format(ts)
+
+    # Recompute sha256_hash via rid-lib JCS canonicalization
+    sha256_hash = ""
+    if RID_LIB_AVAILABLE and RidLibManifest and contents:
+        try:
+            rid_lib_manifest = RidLibManifest.generate(rid_str, contents)
+            sha256_hash = rid_lib_manifest.sha256_hash
+        except Exception:
+            # Fallback to stored hash if rid-lib fails
+            if internal_event.bundle and internal_event.bundle.manifest:
+                sha256_hash = internal_event.bundle.manifest.sha256_hash
+    elif internal_event.bundle and internal_event.bundle.manifest:
+        # Fallback if rid-lib not available
+        sha256_hash = internal_event.bundle.manifest.sha256_hash
+
+    # Build strict wire manifest (only rid, timestamp, sha256_hash)
+    wire_manifest = None
+    if sha256_hash or ts:
+        wire_manifest = KoiNetWireManifest(
+            rid=rid_str,
+            timestamp=ts,
+            sha256_hash=sha256_hash
+        )
+
+    return KoiNetWireEvent(
+        rid=rid_str,
+        event_type=internal_event.event_type,
+        manifest=wire_manifest,
+        contents=contents if contents else None
+    )
 
 
 class KOICoordinator:
@@ -570,7 +680,49 @@ class KOICoordinator:
             except Exception as e:
                 self.logger.error(f"Error confirming delivery: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
-        
+
+        # ====================================================================
+        # P1a: Strict KOI-net interop surface (/koi-net/*)
+        # Reference: koi-research/docs/KOI_PROTOCOL_ALIGNMENT_REFERENCE.md
+        # ====================================================================
+
+        @self.app.post("/koi-net/events/poll", response_model=KoiNetEventsPayloadResponse)
+        async def koi_net_poll_events(request: KoiNetPollEventsRequest = Body(...)):
+            """Strict KOI-net events poll endpoint (P1a Level 2 interop).
+
+            Requirements:
+            - Request: {"type": "poll_events", "limit": 0}
+            - Response: {"type": "events_payload", "events": [...]}
+            - Wire Event: {rid, event_type, manifest, contents} only
+            - Wire Manifest: {rid, timestamp, sha256_hash} only
+            - Timestamp: Z suffix (not +00:00)
+            - Hash: Recomputed via rid-lib JCS from contents
+            - Queue: Read-only (does NOT mark events as delivered)
+
+            This endpoint is designed for external KOI-net node interoperability.
+            Internal clients should use /events/poll for delivery tracking.
+            """
+            try:
+                # Determine limit (0 means no limit, use reasonable default)
+                max_events = request.limit if request.limit > 0 else 100
+
+                # Read-only: use get_queued_events() which doesn't mark as delivered
+                internal_events = self.koi_node.get_queued_events(max_events)
+
+                # Transform to strict KOI-net wire format
+                wire_events = [_to_koi_net_wire_event(event) for event in internal_events]
+
+                self.logger.info(f"KOI-net poll: returning {len(wire_events)} events (read-only)")
+
+                return KoiNetEventsPayloadResponse(
+                    type="events_payload",
+                    events=wire_events
+                )
+
+            except Exception as e:
+                self.logger.error(f"Error in /koi-net/events/poll: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+
         @self.app.get("/bundles/fetch/{rid}", response_model=BundleFetchResponse)
         async def fetch_bundle(rid: str):
             """Fetch bundle by RID (KOI-net endpoint)"""
