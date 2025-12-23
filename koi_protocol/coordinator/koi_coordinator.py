@@ -258,14 +258,22 @@ def _to_koi_net_wire_event(internal_event: KOIEvent) -> KoiNetWireEvent:
 
 class KOICoordinator:
     """KOI Coordinator - Full Node with sensor management"""
-    
-    def __init__(self, node_name: str = "regen-coordinator", port: int = 8000):
+
+    def __init__(self, node_name: str = "regen-coordinator", port: int = 8000, cache_dir: str = None):
         self.node_name = node_name
         self.port = port
         self.start_time = datetime.now()
 
-        # Initialize KOI full node
-        self.koi_node = KOIFullNode(node_name, port)
+        # Cache directory for persistent bundle storage (P2a)
+        # Default to KOI_CACHE_DIR env var or project-local .rid_cache
+        if cache_dir is None:
+            cache_dir = os.getenv("KOI_CACHE_DIR")
+            if cache_dir is None:
+                # Default to project-local cache directory
+                cache_dir = str(Path(__file__).parent.parent.parent / ".rid_cache")
+
+        # Initialize KOI full node with persistent cache
+        self.koi_node = KOIFullNode(node_name, port, cache_dir=cache_dir)
         self.event_queue_file = Path(__file__).parent / "coordinator_event_queue.json"
         self.koi_node.configure_event_queue_persistence(self.event_queue_file)
 

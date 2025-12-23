@@ -18,6 +18,13 @@ from pathlib import Path
 from ..core.rid_system import RID
 from ..core.bundle_system import Bundle, KOIEvent, Manifest
 
+# Import persistent cache (P2a)
+try:
+    from ..core.persistent_cache import PersistentBundleCache, RID_LIB_CACHE_AVAILABLE
+except ImportError:
+    PersistentBundleCache = None
+    RID_LIB_CACHE_AVAILABLE = False
+
 
 @dataclass
 class NodeProfile:
@@ -53,11 +60,14 @@ class QueuedEvent:
 class KOINodeBase(ABC):
     """Base class for KOI nodes"""
 
-    def __init__(self, node_name: str, node_type: str, port: int = None):
+    def __init__(self, node_name: str, node_type: str, port: int = None, cache_dir: str = None):
         self.node_name = node_name
         self.node_type = node_type
         self.port = port
         self.node_id = os.getenv("KOI_NODE_ID") or f"{node_name}-{datetime.now().timestamp()}"
+
+        # Logging (must be first for other init steps to use)
+        self.logger = logging.getLogger(f"koi.node.{node_name}")
 
         # Node state
         self.running = False
@@ -65,13 +75,19 @@ class KOINodeBase(ABC):
         self.event_queue: List[QueuedEvent] = []  # Changed to use QueuedEvent
         self.known_nodes: Dict[str, NodeContact] = {}
 
+        # Persistent cache (P2a) - uses rid_lib.ext.Cache for disk persistence
+        self._persistent_cache: Optional[PersistentBundleCache] = None
+        if cache_dir and PersistentBundleCache and RID_LIB_CACHE_AVAILABLE:
+            try:
+                self._persistent_cache = PersistentBundleCache(cache_dir)
+                self.logger.info(f"Persistent cache enabled at {cache_dir}")
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize persistent cache: {e}")
+
         # Event delivery tracking
         self.pending_deliveries: Dict[str, QueuedEvent] = {}  # event_id -> QueuedEvent
         self.delivery_timeout_seconds = 300  # 5 minutes
         self.event_queue_path: Optional[Path] = None
-
-        # Logging
-        self.logger = logging.getLogger(f"koi.node.{node_name}")
 
         # HTTP session
         self.session: Optional[aiohttp.ClientSession] = None
@@ -81,6 +97,13 @@ class KOINodeBase(ABC):
         self.logger.info(f"Starting {self.node_type} node: {self.node_name}")
         self.running = True
         self.session = aiohttp.ClientSession()
+
+        # Load persisted bundles from disk (P2a)
+        if self._persistent_cache:
+            loaded = self._persistent_cache.load_all()
+            # Populate memory cache from persistent cache
+            self.cache = dict(self._persistent_cache._memory_cache)
+            self.logger.info(f"Loaded {loaded} bundles from persistent cache")
 
         if self.event_queue_path and not self.event_queue:
             self._load_event_queue()
@@ -205,28 +228,60 @@ class KOINodeBase(ABC):
     
     # Cache operations
     def cache_bundle(self, bundle: Bundle):
-        """Cache a bundle"""
+        """Cache a bundle (memory + disk if persistent cache enabled)"""
         self.cache[bundle.rid] = bundle
+        # Write-through to disk (P2a)
+        if self._persistent_cache:
+            try:
+                self._persistent_cache.write(bundle)
+            except Exception as e:
+                self.logger.warning(f"Failed to persist bundle {bundle.rid}: {e}")
         self.logger.debug(f"Cached bundle: {bundle.rid}")
-    
+
     def get_cached_bundle(self, rid: str) -> Optional[Bundle]:
-        """Get cached bundle by RID"""
-        return self.cache.get(rid)
-    
+        """Get cached bundle by RID (memory first, then disk)"""
+        bundle = self.cache.get(rid)
+        if bundle:
+            return bundle
+        # Try persistent cache (P2a)
+        if self._persistent_cache:
+            try:
+                bundle = self._persistent_cache.read(rid)
+                if bundle:
+                    # Populate memory cache
+                    self.cache[rid] = bundle
+                    return bundle
+            except Exception as e:
+                self.logger.debug(f"Failed to read bundle {rid} from disk: {e}")
+        return None
+
     def has_cached_bundle(self, rid: str) -> bool:
-        """Check if bundle is cached"""
-        return rid in self.cache
-    
+        """Check if bundle is cached (memory or disk)"""
+        if rid in self.cache:
+            return True
+        if self._persistent_cache:
+            return self._persistent_cache.exists(rid)
+        return False
+
     def remove_cached_bundle(self, rid: str) -> bool:
-        """Remove bundle from cache"""
+        """Remove bundle from cache (memory + disk)"""
+        deleted = False
         if rid in self.cache:
             del self.cache[rid]
+            deleted = True
+        # Also delete from persistent cache (P2a)
+        if self._persistent_cache:
+            try:
+                if self._persistent_cache.delete(rid):
+                    deleted = True
+            except Exception as e:
+                self.logger.warning(f"Failed to delete bundle {rid} from disk: {e}")
+        if deleted:
             self.logger.debug(f"Removed cached bundle: {rid}")
-            return True
-        return False
-    
+        return deleted
+
     def get_cached_rids(self) -> List[str]:
-        """Get list of cached RIDs"""
+        """Get list of cached RIDs (from memory cache, which is synced with disk on startup)"""
         return list(self.cache.keys())
     
     # Event operations
@@ -520,8 +575,8 @@ class KOIPartialNode(KOINodeBase):
 class KOIFullNode(KOINodeBase):
     """Full KOI Node - implements complete KOI-net protocol"""
 
-    def __init__(self, node_name: str, port: int = 8000):
-        super().__init__(node_name, "FULL", port)
+    def __init__(self, node_name: str, port: int = 8000, cache_dir: str = None):
+        super().__init__(node_name, "FULL", port, cache_dir=cache_dir)
         self.app = None  # Will be set when starting web server
 
         # Network state

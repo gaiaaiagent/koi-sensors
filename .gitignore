@@ -163,3 +163,6 @@ koi_protocol/coordinator/coordinator_event_queue.json
 coordinator_sensor_registry.json
 .alert-config
 .sensor_pids
+
+# P2a Persistent bundle cache
+.rid_cache/
