@@ -1,2 +1,3 @@
 anthropic==0.69.0
 cryptography>=42.0.0
+rid-lib>=3.2.8
