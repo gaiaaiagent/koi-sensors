@@ -151,6 +151,8 @@ playwright:
   enabled: true
   domains:
     - regentokenomics.org  # Notion-based site with collapsible toggles
+    - regen.foundation      # SvelteKit SPA - team section requires JS hydration
+    - www.regen.foundation  # Same site with www prefix
   # Auto-expand Notion-style toggle blocks to reveal hidden content
   expand_toggles: true
   # Wait time (ms) for JavaScript content to load after page load
