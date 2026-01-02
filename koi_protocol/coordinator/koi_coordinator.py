@@ -492,7 +492,7 @@ class KOICoordinator:
                         manifest = Manifest(
                             rid=event_data["rid"],
                             timestamp=event_data["timestamp"],
-                            content_hash=content_hash,
+                            sha256_hash=content_hash,
                             size_bytes=len(content_str.encode()),
                             content_type="application/json",
                             version="1.0",
@@ -590,7 +590,7 @@ class KOICoordinator:
                             collection_receipt = await receipt_manager.create_sensor_collection_receipt(
                                 sensor_name=sensor_name,
                                 rid=event.rid,
-                                content_hash=content_hash,
+                                sha256_hash=content_hash,
                                 source_url=metadata.get("url"),
                                 document_count=1,
                                 metadata=metadata
