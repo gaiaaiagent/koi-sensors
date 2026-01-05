@@ -43,7 +43,7 @@ class PassAExtractor(KGExtractorBase):
             )
 
         # Initialize OpenAI client
-        self.client = openai.OpenAI(api_key=self.api_key)
+        self.client = openai.AsyncOpenAI(api_key=self.api_key)
 
         # Model configuration (read from env or use default)
         self.model = os.getenv('OPENAI_MODEL', 'gpt-5-mini')  # Latest cost-effective model
@@ -141,7 +141,7 @@ class PassAExtractor(KGExtractorBase):
             # GPT-5-mini uses max_completion_tokens instead of max_tokens
             # and only supports temperature=1 (default)
             if 'gpt-5' in self.model.lower():
-                response = self.client.chat.completions.create(
+                response = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
                         {
@@ -158,7 +158,7 @@ class PassAExtractor(KGExtractorBase):
                     response_format={"type": "json_object"}  # Enforce JSON response
                 )
             else:
-                response = self.client.chat.completions.create(
+                response = await self.client.chat.completions.create(
                     model=self.model,
                     messages=[
                         {
