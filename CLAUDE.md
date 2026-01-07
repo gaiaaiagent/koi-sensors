@@ -125,3 +125,14 @@ When sensors fail to start:
 4. **Port conflicts**: KOI Coordinator runs on port 8005
 
 Remember: **All sensors run via systemd** - use `systemctl` commands for management!
+
+## 📅 Recent Updates
+
+### Notion Author Extraction (2026-01-07)
+
+The Notion sensor now extracts author metadata for author-based search:
+- `author`: Name of page creator (fetched via `/users/{id}` API if not in page response)
+- `author_id`: Notion user ID of creator
+- `last_edited_by`: Name of last editor
+
+This enables `person_activity` intent queries like "what is X working on" to find Notion pages authored by specific people.

@@ -623,7 +623,7 @@ class NotionKOISensor:
         """Get page metadata and properties"""
         if not self.session:
             raise RuntimeError("Session not initialized. Use async context manager.")
-        
+
         try:
             async with self.session.get(
                 f"{self.NOTION_API_BASE}/pages/{page_id}"
@@ -636,6 +636,22 @@ class NotionKOISensor:
                     return None
         except Exception as e:
             print(f"❌ Error getting page: {e}")
+            return None
+
+    async def get_user(self, user_id: str) -> Optional[Dict]:
+        """Get user details to retrieve name (not included in page responses)"""
+        if not self.session:
+            raise RuntimeError("Session not initialized. Use async context manager.")
+
+        try:
+            async with self.session.get(
+                f"{self.NOTION_API_BASE}/users/{user_id}"
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    return None
+        except Exception as e:
             return None
 
     async def get_block(self, block_id: str) -> Optional[Dict]:
@@ -1089,7 +1105,29 @@ class NotionKOISensor:
                         # Extract Notion timestamps for publication date
                         created_time = page.get("created_time")
                         last_edited_time = page.get("last_edited_time")
-                        
+
+                        # Extract author information from created_by user object
+                        created_by = page.get("created_by", {})
+                        author_name = created_by.get("name") if created_by else None
+                        author_id = created_by.get("id") if created_by else None
+
+                        # Notion API may not include name in page response - fetch user details if needed
+                        if not author_name and author_id:
+                            user_data = await self.get_user(author_id)
+                            if user_data:
+                                author_name = user_data.get("name")
+
+                        # Also get last_edited_by for reference
+                        last_edited_by = page.get("last_edited_by", {})
+                        last_editor_name = last_edited_by.get("name") if last_edited_by else None
+                        last_editor_id = last_edited_by.get("id") if last_edited_by else None
+
+                        # Fetch editor name if not in response
+                        if not last_editor_name and last_editor_id:
+                            editor_data = await self.get_user(last_editor_id)
+                            if editor_data:
+                                last_editor_name = editor_data.get("name")
+
                         # Create change document
                         page_url = page.get("url", "")
                         change = {
@@ -1102,6 +1140,11 @@ class NotionKOISensor:
                             "metadata": {
                                 # Required for document_to_rid
                                 "page_id": page_id,
+
+                                # Author metadata for author-based search
+                                "author": author_name,  # Maps to metadata->>'author' in performAuthorSearch
+                                "author_id": author_id,
+                                "last_edited_by": last_editor_name,
 
                                 # Publication date metadata for Daily Curator
                                 "published_at": created_time,  # Notion provides ISO format timestamps
