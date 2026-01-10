@@ -616,6 +616,9 @@ class GitHubSensor:
         if documents:
             sent_count = await self.send_to_koi(documents)
             self.logger.info(f"Initial collection: sent {sent_count}/{len(documents)} documents to KOI")
+        # Save state after collection cycle
+        self.state.save()
+        self.logger.info(f"Saved state with {len(self.state.metadata)} hash entries")
 
         # Start monitoring loop
         while True:
@@ -624,6 +627,9 @@ class GitHubSensor:
             if documents:
                 sent_count = await self.send_to_koi(documents)
                 self.logger.info(f"Periodic collection: sent {sent_count}/{len(documents)} documents to KOI")
+            # Save state after collection cycle
+            self.state.save()
+            self.logger.info(f"Saved state with {len(self.state.metadata)} hash entries")
 
     def cleanup(self):
         """Clean up temporary directory"""
