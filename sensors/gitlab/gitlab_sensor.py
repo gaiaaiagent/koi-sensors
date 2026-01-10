@@ -542,6 +542,10 @@ async def run_sensor_continuous(sensor):
                 except Exception as e:
                     sensor.logger.warning(f"Could not send to KOI: {e}")
 
+            # Save state after processing to persist hash history across restarts
+            sensor.state.save()
+            sensor.logger.info(f"Saved state with {len(sensor.state.metadata)} entries")
+
             # Wait before next collection (1 hour)
             await asyncio.sleep(3600)
 

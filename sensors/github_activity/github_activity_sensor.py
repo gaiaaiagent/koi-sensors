@@ -314,6 +314,10 @@ class GitHubActivitySensor:
             logger.info(f"Sending {len(all_documents)} documents to coordinator")
             await self.send_to_coordinator(all_documents)
 
+        # Save state after processing to persist hash history across restarts
+        self.state.save()
+        logger.info(f"Saved state with {len(self.state.metadata)} entries")
+
         logger.info("Collection cycle complete")
 
     async def run(self):
