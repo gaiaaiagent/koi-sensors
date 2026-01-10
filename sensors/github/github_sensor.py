@@ -569,7 +569,7 @@ class GitHubSensor:
                 # Calculate content hash
                 content = doc.get('content', '')
                 content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
-                rid = doc.get('rid', 'unknown')
+                rid = doc.get('id', doc.get('rid', 'unknown'))
 
                 # Check if content changed
                 previous_hash = self.state.metadata.get(f"hash_{rid}")
@@ -592,7 +592,7 @@ class GitHubSensor:
                 success_count += 1
 
             except Exception as e:
-                self.logger.error(f"Error sending document {doc.get('rid', 'unknown')}: {e}")
+                self.logger.error(f"Error sending document {doc.get('id', doc.get('rid', 'unknown'))}: {e}")
                 continue
 
         return success_count
@@ -709,6 +709,12 @@ async def main():
             {
                 "name": "regen-koi-mcp",
                 "url": "https://github.com/gaiaaiagent/regen-koi-mcp",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "regen-python-mcp",
+                "url": "https://github.com/gaiaaiagent/regen-python-mcp",
                 "branch": "main",
                 "paths": ["."]
             }
