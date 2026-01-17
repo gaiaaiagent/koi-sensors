@@ -88,6 +88,14 @@ class YAMLFrontmatterParser:
         if match:
             try:
                 frontmatter_text = match.group(1)
+                # Quote keys starting with @ (YAML reserved character)
+                # Convert "@id: value" to '"@id": value'
+                frontmatter_text = re.sub(
+                    r'^(@\w+)(\s*:)',
+                    r'"\1"\2',
+                    frontmatter_text,
+                    flags=re.MULTILINE
+                )
                 result['frontmatter'] = yaml.safe_load(frontmatter_text)
                 result['body'] = content[match.end():].strip()
 
