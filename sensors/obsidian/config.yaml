@@ -1,0 +1,79 @@
+# Obsidian Sensor Configuration
+# Monitor local Obsidian vault and emit notes to KOI
+
+sensor:
+  name: obsidian-sensor
+  type: partial_node
+  coordinator_url: http://localhost:8005
+
+# Vault configuration
+vault:
+  # Path to your Obsidian vault
+  path_env: "OBSIDIAN_VAULT_PATH"
+  path_default: "~/Documents/Notes"
+
+  # Name for this vault in RIDs
+  name_env: "OBSIDIAN_VAULT_NAME"
+  name_default: "personal"
+
+  # Watch for changes (true) or one-time scan (false)
+  watch_mode: true
+
+# Schema types to track
+# If empty, all notes with frontmatter are indexed
+# Otherwise only notes with these @type values
+schema_types:
+  - Person
+  - Organization
+  - Meeting
+  - Project
+  # Add more types as needed
+
+# Folders to exclude from scanning
+exclude_folders:
+  - .obsidian
+  - .trash
+  - .smart-env
+  - .claude
+  - Templates
+  # Add more exclusions as needed
+
+# Folder-to-type mapping (optional)
+# Infer @type from folder if not in frontmatter
+folder_type_mapping:
+  People: Person
+  Organizations: Organization
+  Meetings: Meeting
+  Projects: Project
+
+# Relationship extraction settings
+relationships:
+  # Extract wikilinks as relationships
+  extract_wikilinks: true
+
+  # Frontmatter fields that indicate relationships
+  relationship_fields:
+    - affiliation      # -> affiliatedWith
+    - attendees        # -> hasAttendee
+    - project          # -> relatedToProject
+    - organization     # -> memberOf
+    - worksFor         # -> worksFor
+    - knows            # -> knows
+
+# Auto-tags based on content patterns
+auto_tags:
+  - pattern: "meeting|call|discussion"
+    tag: "meeting"
+  - pattern: "project|initiative"
+    tag: "project"
+  - pattern: "person|people|contact"
+    tag: "person"
+  - pattern: "organization|company|org"
+    tag: "organization"
+
+# Export settings for KOI
+export:
+  format: "koi_bundle"
+  include_body: true
+  include_frontmatter: true
+  include_relationships: true
