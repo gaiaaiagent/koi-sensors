@@ -21,6 +21,7 @@ rest_endpoints:
   - https://regen.api.m.stavr.tech
   - https://api-regen-ia.cosmosia.notional.ventures
   - https://regen.api.ping.pub
+  - https://lcd-regen.keplr.app
 
 # Query Intervals (seconds)
 query_intervals:
@@ -28,8 +29,19 @@ query_intervals:
   ecocredit: 600      # 10 minutes
   consensus: 60       # 1 minute
   stats: 3600         # 1 hour
+  entity_indexing: 3600  # 1 hour - for entity resolution indexing
   daily_report: 86400 # 24 hours
   weekly_report: 604800 # 7 days
+
+# Entity Indexing Configuration
+# Indexes credit classes, projects, and organizations for automated entity resolution
+entity_indexing:
+  enabled: true
+  metadata_api: "https://api.regen.network/data/v2/metadata-graph"
+  resolve_metadata: true      # Resolve metadata IRIs to get canonical names
+  generate_aliases: true      # Generate aliases for fuzzy matching
+  build_organizations: true   # Build organization entities from admin addresses
+  metadata_delay_ms: 100      # Delay between metadata API calls (rate limiting)
 
 # Content Filter Configuration
 content_filter:
@@ -53,9 +65,9 @@ processing:
 
 # KOI Network Configuration
 koi_net:
-  node_name: regen-ledger-sensor
+  node_name: ledger-sensor
   node_type: PARTIAL
-  coordinator_url: http://localhost:8089
+  coordinator_url: http://localhost:8005
   cache_directory: .ledger_cache
   event_queue_file: ledger_events.json
   polling_interval_seconds: 30

@@ -39,6 +39,7 @@ declare -a SENSORS=(
     "notion"
     "telegram"
     "twitter"
+    "ledger"      # Regen Ledger entity indexing (credit classes, projects, organizations)
     #"podcast"  # DISABLED - no new podcasts
 )
 

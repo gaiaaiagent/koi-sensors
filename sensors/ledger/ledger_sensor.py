@@ -1,6 +1,9 @@
 """
 KOI Ledger Sensor - Direct Regen Network Blockchain Integration
-Queries RPC and REST endpoints for governance, ecocredit, and consensus data
+Queries RPC and REST endpoints for governance, ecocredit, and consensus data.
+
+Enhanced with Entity Indexing for credit classes, projects, and organizations
+to populate the entity_registry for automated entity resolution.
 """
 
 import asyncio
@@ -12,25 +15,37 @@ from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 
 import sys
+# Support both local development and production paths
+sys.path.append(str(Path(__file__).parent.parent.parent))
 sys.path.append('/opt/projects/koi-sensors')
 
 from koi_protocol.nodes.koi_node import KOIPartialNode
-from koi_protocol.core.bundle_system import document_to_bundle
+from koi_protocol.core.bundle_system import document_to_bundle, Bundle
+from koi_protocol.core.rid_system import GenericRID
 from shared.handlers.base_sensor import BaseSensor
 from shared.config.base import BaseSensorConfig
+from shared.persistent_state import PersistentSensorState
+
+# Import entity indexer for automated entity resolution
+try:
+    from .entity_indexer import EntityIndexer
+    ENTITY_INDEXER_AVAILABLE = True
+except ImportError:
+    EntityIndexer = None
+    ENTITY_INDEXER_AVAILABLE = False
 
 
 class LedgerSensorConfig(BaseSensorConfig):
     """Ledger sensor specific configuration"""
     platform: str = "regen-ledger"
-    
+
     # RPC endpoints with fallbacks
     rpc_endpoints: List[str] = [
         "https://regen-rpc.polkachu.com",
         "https://rpc-regen.ecostake.com",
         "https://regen.rpc.m.stavr.tech"
     ]
-    
+
     # REST/LCD endpoints with fallbacks
     rest_endpoints: List[str] = [
         "https://regen-rest.publicnode.com",
@@ -39,12 +54,21 @@ class LedgerSensorConfig(BaseSensorConfig):
         "https://api-regen-ia.cosmosia.notional.ventures",
         "https://regen.api.ping.pub"
     ]
-    
+
     # Query intervals (seconds)
     governance_interval: int = 300  # 5 minutes
     ecocredit_interval: int = 600   # 10 minutes
     consensus_interval: int = 60    # 1 minute
     stats_interval: int = 3600      # 1 hour
+    entity_indexing_interval: int = 3600  # 1 hour for entity indexing
+
+    # Entity indexing configuration
+    entity_indexing_enabled: bool = True
+    metadata_api: str = "https://api.regen.network/data/v2/metadata-graph"
+    resolve_metadata: bool = True
+    generate_aliases: bool = True
+    build_organizations: bool = True
+    metadata_delay_ms: int = 100
 
 
 class LedgerSensor(BaseSensor):
@@ -62,12 +86,29 @@ class LedgerSensor(BaseSensor):
             poll_interval=30
         )
 
+        # Persistent state for entity indexing deduplication
+        self.entity_state = PersistentSensorState('ledger_entities', Path(__file__).parent)
+
+        # Initialize entity indexer if available
+        self.entity_indexer: Optional[EntityIndexer] = None
+        if ENTITY_INDEXER_AVAILABLE and config.entity_indexing_enabled:
+            self.entity_indexer = EntityIndexer(
+                api_endpoint=config.rest_endpoints[0] if config.rest_endpoints else "https://lcd-regen.keplr.app",
+                metadata_api=config.metadata_api,
+                resolve_metadata=config.resolve_metadata,
+                generate_aliases=config.generate_aliases,
+                build_organizations=config.build_organizations,
+                metadata_delay_ms=config.metadata_delay_ms,
+            )
+            self.logger.info("Entity indexer initialized for credit class/project/organization indexing")
+
         # Track last query times
         self.last_queries = {
             "governance": None,
             "ecocredit": None,
             "consensus": None,
-            "stats": None
+            "stats": None,
+            "entity_indexing": None,
         }
 
         # Active endpoints (selected from fallbacks)
@@ -78,6 +119,7 @@ class LedgerSensor(BaseSensor):
         self.total_proposals = 0
         self.total_credits = 0
         self.last_block_height = 0
+        self.total_entities_indexed = 0
     
     async def initialize(self):
         """Initialize HTTP session and test endpoints"""
@@ -113,7 +155,9 @@ class LedgerSensor(BaseSensor):
                     "rest_endpoint": self.active_rest_endpoint,
                     "proposals_tracked": self.total_proposals,
                     "credits_tracked": self.total_credits,
-                    "last_block": self.last_block_height
+                    "last_block": self.last_block_height,
+                    "entities_indexed": self.total_entities_indexed,
+                    "entity_indexing_enabled": self.entity_indexer is not None,
                 }
             }
 
@@ -265,8 +309,122 @@ class LedgerSensor(BaseSensor):
             stats_data = await self.generate_stats()
             collected_items.extend(stats_data)
             self.last_queries["stats"] = current_time
-        
+
+        # Run entity indexing for credit classes, projects, and organizations
+        if self.entity_indexer and self._should_query("entity_indexing", self.config.entity_indexing_interval):
+            try:
+                await self.run_entity_indexing()
+                self.last_queries["entity_indexing"] = current_time
+            except Exception as e:
+                self.logger.error(f"Error in entity indexing: {e}")
+
         return collected_items
+
+    async def run_entity_indexing(self):
+        """
+        Run entity indexing to collect and emit credit classes, projects, and organizations.
+        These entities are stored in entity_registry for automated entity resolution.
+        """
+        if not self.entity_indexer:
+            return
+
+        self.logger.info("Starting entity indexing cycle")
+
+        try:
+            # Index all entities
+            results = await self.entity_indexer.index_entities()
+
+            # Emit bundles for each entity type
+            emitted_count = 0
+
+            # Emit credit class bundles
+            for bundle in results['credit_class_bundles']:
+                if await self.emit_entity_bundle(bundle, 'credit_class'):
+                    emitted_count += 1
+
+            # Emit project bundles
+            for bundle in results['project_bundles']:
+                if await self.emit_entity_bundle(bundle, 'project'):
+                    emitted_count += 1
+
+            # Emit organization bundles
+            for bundle in results['organization_bundles']:
+                if await self.emit_entity_bundle(bundle, 'organization'):
+                    emitted_count += 1
+
+            self.total_entities_indexed = emitted_count
+            self.entity_state.save()
+
+            self.logger.info(
+                f"Entity indexing complete: emitted {emitted_count} entities "
+                f"({results['stats']['credit_classes']} classes, "
+                f"{results['stats']['projects']} projects, "
+                f"{results['stats']['organizations']} orgs)"
+            )
+
+            # Write summary to output directory
+            output_dir = Path(__file__).parent / 'output'
+            output_dir.mkdir(exist_ok=True)
+            summary_path = output_dir / 'entity_indexing_summary.json'
+            with open(summary_path, 'w') as f:
+                json.dump({
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'emitted_count': emitted_count,
+                    'stats': results['stats'],
+                }, f, indent=2)
+
+        except Exception as e:
+            self.logger.error(f"Error in entity indexing: {e}")
+            raise
+
+    async def emit_entity_bundle(self, bundle: Bundle, entity_type: str) -> bool:
+        """
+        Emit a single entity bundle to KOI, with deduplication via content hash.
+
+        Args:
+            bundle: The bundle to emit
+            entity_type: Type of entity for state tracking
+
+        Returns:
+            True if the bundle was emitted (new or updated), False if skipped
+        """
+        rid_str = bundle.rid
+        content_hash = bundle.manifest.sha256_hash
+        state_key = f"hash_{rid_str}"
+
+        # Check if we've already processed this exact content
+        previous_hash = self.entity_state.metadata.get(state_key)
+
+        if previous_hash and previous_hash == content_hash:
+            self.logger.debug(f"Skipping unchanged entity: {rid_str}")
+            return False
+
+        # Mark as pending before emission
+        entity_id = f"{entity_type}_{rid_str}"
+        self.entity_state.mark_pending('ledger', entity_id)
+
+        try:
+            if previous_hash and previous_hash != content_hash:
+                # Content changed - emit UPDATE
+                self.logger.info(f"Emitting UPDATE for changed entity: {rid_str}")
+                success = await self.koi_node.emit_update_event(bundle)
+            else:
+                # New content - emit NEW
+                self.logger.info(f"Emitting NEW for entity: {rid_str}")
+                success = await self.koi_node.emit_new_event(bundle)
+
+            if success:
+                self.entity_state.metadata[state_key] = content_hash
+                self.entity_state.mark_processed('ledger', entity_id)
+                return True
+            else:
+                self.entity_state.clear_pending('ledger', entity_id)
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error emitting bundle for {rid_str}: {e}")
+            self.entity_state.clear_pending('ledger', entity_id)
+            return False
     
     def _should_query(self, query_type: str, interval: int) -> bool:
         """Check if enough time has passed for a query type"""
