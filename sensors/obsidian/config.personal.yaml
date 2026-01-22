@@ -1,0 +1,83 @@
+# Obsidian Sensor Configuration - Personal Deployment
+# For local/personal knowledge graph
+#
+# Usage:
+#   export OBSIDIAN_CONFIG=config.personal.yaml
+#   python obsidian_sensor.py --vault ~/Documents/Notes
+
+sensor:
+  name: obsidian-sensor-personal
+  type: partial_node
+  # Local coordinator for personal KOI-net
+  coordinator_url: http://localhost:8005
+
+# Vault configuration
+vault:
+  path_env: "OBSIDIAN_VAULT_PATH"
+  path_default: "~/Documents/Notes"
+
+  name_env: "OBSIDIAN_VAULT_NAME"
+  name_default: "personal"
+
+  # Watch for changes continuously
+  watch_mode: true
+
+# Schema types to track
+# These map to entity types in the knowledge graph
+schema_types:
+  - Person
+  - Organization
+  - Meeting
+  - Project
+  - Location
+  - Concept
+  - Event
+
+# Folders to exclude from scanning
+exclude_folders:
+  - .obsidian
+  - .trash
+  - .smart-env
+  - .claude
+  - Templates
+  - Archive
+  - Attachments
+
+# Folder-to-type mapping
+# Infer @type from folder if not in frontmatter
+folder_type_mapping:
+  People: Person
+  Organizations: Organization
+  Meetings: Meeting
+  Projects: Project
+  Locations: Location
+  Concepts: Concept
+  Events: Event
+
+# Relationship extraction settings
+relationships:
+  extract_wikilinks: true
+
+  # Frontmatter fields that indicate relationships
+  relationship_fields:
+    - affiliation      # -> affiliatedWith
+    - attendees        # -> hasAttendee
+    - project          # -> relatedToProject
+    - organization     # -> memberOf
+    - worksFor         # -> worksFor
+    - knows            # -> knows
+    - location         # -> locatedIn
+    - relatedTo        # -> relatedTo
+
+# Export settings for KOI
+export:
+  format: "koi_bundle"
+  include_body: true
+  include_frontmatter: true
+  include_relationships: true
+
+# Personal KOI backend integration
+backend:
+  # Send extracted entities to personal koi-processor
+  ingest_url: http://localhost:8351/ingest
+  enabled: true
