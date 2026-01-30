@@ -1,6 +1,6 @@
 # Claude Sessions Sensor
 
-Indexes Claude Code session transcripts into personal KOI for semantic search.
+Indexes Claude Code session transcripts into personal KOI for semantic search and metadata queries.
 
 ## Overview
 
@@ -8,9 +8,10 @@ This sensor enables searching across your Claude Code conversation history. It:
 
 1. **Scans** Claude Code session JSONL files from `~/.claude/projects/`
 2. **Chunks** conversations by turn pairs (user + assistant)
-3. **Embeds** chunks using OpenAI embeddings
-4. **Stores** in PostgreSQL with pgvector for semantic search
-5. **Links** mentions to existing entities in personal KOI
+3. **Embeds** chunks using OpenAI embeddings for semantic search
+4. **Extracts metadata**: tools used, MCP servers, files accessed, model, cwd
+5. **Stores** in PostgreSQL with pgvector for semantic search
+6. **Links** mentions to existing entities in personal KOI
 
 ## Architecture
 
@@ -89,6 +90,22 @@ Add to `~/.claude/settings.json`:
 ./start.sh daemon
 ```
 
+### Backfill Embeddings
+
+If you initially ran without `OPENAI_API_KEY`, backfill embeddings later:
+
+```bash
+OPENAI_API_KEY="sk-..." python claude_session_sensor.py --mode backfill
+```
+
+### Refresh Metadata Only
+
+Re-extract metadata (tools, files, etc.) without re-chunking:
+
+```bash
+python claude_session_sensor.py --mode refresh
+```
+
 ### Process Specific Session
 
 ```bash
@@ -115,7 +132,7 @@ See `config.personal.yaml`:
 ## Database Schema
 
 ```sql
--- Track ingestion state
+-- Track ingestion state with metadata
 CREATE TABLE session_ingestion_log (
     session_id TEXT PRIMARY KEY,
     transcript_path TEXT NOT NULL,
@@ -125,7 +142,15 @@ CREATE TABLE session_ingestion_log (
     message_count INT,
     chunk_count INT,
     file_mtime DOUBLE PRECISION,
-    last_ingested_at TIMESTAMP
+    last_ingested_at TIMESTAMP,
+    -- Metadata columns
+    tools_used TEXT[],              -- ["Bash", "Read", "Edit", ...]
+    tool_counts JSONB,              -- {"Bash": 50, "Read": 10, ...}
+    mcp_servers TEXT[],             -- ["personal-koi", "regen-ledger"]
+    files_accessed TEXT[],          -- ["/path/to/file.ts", ...]
+    model TEXT,                     -- "claude-opus-4-5-20251101"
+    cwd TEXT,                       -- Working directory
+    git_branch TEXT                 -- Git branch if available
 );
 
 -- Session chunks with embeddings
@@ -140,16 +165,59 @@ CREATE TABLE session_chunks (
     embedding vector(1536),
     UNIQUE(session_id, chunk_index)
 );
+
+-- Tool usage for queryability
+CREATE TABLE session_tool_usage (
+    id SERIAL PRIMARY KEY,
+    session_id TEXT REFERENCES session_ingestion_log(session_id),
+    tool_name TEXT NOT NULL,
+    call_count INT DEFAULT 1,
+    is_mcp BOOLEAN DEFAULT FALSE,
+    mcp_server TEXT,
+    UNIQUE(session_id, tool_name)
+);
 ```
 
 ## Searching Sessions
 
-Once indexed, sessions can be searched via the personal KOI MCP (after adding `search_sessions` tool):
+Once indexed, use the personal KOI MCP tools:
 
+### Semantic Search (conversation content)
 ```
-"What did I discuss with Claude about pgvector?"
-"Find sessions where I worked on entity resolution"
+search_sessions(query="entity resolution pgvector")
 ```
+
+### Tool Usage Queries
+```
+# Find sessions using a specific MCP
+search_sessions_by_tool(mcp_server="regen-ledger")
+
+# Find heavy Bash usage
+search_sessions_by_tool(tool="Bash")
+
+# Overall tool statistics (no filter)
+search_sessions_by_tool()
+```
+
+### File Access Queries
+```
+# Sessions that edited koi-processor
+search_sessions_by_files(path_contains="koi-processor")
+
+# Sessions with most files accessed
+search_sessions_by_files()
+```
+
+### API Endpoints
+
+The personal KOI API exposes these endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/search-sessions` | POST | Semantic search over chunks |
+| `/session-stats` | GET | Index statistics |
+| `/session-tools` | GET | Query by tool/MCP usage |
+| `/session-files` | GET | Query by files accessed |
 
 ## Troubleshooting
 
