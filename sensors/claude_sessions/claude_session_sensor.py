@@ -193,6 +193,49 @@ class ClaudeSessionSensor:
             # Session-entity links (reuse document_entity_links pattern)
             # Sessions use RID format: claude-session:{session_id}
 
+            # Add metadata columns to session_ingestion_log (if not exist)
+            await conn.execute("""
+                DO $$
+                BEGIN
+                    ALTER TABLE session_ingestion_log ADD COLUMN IF NOT EXISTS tools_used TEXT[];
+                    ALTER TABLE session_ingestion_log ADD COLUMN IF NOT EXISTS tool_counts JSONB;
+                    ALTER TABLE session_ingestion_log ADD COLUMN IF NOT EXISTS mcp_servers TEXT[];
+                    ALTER TABLE session_ingestion_log ADD COLUMN IF NOT EXISTS files_accessed TEXT[];
+                    ALTER TABLE session_ingestion_log ADD COLUMN IF NOT EXISTS model TEXT;
+                    ALTER TABLE session_ingestion_log ADD COLUMN IF NOT EXISTS cwd TEXT;
+                    ALTER TABLE session_ingestion_log ADD COLUMN IF NOT EXISTS git_branch TEXT;
+                EXCEPTION WHEN duplicate_column THEN NULL;
+                END $$;
+            """)
+
+            # Tool usage detail table for queryability
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS session_tool_usage (
+                    id SERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL REFERENCES session_ingestion_log(session_id) ON DELETE CASCADE,
+                    tool_name TEXT NOT NULL,
+                    call_count INT DEFAULT 1,
+                    is_mcp BOOLEAN DEFAULT FALSE,
+                    mcp_server TEXT,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(session_id, tool_name)
+                )
+            """)
+
+            # Indexes for tool usage queries
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_session_tool_usage_session
+                ON session_tool_usage(session_id)
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_session_tool_usage_tool
+                ON session_tool_usage(tool_name)
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_session_tool_usage_mcp
+                ON session_tool_usage(mcp_server) WHERE mcp_server IS NOT NULL
+            """)
+
             logger.info("Schema verified/created")
 
     async def close(self):
@@ -373,6 +416,9 @@ class ClaudeSessionSensor:
                     chunks_created=0
                 )
 
+            # Extract metadata (tools, files, model, etc.)
+            metadata = self._extract_metadata(session.transcript_path)
+
             # Create chunks
             chunks = self._create_chunks(session.session_id, messages)
 
@@ -420,12 +466,13 @@ class ClaudeSessionSensor:
                                 chunk.timestamp
                             )
 
-                    # Update ingestion log
+                    # Update ingestion log with metadata
                     await conn.execute("""
                         INSERT INTO session_ingestion_log
                         (session_id, transcript_path, project_path, summary, first_prompt,
-                         message_count, chunk_count, file_mtime, last_ingested_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+                         message_count, chunk_count, file_mtime, last_ingested_at,
+                         tools_used, tool_counts, mcp_servers, files_accessed, model, cwd, git_branch)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15)
                         ON CONFLICT (session_id) DO UPDATE SET
                             transcript_path = EXCLUDED.transcript_path,
                             summary = EXCLUDED.summary,
@@ -433,6 +480,13 @@ class ClaudeSessionSensor:
                             message_count = EXCLUDED.message_count,
                             chunk_count = EXCLUDED.chunk_count,
                             file_mtime = EXCLUDED.file_mtime,
+                            tools_used = EXCLUDED.tools_used,
+                            tool_counts = EXCLUDED.tool_counts,
+                            mcp_servers = EXCLUDED.mcp_servers,
+                            files_accessed = EXCLUDED.files_accessed,
+                            model = EXCLUDED.model,
+                            cwd = EXCLUDED.cwd,
+                            git_branch = EXCLUDED.git_branch,
                             last_ingested_at = NOW()
                     """,
                         session.session_id,
@@ -442,8 +496,37 @@ class ClaudeSessionSensor:
                         session.first_prompt,
                         len(messages),
                         len(chunks),
-                        session.file_mtime
+                        session.file_mtime,
+                        metadata['tools_used'],
+                        json.dumps(metadata['tool_counts']),
+                        metadata['mcp_servers'],
+                        metadata['files_accessed'],
+                        metadata['model'],
+                        metadata['cwd'],
+                        metadata['git_branch']
                     )
+
+                    # Store tool usage details
+                    if metadata['tool_counts']:
+                        # Delete existing tool usage for this session
+                        await conn.execute("""
+                            DELETE FROM session_tool_usage WHERE session_id = $1
+                        """, session.session_id)
+
+                        # Insert tool usage records
+                        for tool_name, count in metadata['tool_counts'].items():
+                            is_mcp = tool_name.startswith('mcp__')
+                            mcp_server = None
+                            if is_mcp:
+                                parts = tool_name.split('__')
+                                if len(parts) >= 2:
+                                    mcp_server = parts[1]
+
+                            await conn.execute("""
+                                INSERT INTO session_tool_usage
+                                (session_id, tool_name, call_count, is_mcp, mcp_server)
+                                VALUES ($1, $2, $3, $4, $5)
+                            """, session.session_id, tool_name, count, is_mcp, mcp_server)
 
             self.stats['sessions_processed'] += 1
             self.stats['chunks_created'] += len(chunks)
@@ -488,6 +571,84 @@ class ClaudeSessionSensor:
             logger.error(f"Error reading transcript {transcript_path}: {e}")
 
         return messages
+
+    def _extract_metadata(self, transcript_path: str) -> Dict:
+        """
+        Extract structured metadata from transcript.
+
+        Returns dict with:
+        - tools_used: list of unique tool names
+        - tool_counts: dict of tool_name -> count
+        - mcp_servers: list of MCP server names
+        - files_accessed: list of file paths (read/edit/write)
+        - model: model name used
+        - cwd: working directory
+        - git_branch: git branch name
+        """
+        tool_counts: Dict[str, int] = {}
+        mcp_servers: set = set()
+        files_accessed: set = set()
+        model = None
+        cwd = None
+        git_branch = None
+
+        try:
+            with open(transcript_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+
+                        # Extract metadata from assistant messages
+                        if msg.get('type') == 'assistant':
+                            # Get model, cwd, git_branch from first assistant message
+                            if model is None:
+                                inner_msg = msg.get('message', {})
+                                model = inner_msg.get('model')
+                            if cwd is None:
+                                cwd = msg.get('cwd')
+                            if git_branch is None:
+                                git_branch = msg.get('gitBranch')
+
+                            # Extract tool usage from content blocks
+                            inner_msg = msg.get('message', {})
+                            content = inner_msg.get('content', [])
+                            if isinstance(content, list):
+                                for block in content:
+                                    if isinstance(block, dict) and block.get('type') == 'tool_use':
+                                        tool_name = block.get('name', '')
+                                        tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
+
+                                        # Extract MCP server name
+                                        if tool_name.startswith('mcp__'):
+                                            parts = tool_name.split('__')
+                                            if len(parts) >= 2:
+                                                mcp_servers.add(parts[1])
+
+                                        # Extract file paths from Read/Edit/Write tools
+                                        tool_input = block.get('input', {})
+                                        if tool_name in ('Read', 'Edit', 'Write', 'NotebookEdit'):
+                                            file_path = tool_input.get('file_path') or tool_input.get('notebook_path')
+                                            if file_path:
+                                                files_accessed.add(file_path)
+
+                    except json.JSONDecodeError:
+                        continue
+
+        except Exception as e:
+            logger.error(f"Error extracting metadata from {transcript_path}: {e}")
+
+        return {
+            'tools_used': list(tool_counts.keys()),
+            'tool_counts': tool_counts,
+            'mcp_servers': list(mcp_servers),
+            'files_accessed': list(files_accessed)[:100],  # Limit to prevent huge arrays
+            'model': model,
+            'cwd': cwd,
+            'git_branch': git_branch
+        }
 
     def _create_chunks(
         self,
@@ -757,6 +918,79 @@ class ClaudeSessionSensor:
 
             logger.info(f"Backfill complete. Generated {processed} embeddings.")
 
+    async def refresh_metadata(self, batch_size: int = 50):
+        """
+        Refresh metadata for existing sessions without re-chunking.
+        Extracts tools, files, model info from transcripts and updates database.
+        """
+        async with self.db_pool.acquire() as conn:
+            # Get all ingested sessions
+            rows = await conn.fetch("""
+                SELECT session_id, transcript_path FROM session_ingestion_log
+                ORDER BY last_ingested_at DESC
+            """)
+
+            logger.info(f"Refreshing metadata for {len(rows)} sessions...")
+
+            processed = 0
+            for row in rows:
+                session_id = row['session_id']
+                transcript_path = row['transcript_path']
+
+                if not transcript_path or not os.path.exists(transcript_path):
+                    continue
+
+                # Extract metadata
+                metadata = self._extract_metadata(transcript_path)
+
+                # Update session record
+                await conn.execute("""
+                    UPDATE session_ingestion_log SET
+                        tools_used = $2,
+                        tool_counts = $3,
+                        mcp_servers = $4,
+                        files_accessed = $5,
+                        model = $6,
+                        cwd = $7,
+                        git_branch = $8
+                    WHERE session_id = $1
+                """,
+                    session_id,
+                    metadata['tools_used'],
+                    json.dumps(metadata['tool_counts']),
+                    metadata['mcp_servers'],
+                    metadata['files_accessed'],
+                    metadata['model'],
+                    metadata['cwd'],
+                    metadata['git_branch']
+                )
+
+                # Update tool usage table
+                if metadata['tool_counts']:
+                    await conn.execute("""
+                        DELETE FROM session_tool_usage WHERE session_id = $1
+                    """, session_id)
+
+                    for tool_name, count in metadata['tool_counts'].items():
+                        is_mcp = tool_name.startswith('mcp__')
+                        mcp_server = None
+                        if is_mcp:
+                            parts = tool_name.split('__')
+                            if len(parts) >= 2:
+                                mcp_server = parts[1]
+
+                        await conn.execute("""
+                            INSERT INTO session_tool_usage
+                            (session_id, tool_name, call_count, is_mcp, mcp_server)
+                            VALUES ($1, $2, $3, $4, $5)
+                        """, session_id, tool_name, count, is_mcp, mcp_server)
+
+                processed += 1
+                if processed % batch_size == 0:
+                    logger.info(f"Refreshed {processed}/{len(rows)} sessions...")
+
+            logger.info(f"Metadata refresh complete. Updated {processed} sessions.")
+
 
 # =============================================================================
 # CLI Entry Point
@@ -765,8 +999,8 @@ class ClaudeSessionSensor:
 async def main():
     parser = argparse.ArgumentParser(description='Claude Sessions Sensor')
     parser.add_argument('--config', type=str, help='Path to config file')
-    parser.add_argument('--mode', choices=['daemon', 'scan', 'session', 'backfill'],
-                        default='scan', help='Run mode')
+    parser.add_argument('--mode', choices=['daemon', 'scan', 'session', 'backfill', 'refresh'],
+                        default='scan', help='Run mode (refresh = update metadata only)')
     parser.add_argument('--session-id', type=str, help='Session ID (for session mode)')
     parser.add_argument('--transcript-path', type=str, help='Transcript path (for session mode)')
 
@@ -788,6 +1022,8 @@ async def main():
             logger.info(f"Result: {result}")
         elif args.mode == 'backfill':
             await sensor.backfill_embeddings()
+        elif args.mode == 'refresh':
+            await sensor.refresh_metadata()
     finally:
         await sensor.close()
 
