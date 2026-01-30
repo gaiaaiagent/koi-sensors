@@ -1,0 +1,65 @@
+# Claude Sessions Sensor - Personal Configuration
+# Indexes Claude Code session transcripts into personal KOI
+
+sensor:
+  name: claude_sessions
+  description: "Claude Code session transcript indexer"
+  version: "1.0.0"
+
+# Session file locations
+sessions:
+  # Base path for Claude Code projects
+  base_path: "~/.claude/projects"
+  # Pattern to find session JSONL files
+  pattern: "**/*.jsonl"
+  # Exclude patterns
+  exclude:
+    - "**/scratchpad/**"
+
+# Processing configuration
+processing:
+  # Chunking strategy: "turn_pair" or "token_count"
+  chunk_strategy: "turn_pair"
+  # For token_count strategy
+  chunk_size: 1000
+  chunk_overlap: 200
+  # Minimum message count to process a session
+  min_messages: 2
+  # Maximum age of sessions to process (days, 0 = no limit)
+  max_age_days: 0
+
+# Embedding configuration
+embeddings:
+  enabled: true
+  model: "text-embedding-ada-002"
+  # Batch size for embedding API calls
+  batch_size: 20
+
+# Entity extraction
+entity_extraction:
+  enabled: true
+  # Link to existing entities in personal KOI
+  link_existing: true
+  # Extract new entities from sessions
+  extract_new: false  # Keep simple for now
+
+# Personal KOI backend
+koi_backend:
+  api_url: "http://localhost:8351"
+  database_url: "postgresql://darrenzal:@localhost:5432/personal_koi"
+
+# Sensor runtime
+runtime:
+  # How often to run full scan (minutes)
+  scan_interval: 10
+  # Run as daemon or one-shot
+  mode: "daemon"
+  # Log level
+  log_level: "INFO"
+
+# Hook integration
+hook:
+  # Enable real-time processing via SessionEnd hook
+  enabled: true
+  # Endpoint for hook notifications
+  endpoint: "/ingest-session"
