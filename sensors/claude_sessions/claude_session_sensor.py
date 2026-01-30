@@ -696,6 +696,67 @@ class ClaudeSessionSensor:
 
         logger.info(f"Scan complete. Stats: {self.stats}")
 
+    async def backfill_embeddings(self, batch_size: int = 100):
+        """
+        Generate embeddings for chunks that don't have them.
+        Used to backfill embeddings after initial scan without OpenAI key.
+        """
+        if not self.openai_client:
+            logger.error("OpenAI client not available. Set OPENAI_API_KEY environment variable.")
+            return
+
+        async with self.db_pool.acquire() as conn:
+            # Count chunks needing embeddings
+            total_missing = await conn.fetchval("""
+                SELECT COUNT(*) FROM session_chunks WHERE embedding IS NULL
+            """)
+            logger.info(f"Found {total_missing} chunks needing embeddings")
+
+            if total_missing == 0:
+                logger.info("All chunks have embeddings!")
+                return
+
+            processed = 0
+            while processed < total_missing:
+                # Fetch batch of chunks without embeddings
+                rows = await conn.fetch("""
+                    SELECT id, chunk_text FROM session_chunks
+                    WHERE embedding IS NULL
+                    ORDER BY id
+                    LIMIT $1
+                """, batch_size)
+
+                if not rows:
+                    break
+
+                # Generate embeddings for batch
+                texts = [row['chunk_text'] for row in rows]
+                ids = [row['id'] for row in rows]
+
+                try:
+                    response = self.openai_client.embeddings.create(
+                        model=self.config['embeddings']['model'],
+                        input=texts
+                    )
+
+                    # Update each chunk with its embedding
+                    for i, embedding_data in enumerate(response.data):
+                        embedding = embedding_data.embedding
+                        await conn.execute("""
+                            UPDATE session_chunks
+                            SET embedding = $1::vector
+                            WHERE id = $2
+                        """, str(embedding), ids[i])
+
+                    processed += len(rows)
+                    logger.info(f"Backfilled {processed}/{total_missing} embeddings...")
+
+                except Exception as e:
+                    logger.error(f"Error generating embeddings: {e}")
+                    break
+
+            logger.info(f"Backfill complete. Generated {processed} embeddings.")
+
 
 # =============================================================================
 # CLI Entry Point
@@ -704,7 +765,7 @@ class ClaudeSessionSensor:
 async def main():
     parser = argparse.ArgumentParser(description='Claude Sessions Sensor')
     parser.add_argument('--config', type=str, help='Path to config file')
-    parser.add_argument('--mode', choices=['daemon', 'scan', 'session'],
+    parser.add_argument('--mode', choices=['daemon', 'scan', 'session', 'backfill'],
                         default='scan', help='Run mode')
     parser.add_argument('--session-id', type=str, help='Session ID (for session mode)')
     parser.add_argument('--transcript-path', type=str, help='Transcript path (for session mode)')
@@ -725,6 +786,8 @@ async def main():
                 return
             result = await sensor.process_session_by_id(args.session_id, args.transcript_path)
             logger.info(f"Result: {result}")
+        elif args.mode == 'backfill':
+            await sensor.backfill_embeddings()
     finally:
         await sensor.close()
 
