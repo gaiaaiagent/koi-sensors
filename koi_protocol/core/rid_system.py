@@ -219,7 +219,7 @@ class WebPageRID(ORN):
 class GitHubFileRID(ORN):
     """GitHub file RID: orn:github.file:owner/repo/branch/file_path_hash"""
     namespace = "github.file"
-    
+
     def __init__(self, owner: str, repo: str, branch: str, file_path: str):
         self.owner = owner
         self.repo = repo
@@ -227,10 +227,82 @@ class GitHubFileRID(ORN):
         self.file_path = file_path
         self.path_hash = hashlib.sha256(file_path.encode('utf-8')).hexdigest()[:16]
         super().__init__()
-    
+
     @property
     def reference(self) -> str:
         return f"{self.owner}/{self.repo}/{self.branch}/{self.path_hash}"
+
+
+class GmailMessageRID(ORN):
+    """
+    Gmail message RID: orn:gmail.message:{message_id_hash}
+
+    Uses SHA256 hash of Message-ID header since X-GM-MSGID is only available via IMAP.
+    The hash provides a stable, unique identifier that survives Maildir moves.
+    """
+    namespace = "gmail.message"
+
+    def __init__(self, message_id: str):
+        """
+        Create a Gmail message RID from a Message-ID header value.
+
+        Args:
+            message_id: The RFC 5322 Message-ID header value (e.g., "<abc123@example.com>")
+        """
+        # Store original message_id for reference
+        self.message_id = message_id
+        # Create deterministic hash for RID reference
+        self.message_id_hash = hashlib.sha256(message_id.encode('utf-8')).hexdigest()[:16]
+        super().__init__()
+
+    @property
+    def reference(self) -> str:
+        return self.message_id_hash
+
+    @classmethod
+    def from_raw_message_id(cls, raw_message_id: str) -> 'GmailMessageRID':
+        """
+        Create RID from raw Message-ID, normalizing angle brackets.
+
+        Args:
+            raw_message_id: Message-ID with or without angle brackets
+        """
+        # Normalize: strip whitespace and ensure no double angle brackets
+        message_id = raw_message_id.strip()
+        if not message_id.startswith('<'):
+            message_id = f'<{message_id}'
+        if not message_id.endswith('>'):
+            message_id = f'{message_id}>'
+        return cls(message_id)
+
+
+class GmailAttachmentRID(ORN):
+    """
+    Gmail attachment RID: orn:gmail.attachment:{message_hash}/{index}_{content_hash}
+
+    Attachments are identified by their parent message, index, and content hash.
+    """
+    namespace = "gmail.attachment"
+
+    def __init__(self, parent_message_id: str, attachment_index: int, content_hash: str):
+        """
+        Create a Gmail attachment RID.
+
+        Args:
+            parent_message_id: The parent email's Message-ID header
+            attachment_index: Zero-based index of attachment in the email
+            content_hash: SHA256 hash of attachment content (first 16 chars)
+        """
+        self.parent_message_id = parent_message_id
+        self.attachment_index = attachment_index
+        self.content_hash = content_hash[:16] if len(content_hash) > 16 else content_hash
+        # Compute parent hash for reference
+        self.parent_hash = hashlib.sha256(parent_message_id.encode('utf-8')).hexdigest()[:16]
+        super().__init__()
+
+    @property
+    def reference(self) -> str:
+        return f"{self.parent_hash}/{self.attachment_index}_{self.content_hash}"
 
 
 class RIDRegistry:
@@ -247,6 +319,8 @@ class RIDRegistry:
         self.register("notion.page", NotionPageRID)
         self.register("web.page", WebPageRID)
         self.register("github.file", GitHubFileRID)
+        self.register("gmail.message", GmailMessageRID)
+        self.register("gmail.attachment", GmailAttachmentRID)
     
     def register(self, namespace: str, rid_class: type):
         """Register a RID type for a namespace"""
