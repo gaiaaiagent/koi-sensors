@@ -25,7 +25,7 @@ from koi_protocol.core.bundle_system import Bundle, document_to_bundle
 class DiscourseKOISensor:
     """
     Sensor for collecting data from Discourse forums with KOI integration
-    Supports both forum.regen.network and regencommons.discourse.group
+    Supports both forum.regen.network and hub.regencoordination.xyz
     """
     
     def __init__(self):
@@ -38,9 +38,9 @@ class DiscourseKOISensor:
                 'categories': ['all']  # Fetch all categories
             },
             {
-                'name': 'regencommons.discourse.group', 
-                'url': 'https://regencommons.discourse.group',
-                'categories': ['all']
+                'name': 'hub.regencoordination.xyz',
+                'url': 'https://hub.regencoordination.xyz',
+                'categories': ['33']  # Regen Commons category only
             }
         ]
         

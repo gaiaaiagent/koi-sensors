@@ -67,9 +67,9 @@ class DiscourseSensor:
                 'categories': ['all']  # Fetch all categories
             },
             {
-                'name': 'regencommons.discourse.group',
-                'url': 'https://regencommons.discourse.group',
-                'categories': ['all']
+                'name': 'hub.regencoordination.xyz',
+                'url': 'https://hub.regencoordination.xyz',
+                'categories': ['33']  # Regen Commons category only
             }
         ]
 

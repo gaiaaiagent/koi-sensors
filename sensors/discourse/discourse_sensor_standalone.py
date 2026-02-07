@@ -18,7 +18,7 @@ import re
 class DiscourseSensor:
     """
     Sensor for collecting data from Discourse forums
-    Supports both forum.regen.network and regencommons.discourse.group
+    Supports both forum.regen.network and hub.regencoordination.xyz
     """
     
     def __init__(self):
@@ -31,9 +31,9 @@ class DiscourseSensor:
                 'categories': ['all']  # Fetch all categories
             },
             {
-                'name': 'regencommons.discourse.group', 
-                'url': 'https://regencommons.discourse.group',
-                'categories': ['all']
+                'name': 'hub.regencoordination.xyz',
+                'url': 'https://hub.regencoordination.xyz',
+                'categories': ['33']  # Regen Commons category only
             }
         ]
         

@@ -85,15 +85,15 @@ websites:
     current_status: "428 posts across 77 topics - complete"
     notes: "Governance discussions, Token Economics Working Group"
 
-  - name: regencommons-discourse
-    url: https://regencommons.discourse.group
+  - name: regen-coordination-hub
+    url: https://hub.regencoordination.xyz
     strategy: discourse_api
     max_depth: 1
     max_pages: 1000
     check_interval: 7200
-    priority: low
-    current_status: "15 posts across 6 topics - complete"
-    notes: "Community discussions"
+    priority: medium
+    current_status: "migrated from regencommons.discourse.group"
+    notes: "Regen Commons category (ID 33) - community discussions, governance proposals"
 
   # Additional research websites (new additions)
   - name: research-retreat-papers
