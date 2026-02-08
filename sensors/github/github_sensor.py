@@ -703,7 +703,7 @@ async def main():
             {
                 "name": "koi-processor",
                 "url": "https://github.com/gaiaaiagent/koi-processor",
-                "branch": "regen-prod",
+                "branch": "main",
                 "paths": ["."]
             },
             {
