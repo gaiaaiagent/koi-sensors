@@ -1,70 +1,61 @@
 #!/bin/bash
 # KOI Sensor Failure Alert Script
 # Called by systemd OnFailure= when a sensor exceeds restart limits
+# Sends alerts via Telegram
 
 SENSOR=$1
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S UTC')
 HOSTNAME=$(hostname)
 
-# Check if msmtp is configured
-if [ ! -f /etc/msmtprc ] && [ ! -f ~/.msmtprc ]; then
-    echo "[$TIMESTAMP] ALERT: Sensor $SENSOR failed but msmtp not configured" >> /opt/projects/koi-sensors/logs/alerts.log
-    exit 1
-fi
+# Telegram configuration
+TELEGRAM_ALERT_BOT_TOKEN="${TELEGRAM_ALERT_BOT_TOKEN:-}"
+TELEGRAM_ALERT_CHAT_ID="${TELEGRAM_ALERT_CHAT_ID:-}"
 
-# Get recipient email from environment or config
-ALERT_EMAIL=${KOI_ALERT_EMAIL:-""}
-
-if [ -z "$ALERT_EMAIL" ]; then
-    # Try to read from config file
+# Load from config file if not in environment
+if [ -z "$TELEGRAM_ALERT_BOT_TOKEN" ] || [ -z "$TELEGRAM_ALERT_CHAT_ID" ]; then
     if [ -f /opt/projects/koi-sensors/.alert-config ]; then
         source /opt/projects/koi-sensors/.alert-config
     fi
 fi
 
-if [ -z "$ALERT_EMAIL" ]; then
-    echo "[$TIMESTAMP] ALERT: No alert email configured for sensor $SENSOR failure" >> /opt/projects/koi-sensors/logs/alerts.log
+if [ -z "$TELEGRAM_ALERT_BOT_TOKEN" ] || [ -z "$TELEGRAM_ALERT_CHAT_ID" ]; then
+    echo "[$TIMESTAMP] ALERT: Telegram not configured for sensor $SENSOR failure" >> /opt/projects/koi-sensors/logs/alerts.log
     exit 1
 fi
 
-# Get recent logs
-RECENT_LOGS=$(journalctl -u koi-sensor@$SENSOR -n 100 --no-pager 2>/dev/null || tail -100 /opt/projects/koi-sensors/sensors/$SENSOR/${SENSOR}_sensor.log 2>/dev/null || echo "No logs available")
+# Get recent logs (last 20 lines to fit Telegram message limit)
+RECENT_LOGS=$(journalctl -u koi-sensor@$SENSOR -n 20 --no-pager 2>/dev/null || tail -20 /opt/projects/koi-sensors/sensors/$SENSOR/${SENSOR}_sensor.log 2>/dev/null || echo "No logs available")
 
-# Send email
-cat << EOF | msmtp "$ALERT_EMAIL"
-Subject: [KOI ALERT] Sensor Failure: $SENSOR on $HOSTNAME
-From: zaldarren@gmail.com
-To: $ALERT_EMAIL
-Content-Type: text/plain; charset=utf-8
+# Build message
+MESSAGE="🚨 *KOI SENSOR FAILURE*
 
-========================================
-   KOI SENSOR FAILURE ALERT
-========================================
+*Sensor:* \`$SENSOR\`
+*Host:* \`$HOSTNAME\`
+*Time:* $TIMESTAMP
+*Status:* FAILED (exceeded restart limit)
 
-Sensor:     $SENSOR
-Host:       $HOSTNAME
-Time:       $TIMESTAMP
-Status:     FAILED (exceeded restart limit)
+This sensor has crashed repeatedly and systemd has stopped attempting to restart it.
 
-This sensor has crashed repeatedly and systemd has stopped
-attempting to restart it automatically.
+*Required Action:*
+\`\`\`
+ssh darren@$HOSTNAME
+journalctl -u koi-sensor@$SENSOR -n 200
+sudo systemctl start koi-sensor@$SENSOR
+\`\`\`
 
-----------------------------------------
-REQUIRED ACTION:
-----------------------------------------
-1. SSH to server: ssh darren@$HOSTNAME
-2. Check logs:    journalctl -u koi-sensor@$SENSOR -n 200
-3. Fix issue and restart:
-   sudo systemctl start koi-sensor@$SENSOR
-
-----------------------------------------
-RECENT LOGS:
-----------------------------------------
+*Recent Logs:*
+\`\`\`
 $RECENT_LOGS
+\`\`\`"
 
-----------------------------------------
-This is an automated alert from the KOI sensor monitoring system.
-EOF
+# Send via Telegram
+RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_ALERT_BOT_TOKEN}/sendMessage" \
+    -d chat_id="$TELEGRAM_ALERT_CHAT_ID" \
+    -d parse_mode="Markdown" \
+    --data-urlencode "text=$MESSAGE" 2>&1)
 
-# Log the alert
-echo "[$TIMESTAMP] Sent failure alert for sensor $SENSOR to $ALERT_EMAIL" >> /opt/projects/koi-sensors/logs/alerts.log
+if echo "$RESPONSE" | grep -q '"ok":true'; then
+    echo "[$TIMESTAMP] Sent failure alert for sensor $SENSOR via Telegram" >> /opt/projects/koi-sensors/logs/alerts.log
+else
+    echo "[$TIMESTAMP] Failed to send Telegram alert for sensor $SENSOR: $RESPONSE" >> /opt/projects/koi-sensors/logs/alerts.log
+fi
