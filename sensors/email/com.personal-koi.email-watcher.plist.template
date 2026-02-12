@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.personal-koi.email-watcher</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__SENSOR_DIR__/venv/bin/python</string>
+        <string>__SENSOR_DIR__/file_watcher.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__SENSOR_DIR__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__SENSOR_DIR__/email_watcher.log</string>
+    <key>StandardErrorPath</key>
+    <string>__SENSOR_DIR__/email_watcher.error.log</string>
+
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>

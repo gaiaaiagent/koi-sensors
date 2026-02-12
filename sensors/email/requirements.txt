@@ -1,0 +1,23 @@
+# Email Sensor Dependencies
+
+# Core
+pyyaml>=6.0
+asyncpg>=0.28.0
+httpx>=0.24.0
+
+# Email parsing (standard library handles RFC 5322)
+# email-validator>=2.0.0  # Optional: for strict email validation
+
+# Attachment processing
+pdfplumber>=0.9.0
+python-docx>=0.8.11
+
+# File watching
+watchdog>=3.0.0
+
+# Vector embeddings (optional - uses existing BGE server)
+# sentence-transformers>=2.2.0
+# torch>=2.0.0
+
+# Entity extraction (uses API)
+# openai>=1.0.0

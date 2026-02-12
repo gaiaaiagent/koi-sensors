@@ -50,6 +50,9 @@ python bge_server.py
 # Option A: Use the unified startup script
 ./start_all.sh
 
+# Option A.1: Include personal sensors (email + Claude sessions)
+ENABLE_PERSONAL_SENSORS=true ./start_all.sh
+
 # Option B: Start individually with setup
 cd sensors/discord && ./setup.sh && ./start.sh -b
 cd sensors/twitter && ./setup.sh && ./start.sh -b
@@ -62,6 +65,12 @@ cd sensors/gitlab && ./setup.sh && ./start.sh -b
 cd sensors/medium && ./setup.sh && ./start.sh -b
 cd sensors/podcast && ./setup.sh && ./start.sh -b
 cd sensors/ledger && ./setup.sh && ./start.sh -b
+```
+
+#### Optional Terminal 5: Personal Sensors Only
+```bash
+cd sensors/email && ./setup.sh && ./start.sh --background
+cd sensors/claude_sessions && ./setup.sh && ./start.sh --background
 ```
 
 ### 3. Verify Pipeline Operation

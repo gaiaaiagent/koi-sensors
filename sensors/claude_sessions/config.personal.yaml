@@ -45,8 +45,11 @@ entity_extraction:
 
 # Personal KOI backend
 koi_backend:
+  # Override via PERSONAL_KOI_API_URL / KOI_API_URL / KOI_BACKEND_URL
   api_url: "http://localhost:8351"
-  database_url: "postgresql://darrenzal:@localhost:5432/personal_koi"
+  # Override via PERSONAL_KOI_DB_URL / KOI_DATABASE_URL / DATABASE_URL
+  # Example with credentials: postgresql://postgres:postgres@localhost:5432/personal_koi
+  database_url: "postgresql://localhost:5432/personal_koi"
 
 # Sensor runtime
 runtime:

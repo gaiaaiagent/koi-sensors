@@ -16,7 +16,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Array of sensors to setup
+# Base array of sensors to setup
 declare -a SENSORS=(
     "websites"
     "github"
@@ -28,6 +28,27 @@ declare -a SENSORS=(
     "twitter"
     "podcast"
 )
+
+is_enabled() {
+    case "$1" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Optional personal sensors (disabled by default)
+# Enable with:
+#   ENABLE_PERSONAL_SENSORS=true
+# or individually:
+#   ENABLE_EMAIL_SENSOR=true
+#   ENABLE_CLAUDE_SESSIONS_SENSOR=true
+if is_enabled "${ENABLE_EMAIL_SENSOR:-${ENABLE_PERSONAL_SENSORS:-false}}"; then
+    SENSORS+=("email")
+fi
+
+if is_enabled "${ENABLE_CLAUDE_SESSIONS_SENSOR:-${ENABLE_PERSONAL_SENSORS:-false}}"; then
+    SENSORS+=("claude_sessions")
+fi
 
 # Function to setup a sensor
 setup_sensor() {
@@ -70,6 +91,8 @@ pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 
 # Ask if user wants sequential or parallel setup
+echo ""
+echo "Sensors to setup: ${SENSORS[*]}"
 echo ""
 echo "How would you like to setup the sensors?"
 echo "1) Sequential (safer, shows progress)"

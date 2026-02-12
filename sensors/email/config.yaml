@@ -1,0 +1,116 @@
+# Email Sensor Configuration
+# Indexes local Maildir emails into personal-KOI
+
+sensor:
+  name: email
+  description: "Gmail Maildir sensor - indexes emails into personal KOI"
+  version: "1.0.0"
+
+# Maildir configuration
+maildir:
+  # Base path to Gmail Maildir (synced via mbsync)
+  base_path: "~/Mail/Gmail"
+  # Folders to exclude from processing
+  exclude_folders:
+    - "[Gmail]/Spam"
+    - "[Gmail]/Trash"
+    - "Deleted Messages"
+  # Gmail categories to skip (matched in folder names or X-GM-LABELS)
+  exclude_categories:
+    - "promotions"
+    - "social"
+    - "updates"
+    - "forums"
+
+# Filtering configuration
+filtering:
+  # Only process emails from the past N years
+  max_age_years: 5
+  # Minimum email body length to process
+  min_body_length: 50
+  # Maximum email size to process (bytes)
+  max_email_size: 10485760  # 10MB
+
+# Chunking configuration
+chunking:
+  # Target chunk size in tokens
+  chunk_size: 500
+  # Overlap between chunks
+  chunk_overlap: 50
+  # Minimum chunk size
+  min_chunk_size: 100
+
+# Embedding configuration
+embeddings:
+  enabled: true
+  # Local BGE embedding server (BAAI/bge-large-en-v1.5) - privacy-preserving
+  bge_server_url: "http://localhost:8091/encode"
+  # Dimension of BGE embeddings
+  dimension: 1024
+  # Batch size for embedding API calls
+  batch_size: 20
+  # Doc-level embedding: use first N tokens
+  doc_embedding_tokens: 512
+
+# Entity extraction
+entity_extraction:
+  enabled: true
+  # Extract from headers
+  extract_from_headers: true
+  # Extract from body via LLM
+  extract_from_body: true
+  # LLM for body extraction
+  llm_provider: "openai"
+  llm_model: "gpt-4o-mini"
+  # Link to existing entities in personal KOI
+  link_existing: true
+
+# Attachment processing
+attachments:
+  enabled: true
+  # Supported attachment types
+  supported_types:
+    - "application/pdf"
+    - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    - "text/plain"
+    - "text/html"
+  # Maximum attachment size to process
+  max_size: 10485760  # 10MB
+  # Store extracted text
+  store_text: true
+
+# Personal KOI backend
+koi_backend:
+  # Override via PERSONAL_KOI_API_URL / KOI_API_URL / KOI_BACKEND_URL
+  api_url: "http://localhost:8351"
+  # Override via PERSONAL_KOI_DB_URL / KOI_DATABASE_URL / DATABASE_URL
+  # Example with credentials: postgresql://postgres:postgres@localhost:5432/personal_koi
+  database_url: "postgresql://localhost:5432/personal_koi"
+
+# Storage configuration
+storage:
+  # Privacy settings - emails are always private
+  is_private: true
+  access_source: "email-sensor"
+  source_sensor: "email-sensor"
+
+# Sensor runtime
+runtime:
+  # How often to run full scan (minutes) - 30 min after mbsync
+  scan_interval: 30
+  # Run as daemon or one-shot
+  mode: "daemon"
+  # Log level
+  log_level: "INFO"
+  # State file for tracking processed emails
+  state_file: "email_sensor_state.json"
+
+# File watcher for real-time processing
+file_watcher:
+  enabled: true
+  # Watch these directories for new emails
+  watch_paths:
+    - "~/Mail/Gmail/INBOX/new"
+    - "~/Mail/Gmail/INBOX/cur"
+  # Debounce time in seconds
+  debounce: 5

@@ -28,7 +28,7 @@ NC='\033[0m' # No Color
 PID_FILE="$SCRIPT_DIR/.sensor_pids"
 > "$PID_FILE"  # Clear previous PIDs
 
-# Array of sensors to start (in order of priority)
+# Base array of sensors to start (in order of priority)
 declare -a SENSORS=(
     "websites"
     "github"
@@ -41,6 +41,42 @@ declare -a SENSORS=(
     "twitter"
     #"podcast"  # DISABLED - no new podcasts
 )
+
+is_enabled() {
+    case "$1" in
+        1|true|TRUE|yes|YES|on|ON) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Optional personal sensors (disabled by default)
+# Enable with:
+#   ENABLE_PERSONAL_SENSORS=true
+# or individually:
+#   ENABLE_EMAIL_SENSOR=true
+#   ENABLE_CLAUDE_SESSIONS_SENSOR=true
+if is_enabled "${ENABLE_EMAIL_SENSOR:-${ENABLE_PERSONAL_SENSORS:-false}}"; then
+    SENSORS+=("email")
+fi
+
+if is_enabled "${ENABLE_CLAUDE_SESSIONS_SENSOR:-${ENABLE_PERSONAL_SENSORS:-false}}"; then
+    SENSORS+=("claude_sessions")
+fi
+
+get_pid_pattern() {
+    local sensor=$1
+    case "$sensor" in
+        email)
+            echo "email_sensor.py"
+            ;;
+        claude_sessions)
+            echo "claude_session_sensor.py"
+            ;;
+        *)
+            echo "${sensor}_sensor"
+            ;;
+    esac
+}
 
 # Function to check if sensor is configured
 is_sensor_configured() {
@@ -56,6 +92,15 @@ is_sensor_configured() {
         twitter)
             # Twitter uses Playwright, no API key needed
             return 0
+            ;;
+        email)
+            # Local Maildir path (override if needed)
+            local maildir_path="${EMAIL_MAILDIR_PATH:-$HOME/Mail/Gmail}"
+            [ -d "$maildir_path" ]
+            ;;
+        claude_sessions)
+            local sessions_path="${CLAUDE_SESSIONS_BASE_PATH:-$HOME/.claude/projects}"
+            [ -d "$sessions_path" ]
             ;;
         *)
             # Most sensors work without configuration
@@ -91,7 +136,10 @@ start_sensor() {
     ./start.sh --background > /dev/null 2>&1
 
     # Get the PID of the started process
-    local pid=$(pgrep -f "${sensor}_sensor" | tail -1)
+    local pid_pattern
+    pid_pattern=$(get_pid_pattern "$sensor")
+    local pid
+    pid=$(pgrep -f "$pid_pattern" | tail -1)
 
     if [ -n "$pid" ]; then
         echo "$sensor:$pid" >> "$PID_FILE"
@@ -157,6 +205,7 @@ fi
 # Start sensors
 echo ""
 echo -e "${CYAN}Starting sensors...${NC}"
+echo -e "${CYAN}Enabled sensors: ${SENSORS[*]}${NC}"
 echo ""
 
 for sensor in "${SENSORS[@]}"; do

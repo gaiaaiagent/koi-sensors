@@ -1,0 +1,15 @@
+# Local runtime artifacts
+venv/
+__pycache__/
+*.pyc
+*.log
+*.error.log
+email_sensor_state.json
+email_sensor_state.json.backup
+
+# Local launchd instances (generated from templates)
+com.personal-koi.email-sensor.plist
+com.personal-koi.email-watcher.plist
+
+# Local overrides
+config.local.yaml

@@ -34,14 +34,16 @@ echo -e "${CYAN}Sensor Status:${NC}"
 
 declare -A sensor_files=(
     ["Website"]="website_sensor.py"
-    ["GitHub"]="github_sensor_v2.py"
-    ["GitLab"]="gitlab_sensor_v2.py"
+    ["GitHub"]="github_sensor.py"
+    ["GitLab"]="gitlab_sensor.py"
     ["Medium"]="medium_sensor.py"
     ["Discourse"]="discourse_sensor.py"
     ["Notion"]="notion_sensor.py"
     ["Telegram"]="telegram_sensor.py"
-    ["Twitter"]="twitter_sensor.py"
+    ["Twitter"]="twitter_sensor_koi.py"
     ["Podcast"]="podcast_sensor.py"
+    ["Email"]="email_sensor.py"
+    ["Claude Sessions"]="claude_session_sensor.py"
 )
 
 for sensor_name in "${!sensor_files[@]}"; do
@@ -90,10 +92,14 @@ done
 echo ""
 echo -e "${CYAN}System Resources:${NC}"
 echo -n "  Memory usage: "
-free -h | grep "^Mem:" | awk '{print $3 " / " $2 " (" int($3/$2 * 100) "%)"}'
+if command -v free > /dev/null 2>&1; then
+    free -h | grep "^Mem:" | awk '{print $3 " / " $2 " (" int($3/$2 * 100) "%)"}'
+else
+    echo "N/A (free command not available)"
+fi
 
 echo -n "  Python processes: "
-pgrep -c python3
+pgrep -c python3 2>/dev/null || echo "0"
 
 # PID file status
 PID_FILE="$SCRIPT_DIR/.sensor_pids"

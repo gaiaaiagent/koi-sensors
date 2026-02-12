@@ -78,6 +78,8 @@ sensor_patterns=(
     "telegram_sensor"
     "twitter_sensor"
     "podcast_sensor"
+    "email_sensor"
+    "claude_session_sensor"
 )
 
 for pattern in "${sensor_patterns[@]}"; do

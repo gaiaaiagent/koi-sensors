@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.personal-koi.email-sensor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__SENSOR_DIR__/venv/bin/python</string>
+        <string>__SENSOR_DIR__/email_sensor.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__SENSOR_DIR__</string>
+
+    <!-- Run every 30 minutes (1800 seconds) -->
+    <key>StartInterval</key>
+    <integer>1800</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__SENSOR_DIR__/email_sensor.log</string>
+    <key>StandardErrorPath</key>
+    <string>__SENSOR_DIR__/email_sensor.error.log</string>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>Nice</key>
+    <integer>10</integer>
+</dict>
+</plist>

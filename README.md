@@ -36,6 +36,10 @@ Real-time knowledge monitoring infrastructure for the Regen Network AI Agent Sys
 - ✅ **KOI Coordinator**: Event routing with Smart Hybrid health monitoring at http://localhost:8005
 - ✅ **Dashboard**: Live monitoring with real-time status updates at https://regen.gaiaai.xyz/koi
 
+**Optional Personal Sensors** (for local personal-koi stacks):
+- ✅ **Email Sensor** (`sensors/email`): indexes Maildir/Gmail content into personal KOI
+- ✅ **Claude Sessions Sensor** (`sensors/claude_sessions`): indexes Claude Code sessions for search/tool analytics
+
 ## 🔄 Event Bridge v2 Integration
 
 **NEW**: The KOI sensor network now integrates with Event Bridge v2, providing:
@@ -134,6 +138,10 @@ cd koi-sensors
 
 # Start all configured sensors
 ./start_all.sh
+
+# Optional: include personal sensors (email + claude_sessions)
+ENABLE_PERSONAL_SENSORS=true ./setup_all.sh
+ENABLE_PERSONAL_SENSORS=true ./start_all.sh
 
 # Check sensor status
 ./status.sh
@@ -471,4 +479,3 @@ sudo systemctl enable --now koi-sensor-health-check.timer
    ```bash
    sudo systemctl status koi-sensor@<sensor-name>
    ```
-

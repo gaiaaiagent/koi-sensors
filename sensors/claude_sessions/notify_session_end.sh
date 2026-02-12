@@ -16,7 +16,7 @@
 #         "hooks": [
 #           {
 #             "type": "command",
-#             "command": "/Users/darrenzal/projects/RegenAI/koi-sensors/sensors/claude_sessions/notify_session_end.sh"
+#             "command": "/absolute/path/to/koi-sensors/sensors/claude_sessions/notify_session_end.sh"
 #           }
 #         ]
 #       }

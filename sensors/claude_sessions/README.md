@@ -49,6 +49,12 @@ cd sensors/claude_sessions
 
 Edit `config.personal.yaml` if needed. Defaults work for standard Claude Code setup.
 
+Recommended env overrides:
+```bash
+export PERSONAL_KOI_DB_URL="postgresql://postgres:postgres@localhost:5432/personal_koi"
+export PERSONAL_KOI_API_URL="http://localhost:8351"
+```
+
 ### 3. Ensure Database is Ready
 
 The sensor will create tables automatically in `personal_koi` database:
@@ -67,7 +73,7 @@ Add to `~/.claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/darrenzal/projects/RegenAI/koi-sensors/sensors/claude_sessions/notify_session_end.sh"
+            "command": "/absolute/path/to/koi-sensors/sensors/claude_sessions/notify_session_end.sh"
           }
         ]
       }
@@ -88,6 +94,8 @@ Add to `~/.claude/settings.json`:
 
 ```bash
 ./start.sh daemon
+# or
+./start.sh --background
 ```
 
 ### Backfill Embeddings

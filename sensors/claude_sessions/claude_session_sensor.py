@@ -26,6 +26,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
+from urllib.parse import urlparse, urlunparse
 import yaml
 
 # Configure logging
@@ -89,6 +90,13 @@ class ClaudeSessionSensor:
         self.config = self._load_config(config_path)
         self.db_pool: Optional[asyncpg.Pool] = None
         self.openai_client: Optional[OpenAI] = None
+        self.db_url = self._resolve_backend_setting(
+            configured_value=self.config.get('koi_backend', {}).get('database_url'),
+            env_var_names=('PERSONAL_KOI_DB_URL', 'KOI_DATABASE_URL', 'DATABASE_URL'),
+            default=None,
+            required=True,
+            setting_name='koi_backend.database_url'
+        )
 
         # Expand paths
         self.sessions_base = Path(
@@ -114,14 +122,13 @@ class ClaudeSessionSensor:
     async def initialize(self):
         """Initialize database connection and OpenAI client."""
         # Database connection
-        db_url = self.config['koi_backend']['database_url']
         self.db_pool = await asyncpg.create_pool(
-            db_url,
+            self.db_url,
             min_size=2,
             max_size=10,
             command_timeout=60
         )
-        logger.info(f"Connected to database")
+        logger.info(f"Connected to database ({self._redact_db_url(self.db_url)})")
 
         # Ensure schema exists
         await self._ensure_schema()
@@ -134,6 +141,47 @@ class ClaudeSessionSensor:
                 logger.info(f"OpenAI client initialized (model: {self.config['embeddings']['model']})")
             else:
                 logger.warning("OPENAI_API_KEY not set. Embeddings disabled.")
+
+    @staticmethod
+    def _resolve_backend_setting(
+        configured_value: Optional[str],
+        env_var_names: tuple[str, ...],
+        default: Optional[str],
+        required: bool,
+        setting_name: str,
+    ) -> str:
+        """Resolve backend settings with env override support."""
+        for env_var in env_var_names:
+            env_value = os.getenv(env_var)
+            if env_value:
+                return env_value
+
+        if configured_value:
+            return configured_value
+
+        if default:
+            return default
+
+        if required:
+            env_hint = ', '.join(env_var_names)
+            raise ValueError(
+                f"Missing required setting '{setting_name}'. "
+                f"Set it in config.personal.yaml or one of: {env_hint}"
+            )
+
+        return ''
+
+    @staticmethod
+    def _redact_db_url(db_url: str) -> str:
+        """Redact password in postgres URL before logging."""
+        try:
+            parsed = urlparse(db_url)
+            if not parsed.password:
+                return db_url
+            netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
+            return urlunparse(parsed._replace(netloc=netloc))
+        except Exception:
+            return "<redacted>"
 
     async def _ensure_schema(self):
         """Ensure required tables exist."""

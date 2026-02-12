@@ -16,14 +16,45 @@ fi
 # Activate virtual environment
 if [ -d "venv" ]; then
     source venv/bin/activate
+    export PYTHONPATH="$SCRIPT_DIR/../..:$PYTHONPATH"
 else
     echo "Virtual environment not found. Run ./setup.sh first."
     exit 1
 fi
 
-# Default to scan mode (one-shot)
-MODE="${1:-scan}"
+BACKGROUND=false
+MODE=""
+PASSTHROUGH=()
 
-echo "Starting Claude Sessions Sensor (mode: $MODE)..."
+for arg in "$@"; do
+    case "$arg" in
+        --background|-b)
+            BACKGROUND=true
+            ;;
+        daemon|scan|session|backfill|refresh)
+            MODE="$arg"
+            ;;
+        *)
+            PASSTHROUGH+=("$arg")
+            ;;
+    esac
+done
 
-python claude_session_sensor.py --mode "$MODE"
+# Default mode:
+# - foreground: scan once
+# - background: daemon loop
+if [ -z "$MODE" ]; then
+    if [ "$BACKGROUND" = true ]; then
+        MODE="daemon"
+    else
+        MODE="scan"
+    fi
+fi
+
+if [ "$BACKGROUND" = true ]; then
+    nohup python claude_session_sensor.py --mode "$MODE" "${PASSTHROUGH[@]}" >> claude_sessions_sensor.log 2>&1 &
+    echo "✅ Claude Sessions sensor started (PID: $!, mode: $MODE)"
+else
+    echo "Starting Claude Sessions Sensor (mode: $MODE)..."
+    python claude_session_sensor.py --mode "$MODE" "${PASSTHROUGH[@]}"
+fi
