@@ -7,26 +7,38 @@ Phase 0 (P0) Alignment: Updated to support:
 - URIs with ports (https://example.com:8080/path)
 - All valid URI schemes as RID contexts
 
+Phase 2: rid-lib is now a first-class dependency.
+Custom ORN subclasses replaced with re-exports from shared/rid_types/.
+
 Reference: koi-research/docs/KOI_PROTOCOL_ALIGNMENT_REFERENCE.md
 """
 
-import hashlib
-import re
-from typing import Optional, Dict, Any, Union
-from dataclasses import dataclass
+from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
 
-# Import rid-lib for authoritative parsing (P0 alignment)
-try:
-    from rid_lib import RID as RidLibRID
-    from rid_lib.utils import parse_rid_string as ridlib_parse_rid_string
-    from rid_lib.consts import NAMESPACE_SCHEMES
-    RID_LIB_AVAILABLE = True
-except ImportError:
-    RID_LIB_AVAILABLE = False
-    RidLibRID = None
-    ridlib_parse_rid_string = None
-    NAMESPACE_SCHEMES = ('orn', 'urn')  # Fallback
+# rid-lib is a required dependency (Phase 2)
+from rid_lib import RID as RidLibRID
+from rid_lib.utils import parse_rid_string as ridlib_parse_rid_string
+from rid_lib.consts import NAMESPACE_SCHEMES
+
+# Re-export rid-lib ORN subclasses from shared/rid_types/ (Phase 2)
+# These replace the custom classes that were previously defined here.
+# Backward-compatible aliases (e.g. TwitterTweetRID) are provided below.
+from shared.rid_types.social_media import TwitterTweet, YouTubeVideo
+from shared.rid_types.web_content import WebPage, DiscoursePost
+from shared.rid_types.productivity import NotionPage
+from shared.rid_types.dev_tools import GitHubFile
+from shared.rid_types.communication import GmailMessage, GmailAttachment
+
+# Backward-compatible aliases for existing consumers
+TwitterTweetRID = TwitterTweet
+DiscoursePostRID = DiscoursePost
+NotionPageRID = NotionPage
+WebPageRID = WebPage
+GitHubFileRID = GitHubFile
+GmailMessageRID = GmailMessage
+GmailAttachmentRID = GmailAttachment
+YouTubeVideoRID = YouTubeVideo
 
 
 def _parse_rid_components(rid_string: str) -> tuple[str, str]:
@@ -89,8 +101,6 @@ class RID(ABC):
         """Validate RID format compliance"""
         if not self.context:
             raise ValueError("Context cannot be empty")
-        # Reference can be empty for some edge cases, but we'll warn
-        # Note: We no longer reject ':' in reference - URIs with ports need this
 
     def to_string(self) -> str:
         """Convert RID to string representation"""
@@ -126,192 +136,22 @@ class RID(ABC):
 
 class GenericRID(RID):
     """Generic RID implementation for any context:reference pair"""
-    
+
     def __init__(self, context: str, reference: str):
         super().__init__(context, reference)
 
 
-class ORN(ABC):
-    """Object Reference Name - specific RID format for platform content"""
-    
-    namespace: str = None  # Override in subclasses
-    
-    def __init__(self):
-        if self.namespace is None:
-            raise ValueError("Namespace must be defined in ORN subclasses")
-        self.context = "orn"
-    
-    @property
-    @abstractmethod
-    def reference(self) -> str:
-        """Generate reference string for this ORN"""
-        pass
-    
-    def to_string(self) -> str:
-        """Convert ORN to string representation"""
-        return f"{self.context}:{self.namespace}:{self.reference}"
-    
-    def to_orn(self) -> str:
-        """Alias for to_string for backwards compatibility"""
-        return self.to_string()
-
-
-# Platform-specific ORN implementations
-class TwitterTweetRID(ORN):
-    """Twitter tweet RID: orn:twitter.tweet:user_id/tweet_id"""
-    namespace = "twitter.tweet"
-    
-    def __init__(self, user_id: str, tweet_id: str):
-        self.user_id = user_id
-        self.tweet_id = tweet_id
-        super().__init__()
-    
-    @property
-    def reference(self) -> str:
-        return f"{self.user_id}/{self.tweet_id}"
-
-
-class DiscoursePostRID(ORN):
-    """Discourse post RID: orn:discourse.post:domain/topic_id/post_id"""
-    namespace = "discourse.post"
-    
-    def __init__(self, domain: str, topic_id: str, post_id: str):
-        self.domain = domain
-        self.topic_id = topic_id
-        self.post_id = post_id
-        super().__init__()
-    
-    @property
-    def reference(self) -> str:
-        return f"{self.domain}/{self.topic_id}/{self.post_id}"
-
-
-class NotionPageRID(ORN):
-    """Notion page RID: orn:notion.page:workspace_id/page_id"""
-    namespace = "notion.page"
-    
-    def __init__(self, workspace_id: str, page_id: str):
-        self.workspace_id = workspace_id
-        self.page_id = page_id
-        super().__init__()
-    
-    @property
-    def reference(self) -> str:
-        return f"{self.workspace_id}/{self.page_id}"
-
-
-class WebPageRID(ORN):
-    """Web page RID: orn:web.page:domain/path_hash"""
-    namespace = "web.page"
-    
-    def __init__(self, domain: str, url: str):
-        self.domain = domain
-        self.url = url
-        # Create hash of full URL for uniqueness
-        self.path_hash = hashlib.sha256(url.encode('utf-8')).hexdigest()[:16]
-        super().__init__()
-    
-    @property
-    def reference(self) -> str:
-        return f"{self.domain}/{self.path_hash}"
-
-
-class GitHubFileRID(ORN):
-    """GitHub file RID: orn:github.file:owner/repo/branch/file_path_hash"""
-    namespace = "github.file"
-
-    def __init__(self, owner: str, repo: str, branch: str, file_path: str):
-        self.owner = owner
-        self.repo = repo
-        self.branch = branch
-        self.file_path = file_path
-        self.path_hash = hashlib.sha256(file_path.encode('utf-8')).hexdigest()[:16]
-        super().__init__()
-
-    @property
-    def reference(self) -> str:
-        return f"{self.owner}/{self.repo}/{self.branch}/{self.path_hash}"
-
-
-class GmailMessageRID(ORN):
-    """
-    Gmail message RID: orn:gmail.message:{message_id_hash}
-
-    Uses SHA256 hash of Message-ID header since X-GM-MSGID is only available via IMAP.
-    The hash provides a stable, unique identifier that survives Maildir moves.
-    """
-    namespace = "gmail.message"
-
-    def __init__(self, message_id: str):
-        """
-        Create a Gmail message RID from a Message-ID header value.
-
-        Args:
-            message_id: The RFC 5322 Message-ID header value (e.g., "<abc123@example.com>")
-        """
-        # Store original message_id for reference
-        self.message_id = message_id
-        # Create deterministic hash for RID reference
-        self.message_id_hash = hashlib.sha256(message_id.encode('utf-8')).hexdigest()[:16]
-        super().__init__()
-
-    @property
-    def reference(self) -> str:
-        return self.message_id_hash
-
-    @classmethod
-    def from_raw_message_id(cls, raw_message_id: str) -> 'GmailMessageRID':
-        """
-        Create RID from raw Message-ID, normalizing angle brackets.
-
-        Args:
-            raw_message_id: Message-ID with or without angle brackets
-        """
-        # Normalize: strip whitespace and ensure no double angle brackets
-        message_id = raw_message_id.strip()
-        if not message_id.startswith('<'):
-            message_id = f'<{message_id}'
-        if not message_id.endswith('>'):
-            message_id = f'{message_id}>'
-        return cls(message_id)
-
-
-class GmailAttachmentRID(ORN):
-    """
-    Gmail attachment RID: orn:gmail.attachment:{message_hash}/{index}_{content_hash}
-
-    Attachments are identified by their parent message, index, and content hash.
-    """
-    namespace = "gmail.attachment"
-
-    def __init__(self, parent_message_id: str, attachment_index: int, content_hash: str):
-        """
-        Create a Gmail attachment RID.
-
-        Args:
-            parent_message_id: The parent email's Message-ID header
-            attachment_index: Zero-based index of attachment in the email
-            content_hash: SHA256 hash of attachment content (first 16 chars)
-        """
-        self.parent_message_id = parent_message_id
-        self.attachment_index = attachment_index
-        self.content_hash = content_hash[:16] if len(content_hash) > 16 else content_hash
-        # Compute parent hash for reference
-        self.parent_hash = hashlib.sha256(parent_message_id.encode('utf-8')).hexdigest()[:16]
-        super().__init__()
-
-    @property
-    def reference(self) -> str:
-        return f"{self.parent_hash}/{self.attachment_index}_{self.content_hash}"
+# Re-export rid_lib.core.ORN for consumers that import it from here
+from rid_lib.core import ORN
 
 
 class RIDRegistry:
     """Registry for RID types and factory methods"""
-    
+
     def __init__(self):
         self._rid_types: Dict[str, type] = {}
         self._register_builtin_types()
-    
+
     def _register_builtin_types(self):
         """Register built-in RID types"""
         self.register("twitter.tweet", TwitterTweetRID)
@@ -321,21 +161,21 @@ class RIDRegistry:
         self.register("github.file", GitHubFileRID)
         self.register("gmail.message", GmailMessageRID)
         self.register("gmail.attachment", GmailAttachmentRID)
-    
+
     def register(self, namespace: str, rid_class: type):
         """Register a RID type for a namespace"""
         self._rid_types[namespace] = rid_class
-    
+
     def create_from_string(self, rid_string: str) -> RID:
         """Create RID instance from string"""
         return RID.parse(rid_string)
-    
+
     def create_from_data(self, namespace: str, **kwargs) -> Optional[RID]:
         """Create RID instance from structured data"""
         rid_class = self._rid_types.get(namespace)
         if not rid_class:
             return None
-        
+
         try:
             return rid_class(**kwargs)
         except Exception:
@@ -351,17 +191,17 @@ def document_to_rid(document: Dict[str, Any]) -> Optional[RID]:
     """Convert existing Document to KOI RID"""
     source_type = document.get('source_type', '')
     source = document.get('source', '')
-    
+
     # Twitter documents
     if source_type == 'twitter':
         # Extract user_id and tweet_id from metadata or URL
         metadata = document.get('metadata', {})
         tweet_id = metadata.get('id') or metadata.get('tweet_id')
         author_id = metadata.get('author_id') or metadata.get('user_id')
-        
+
         if tweet_id and author_id:
             return TwitterTweetRID(str(author_id), str(tweet_id))
-    
+
     # Discourse documents
     elif source_type == 'discourse':
         url = document.get('url', '')
@@ -373,25 +213,25 @@ def document_to_rid(document: Dict[str, Any]) -> Optional[RID]:
                 topic_id = parts[-2] if parts[-1].isdigit() else parts[-1]
                 post_id = parts[-1] if parts[-1].isdigit() else "1"
                 return DiscoursePostRID(domain, topic_id, post_id)
-    
-    # Notion documents
+
     # YouTube documents
     elif source_type == "youtube":
         metadata = document.get("metadata", {})
         video_id = metadata.get("video_id")
         channel_id = metadata.get("channel_id")
-        
+
         if video_id and channel_id:
             return YouTubeVideoRID(channel_id, video_id)
 
+    # Notion documents
     elif source_type == 'notion':
         metadata = document.get('metadata', {})
         page_id = metadata.get('id') or metadata.get('page_id')
         workspace_id = metadata.get('workspace_id', 'regen')  # Default workspace
-        
+
         if page_id:
             return NotionPageRID(workspace_id, page_id)
-    
+
     # Web documents
     elif source_type in ['web', 'website']:
         url = document.get('url', '')
@@ -403,12 +243,12 @@ def document_to_rid(document: Dict[str, Any]) -> Optional[RID]:
                 return WebPageRID(domain, url)
             except Exception:
                 pass
-    
+
     # GitHub documents
     elif source_type in ['github', 'git']:
         source = document.get('source', '')
         file_path = document.get('metadata', {}).get('file_path', '')
-        
+
         # Parse github:owner/repo format
         if ':' in source:
             repo_part = source.split(':', 1)[1]
@@ -417,12 +257,12 @@ def document_to_rid(document: Dict[str, Any]) -> Optional[RID]:
                 branch = document.get('metadata', {}).get('branch', 'main')
                 if file_path:
                     return GitHubFileRID(owner, repo, branch, file_path)
-    
+
     # Fallback to generic RID
     document_id = document.get('id', '')
     if document_id:
         return GenericRID(f"regen.{source_type}", document_id)
-    
+
     return None
 
 

@@ -29,9 +29,21 @@ STALE_SENSORS=()
 
 for sensor in "${SENSORS[@]}"; do
     SENSOR_DIR="/opt/projects/koi-sensors/sensors/$sensor"
+    UNIT="koi-sensor@${sensor}"
 
     # Skip if sensor directory doesn't exist
     [ ! -d "$SENSOR_DIR" ] && continue
+
+    # Prefer systemd + journald recency checks when unit is active.
+    # Some sensors no longer write rotating file logs reliably.
+    if systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+        if journalctl -u "$UNIT" --since "${STALE_THRESHOLD_MINUTES} min ago" -n 1 \
+            -o short-unix --no-pager 2>/dev/null | grep -Eq '^[0-9]'; then
+            continue
+        fi
+        STALE_SENSORS+=("$sensor")
+        continue
+    fi
 
     # Find the main log file
     LOG_FILE="$SENSOR_DIR/${sensor}_sensor.log"
@@ -45,12 +57,9 @@ for sensor in "${SENSORS[@]}"; do
             STALE_SENSORS+=("$sensor")
         fi
     else
-        # Check if systemd service is running
-        if ! systemctl is-active --quiet koi-sensor@$sensor 2>/dev/null; then
-            # Also check for background process
-            if ! pgrep -f "${sensor}_sensor" > /dev/null 2>&1; then
-                STALE_SENSORS+=("$sensor")
-            fi
+        # Fallback for legacy/background-managed sensors
+        if ! pgrep -f "${sensor}_sensor" > /dev/null 2>&1; then
+            STALE_SENSORS+=("$sensor")
         fi
     fi
 done

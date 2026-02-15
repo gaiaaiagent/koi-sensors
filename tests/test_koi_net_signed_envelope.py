@@ -25,6 +25,7 @@ from shared.koi_envelope import (
     UnsignedEnvelope,
     SignedEnvelope,
     ErrorResponse,
+    ErrorType,
     sign_envelope,
     verify_envelope,
     verify_envelope_with_key,
@@ -290,10 +291,28 @@ class TestErrorResponseModel:
 
     def test_error_response_excludes_none(self):
         """ErrorResponse with no detail excludes the field when using exclude_none."""
-        error = ErrorResponse(error="unknown_source")
+        error = ErrorResponse(error=ErrorType.UnknownNode)
         dumped = error.model_dump(exclude_none=True)
         assert "error" in dumped
+        assert dumped["error"] == "unknown_node"
         assert "detail" not in dumped
+
+
+class TestErrorTypeEnum:
+    """Test ErrorType StrEnum for BlockScience protocol alignment."""
+
+    def test_error_type_values(self):
+        """ErrorType enum has all 4 BlockScience protocol types."""
+        assert ErrorType.UnknownNode == "unknown_node"
+        assert ErrorType.InvalidKey == "invalid_key"
+        assert ErrorType.InvalidSignature == "invalid_signature"
+        assert ErrorType.InvalidTarget == "invalid_target"
+
+    def test_error_type_usable_in_error_response(self):
+        """ErrorType values work as ErrorResponse.error field."""
+        error = ErrorResponse(error=ErrorType.InvalidKey, detail="Bad key format")
+        dumped = error.model_dump()
+        assert dumped["error"] == "invalid_key"
 
 
 class TestTargetNodeValidation:
@@ -320,8 +339,8 @@ class TestTargetNodeValidation:
                 enforce_target=True
             )
 
-    def test_unknown_source_raises_error(self, keypair, node_ids):
-        """Unknown source_node raises EnvelopeError."""
+    def test_unknown_node_raises_error(self, keypair, node_ids):
+        """Unknown source_node raises EnvelopeError (unknown_node)."""
         private_key, public_key = keypair
         payload = {"type": "poll_events", "limit": 10}
 
@@ -377,3 +396,31 @@ class TestSignedEnvelopeModel:
         from pydantic import ValidationError
         with pytest.raises(ValidationError):
             SignedEnvelope(**signed_dict)
+
+
+class TestUnsignedRejection:
+    """Test KOI_NET_REQUIRE_SIGNED behavior (Finding 3)."""
+
+    def test_error_response_unsigned_not_allowed(self):
+        """ErrorResponse with unsigned_not_allowed error is well-formed."""
+        error = ErrorResponse(
+            error="unsigned_not_allowed",
+            detail="This endpoint requires a SignedEnvelope."
+        )
+        dumped = error.model_dump()
+        assert dumped["error"] == "unsigned_not_allowed"
+        assert "SignedEnvelope" in dumped["detail"]
+
+    def test_error_response_accepts_custom_error_strings(self):
+        """ErrorResponse error field accepts both ErrorType enum and custom strings."""
+        # Custom string
+        e1 = ErrorResponse(error="unsigned_not_allowed")
+        assert e1.error == "unsigned_not_allowed"
+
+        # ErrorType enum
+        e2 = ErrorResponse(error=ErrorType.UnknownNode)
+        assert e2.error == "unknown_node"
+
+        # Another custom string
+        e3 = ErrorResponse(error="internal_error", detail="something broke")
+        assert e3.error == "internal_error"

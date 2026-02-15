@@ -42,19 +42,14 @@ PROTECTED_RID_PATTERNS = [
     r"^orn:koi\.config:",            # Configuration bundles
 ]
 
-# Import rid_lib for persistent cache
-try:
-    from rid_lib.ext import Cache as RidLibCache
-    from rid_lib.ext import Bundle as RidLibBundle
-    from rid_lib.ext import Manifest as RidLibManifest
-    from rid_lib.core import ORN
-    RID_LIB_CACHE_AVAILABLE = True
-except ImportError:
-    RID_LIB_CACHE_AVAILABLE = False
-    RidLibCache = None
-    RidLibBundle = None
-    RidLibManifest = None
-    ORN = None
+# rid-lib is a required dependency (Phase 2)
+from rid_lib.ext import Cache as RidLibCache
+from rid_lib.ext import Bundle as RidLibBundle
+from rid_lib.ext import Manifest as RidLibManifest
+from rid_lib.core import ORN
+
+# Kept for backward compatibility with importers
+RID_LIB_CACHE_AVAILABLE = True
 
 
 logger = logging.getLogger("koi.persistent_cache")
@@ -96,9 +91,6 @@ def _internal_to_ridlib_bundle(bundle: Bundle) -> "RidLibBundle":
     Only stores KOI-net strict format: {manifest: {rid, timestamp, sha256_hash}, contents}.
     Internal extras (size_bytes, content_type, metadata, legacy_content_hash) are NOT persisted.
     """
-    if not RID_LIB_CACHE_AVAILABLE:
-        raise RuntimeError("rid_lib not available for cache persistence")
-
     # Use Bundle.generate to create a proper rid_lib Bundle with JCS hashing
     rid = ORN.from_string(bundle.rid)
     return RidLibBundle.generate(rid, bundle.contents)
@@ -170,9 +162,6 @@ class PersistentBundleCache:
         Args:
             directory_path: Path to cache directory (created if not exists)
         """
-        if not RID_LIB_CACHE_AVAILABLE:
-            raise RuntimeError("rid_lib not available - cannot create persistent cache")
-
         self.directory_path = Path(directory_path)
         self.directory_path.mkdir(parents=True, exist_ok=True)
 

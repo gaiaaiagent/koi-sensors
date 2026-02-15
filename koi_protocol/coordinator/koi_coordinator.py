@@ -26,22 +26,24 @@ from ..integration.koi_collector_adapter import (
     TwitterKOIAdapter, DiscourseKOIAdapter,
     NotionKOIAdapter, WebScraperKOIAdapter
 )
+from ..protocol.config import NodeConfig, NodeContact
+from ..protocol.node import NodeProfile as KoiNetNodeProfile, NodeType, NodeProvides
+from ..protocol.edge import (
+    EdgeProfile, EdgeType, EdgeStatus,
+    generate_edge_bundle, generate_edge_rid,
+)
 from shared.koi_envelope import (
     EnvelopeError,
     ErrorResponse,
+    ErrorType,
     load_private_key_from_env,
     load_public_keys_from_env,
     sign_envelope,
     verify_envelope
 )
 
-# Import rid-lib for JCS hash recomputation (P1a alignment)
-try:
-    from rid_lib.ext import Manifest as RidLibManifest
-    RID_LIB_AVAILABLE = True
-except ImportError:
-    RidLibManifest = None
-    RID_LIB_AVAILABLE = False
+# rid-lib is a required dependency (Phase 2)
+from rid_lib.ext import Manifest as RidLibManifest
 
 
 # FastAPI models for request/response
@@ -227,16 +229,15 @@ def _to_koi_net_wire_event(internal_event: KOIEvent) -> KoiNetWireEvent:
 
     # Recompute sha256_hash via rid-lib JCS canonicalization
     sha256_hash = ""
-    if RID_LIB_AVAILABLE and RidLibManifest and contents:
+    if contents:
         try:
             rid_lib_manifest = RidLibManifest.generate(rid_str, contents)
             sha256_hash = rid_lib_manifest.sha256_hash
         except Exception:
-            # Fallback to stored hash if rid-lib fails
+            # Fallback to stored hash if JCS canonicalization fails
             if internal_event.bundle and internal_event.bundle.manifest:
                 sha256_hash = internal_event.bundle.manifest.sha256_hash
     elif internal_event.bundle and internal_event.bundle.manifest:
-        # Fallback if rid-lib not available
         sha256_hash = internal_event.bundle.manifest.sha256_hash
 
     # Build strict wire manifest (only rid, timestamp, sha256_hash)
@@ -259,15 +260,21 @@ def _to_koi_net_wire_event(internal_event: KOIEvent) -> KoiNetWireEvent:
 class KOICoordinator:
     """KOI Coordinator - Full Node with sensor management"""
 
-    def __init__(self, node_name: str = "regen-coordinator", port: int = 8000, cache_dir: str = None):
+    def __init__(self, node_name: str = "regen-coordinator", port: int = 8000, cache_dir: str = None, config: NodeConfig = None):
         self.node_name = node_name
         self.port = port
         self.start_time = datetime.now()
 
+        # Phase 1: NodeConfig support (optional, backward compat)
+        self.node_config = config
+
         # Cache directory for persistent bundle storage (P2a)
         # Default to KOI_CACHE_DIR env var or project-local .rid_cache
         if cache_dir is None:
-            cache_dir = os.getenv("KOI_CACHE_DIR")
+            if config:
+                cache_dir = config.koi_net.cache_directory_path
+            else:
+                cache_dir = os.getenv("KOI_CACHE_DIR")
             if cache_dir is None:
                 # Default to project-local cache directory
                 cache_dir = str(Path(__file__).parent.parent.parent / ".rid_cache")
@@ -309,6 +316,10 @@ class KOICoordinator:
             self.envelope_sign = os.getenv("KOI_ENVELOPE_SIGN", "").lower() in ("1", "true", "yes")
         if os.getenv("KOI_ENVELOPE_VERIFY") is not None:
             self.envelope_verify = os.getenv("KOI_ENVELOPE_VERIFY", "").lower() in ("1", "true", "yes")
+        # When true, /koi-net/* endpoints reject unsigned requests (federation mode)
+        self.koi_net_require_signed = os.getenv(
+            "KOI_NET_REQUIRE_SIGNED", "false"
+        ).lower() in ("1", "true", "yes")
         
         # Sensor adapters
         self.sensor_adapters: Dict[str, Any] = {}
@@ -340,9 +351,65 @@ class KOICoordinator:
         self.health_check_interval = 300  # 5 minutes
         self.health_check_task = None
 
+        # Phase 1: Peer discovery state
+        self.known_peers: Dict[str, Dict[str, Any]] = {}  # node_rid -> {profile, edges, last_seen}
+        self.edges: Dict[str, EdgeProfile] = {}  # edge_rid -> EdgeProfile
+        self.peers_file = Path(__file__).parent / "coordinator_peers.json"
+        self._load_peers()
+
+        # Phase 3: Handler chain pipeline
+        from ..processor import KnowledgePipeline
+        from ..processor.default_handlers import (
+            heartbeat_handler,
+            bundle_normalization_handler,
+            sensor_tracking_handler,
+            dedup_handler,
+            cat_receipt_handler,
+            event_emission_handler,
+        )
+        self.pipeline = KnowledgePipeline(
+            coordinator=self,
+            default_handlers=[
+                heartbeat_handler,
+                bundle_normalization_handler,
+                sensor_tracking_handler,
+                dedup_handler,
+                cat_receipt_handler,
+                event_emission_handler,
+            ],
+        )
+
         # Setup routes
         self._setup_routes()
-    
+
+    async def _ingest_events(self, events_data: list[dict]) -> list[dict]:
+        """Shared event ingestion through pipeline. Used by both broadcast endpoints.
+
+        Returns list of result dicts with status and event_id for each event.
+        Pipeline returns either KnowledgeObject (success) or PipelineStop (halted).
+        """
+        from ..processor import KnowledgeObject, PipelineStop
+
+        results = []
+        for event_data in events_data:
+            kobj = KnowledgeObject.from_event_data(event_data)
+            result = await self.pipeline.process(kobj)
+
+            if isinstance(result, PipelineStop):
+                stopped_kobj = result.kobj
+                status = stopped_kobj.result_status or "stopped"
+                entry = {"status": status, "event_id": stopped_kobj.rid}
+                if status == "skipped_duplicate":
+                    entry["reason"] = "duplicate_content"
+                results.append(entry)
+            else:
+                self.logger.info(f"Broadcast {result.event_type} event for {result.rid}")
+                results.append({
+                    "status": result.result_status or "success",
+                    "event_id": result.rid,
+                })
+        return results
+
     def _setup_routes(self):
         """Setup FastAPI routes for KOI-net protocol"""
 
@@ -442,199 +509,24 @@ class KOICoordinator:
         
         @self.app.post("/events/broadcast")
         async def broadcast_event(request: Dict[str, Any] = Body(...)):
-            """Broadcast event to network (KOI-net endpoint)"""
+            """Broadcast event to network — Phase 3: unified pipeline ingestion."""
             try:
                 payload, envelope_source, envelope_used = _unwrap_envelope(request)
                 events_data = _normalize_broadcast_events(payload, envelope_source)
                 if not events_data:
                     raise ValueError("No events found in broadcast payload")
 
-                results = []
-                for event_data in events_data:
-                    self.logger.debug(f"Received event data keys: {event_data.keys()}")
-                    self.logger.debug(f"Event type: {event_data.get('event_type')}")
+                results = await self._ingest_events(events_data)
 
-                    # Check if this is a sensor heartbeat with monitoring data
-                    if event_data and event_data.get("data") and event_data.get("data", {}).get("type") == "sensor_heartbeat":
-                        heartbeat_data = event_data.get("data", {})
-                        sensor_id = heartbeat_data.get("sensor_id")
-                        monitoring_list = heartbeat_data.get("monitoring", [])
-
-                        if sensor_id and monitoring_list:
-                            self.sensor_monitoring[sensor_id] = monitoring_list
-                            self.logger.info(f"Updated monitoring data for {sensor_id}: {len(monitoring_list)} items")
-                            # Show first few items for debugging
-                            if len(monitoring_list) > 0:
-                                self.logger.debug(f"First monitoring item: {monitoring_list[0]}")
-                
-                    # Handle bundle if present, or create one from sensor data
-                    if event_data.get("bundle"):
-                        bundle_data = event_data["bundle"]
-                        self.logger.debug(f"Bundle data keys: {bundle_data.keys() if isinstance(bundle_data, dict) else 'not a dict'}")
-                        # Keep bundle as dictionary for KOIEvent.from_dict()
-                        # It will be converted to Bundle object inside KOIEvent.from_dict()
-                        if not isinstance(bundle_data, dict):
-                            self.logger.error(f"Bundle data is not a dictionary: {type(bundle_data)}")
-                            raise ValueError("Bundle must be a dictionary")
-                    elif "data" in event_data:
-                        self.logger.debug(f"Creating bundle from sensor data")
-                        # Create bundle from sensor data
-                        from ..core.bundle_system import Bundle, Manifest
-                        
-                        # Extract data from the sensor event
-                        sensor_data = event_data.pop("data", {})
-                        
-                        # Create a simple manifest without using RID object
-                        # Just create the necessary fields directly
-                        content_str = json.dumps(sensor_data, sort_keys=True)
-                        content_hash = hashlib.sha256(content_str.encode()).hexdigest()
-                        
-                        manifest = Manifest(
-                            rid=event_data["rid"],
-                            timestamp=event_data["timestamp"],
-                            sha256_hash=content_hash,
-                            size_bytes=len(content_str.encode()),
-                            content_type="application/json",
-                            version="1.0",
-                            metadata=sensor_data.get("metadata", {})
-                        )
-                        
-                        # Create bundle with the sensor content
-                        self.logger.debug(f"Creating Bundle with rid={event_data['rid']}")
-                        bundle = Bundle(
-                            rid=event_data["rid"],
-                            manifest=manifest,
-                            contents=sensor_data
-                        )
-                        self.logger.debug(f"Bundle created successfully, type: {type(bundle)}")
-                        # Convert Bundle to dictionary for KOIEvent.from_dict()
-                        event_data["bundle"] = bundle.to_dict()
-                        
-                        # Clean up extra fields not needed by KOIEvent
-                        event_data.pop("node_id", None)
-                        event_data.pop("node_type", None)
-                        event_data.pop("event_id", None)
-                        event_data.pop("data", None)
-                    
-                    self.logger.debug(f"Creating KOIEvent from data")
-                    event = KOIEvent.from_dict(event_data)
-                    self.logger.debug(f"KOIEvent created: type={type(event)}, has_bundle={event.bundle is not None}")
-                    
-                    # Track the broadcast sensor
-                    if "source_node" in event_data:
-                        source_node = event_data["source_node"]
-                        
-                        # Extract sensor type from node_id (e.g., "website-sensor-12345" -> "website-sensor")
-                        # Handle multi-word sensors like "github-activity-sensor"
-                        import re
-                        sensor_type_match = re.match(r'^(.*?-sensor)', source_node)
-                        if sensor_type_match:
-                            sensor_type = sensor_type_match.group(1)
-                        else:
-                            # Fallback for sensors without standard naming
-                            sensor_type = source_node.split('-')[0] if '-' in source_node else source_node
-                        
-                        # Update or create sensor entry using type as key
-                        current_time = datetime.now(timezone.utc)
-                        if sensor_type in self.broadcast_sensors:
-                            # Update existing sensor
-                            self.broadcast_sensors[sensor_type]["node_id"] = source_node  # Update to latest node_id
-                            self.broadcast_sensors[sensor_type]["last_event"] = current_time.isoformat()
-                            self.broadcast_sensors[sensor_type]["event_count"] += 1
-                            self.broadcast_sensors[sensor_type]["status"] = "active"  # Mark as active when we receive events
-                            self.logger.debug(f"Updated existing sensor: {sensor_type} (node: {source_node})")
-                        else:
-                            # New sensor type
-                            self.broadcast_sensors[sensor_type] = {
-                                "node_id": source_node,
-                                "sensor_type": sensor_type,
-                                "last_event": current_time.isoformat(),
-                                "event_count": 1,
-                                "event_type": event_data.get("event_type", "unknown"),
-                                "status": "active"  # New sensors start as active
-                            }
-                            self.logger.debug(f"Tracked new sensor: {sensor_type} (node: {source_node})")
-                            # Save registry when new sensor appears
-                            self._save_sensor_registry()
-
-                    # Check for duplicate content before processing
-                    if event.bundle and event.rid:
-                        content_hash = event.bundle.manifest.content_hash if event.bundle else ""
-                        metadata = event.bundle.manifest.metadata if event.bundle else {}
-                        source_url = metadata.get("url") or metadata.get("source_url")
-
-                        # Check if this is duplicate content
-                        is_duplicate = False if "podcast" in event.rid else self._check_duplicate_content(event.rid, content_hash, source_url)
-
-                        if is_duplicate:
-                            self.logger.info(f"Skipping duplicate content for RID {event.rid} (hash: {content_hash[:8]}...)")
-                            results.append({"status": "skipped_duplicate", "event_id": event.rid, "reason": "duplicate_content"})
-                            continue
-
-                    # Create CAT receipt for sensor collection (only for new/changed content)
-                    try:
-                        # Import the receipt manager
-                        import sys
-                        import os
-                        sys.path.append(os.path.join(os.path.dirname(__file__), '../../../koi-processor/src'))
-                        from cat.coordinator_receipt_integration import CoordinatorReceiptManager
-
-                        receipt_manager = CoordinatorReceiptManager()
-
-                        # Create sensor collection receipt
-                        if event.bundle and event.rid:
-                            sensor_name = event_data.get("source_node", "unknown")
-                            content_hash = event.bundle.manifest.content_hash if event.bundle else ""
-                            metadata = event.bundle.manifest.metadata if event.bundle else {}
-
-                            collection_receipt = await receipt_manager.create_sensor_collection_receipt(
-                                sensor_name=sensor_name,
-                                rid=event.rid,
-                                sha256_hash=content_hash,
-                                source_url=metadata.get("url"),
-                                document_count=1,
-                                metadata=metadata
-                            )
-
-                            # Create forwarding receipt
-                            forwarding_receipt = await receipt_manager.create_coordinator_forwarding_receipt(
-                                input_rid=event.rid,
-                                output_rid=event.rid,
-                                target_service="event-bridge",
-                                sensor_name=sensor_name,
-                                event_type=event.event_type,
-                                metadata={"collection_receipt": collection_receipt}
-                            )
-
-                            self.logger.info(f"Created CAT receipts - collection: {collection_receipt}, forwarding: {forwarding_receipt}")
-
-                        await receipt_manager.close()
-
-                    except Exception as e:
-                        self.logger.warning(f"Could not create CAT receipts: {e}")
-                        # Don't fail the event processing if receipt creation fails
-
-                    # Process event through KOI node
-                    await self.koi_node.handle_event(event)
-
-                    # Broadcast queues for polling and forwards to connected nodes
-                    await self.koi_node.broadcast_event(event)
-
-                    # Note: Processor forwarding is now handled via polling pattern
-                    # The forwarder polls /events/poll and forwards to semantic bridge
-                    # await self._forward_to_processor(event)
-                    
-                    self.logger.info(f"Broadcast {event.event_type} event for {event.rid}")
-                    results.append({"status": "success", "event_id": event.rid})
-
+                # Preserve response shape: single event = flat dict, multi = wrapped
                 if len(results) == 1:
                     return _wrap_response(results[0], envelope_source, envelope_used)
                 return _wrap_response(
                     {"status": "success", "event_count": len(results), "results": results},
                     envelope_source,
-                    envelope_used
+                    envelope_used,
                 )
-                
+
             except Exception as e:
                 import traceback
                 self.logger.error(f"Error broadcasting event: {e}")
@@ -756,28 +648,32 @@ class KOICoordinator:
         async def _handle_koi_net_envelope(
             request: Request,
             process_fn,
-            endpoint_name: str
+            endpoint_name: str,
+            body: dict = None
         ):
             """Generic handler for /koi-net/* endpoints with SignedEnvelope support.
 
             Args:
                 request: FastAPI Request object
-                process_fn: Function(payload) -> response_payload (dict or Pydantic model)
+                process_fn: Function(payload, source_node) -> response_payload
+                    Can be sync or async. Receives source_node as second arg.
                 endpoint_name: Endpoint name for logging
+                body: Optional pre-parsed request body (avoids double-read)
 
             Returns:
                 JSONResponse with signed or unsigned payload
             """
-            try:
-                body = await request.json()
-            except Exception:
-                return JSONResponse(
-                    status_code=400,
-                    content=ErrorResponse(
-                        error="invalid_json",
-                        detail="Request body is not valid JSON"
-                    ).model_dump()
-                )
+            if body is None:
+                try:
+                    body = await request.json()
+                except Exception:
+                    return JSONResponse(
+                        status_code=400,
+                        content=ErrorResponse(
+                            error="invalid_json",
+                            detail="Request body is not valid JSON"
+                        ).model_dump()
+                    )
 
             # Check if request is a SignedEnvelope
             is_signed = (
@@ -815,8 +711,23 @@ class KOICoordinator:
                     return JSONResponse(
                         status_code=400,
                         content=ErrorResponse(
-                            error="unknown_source",
+                            error=ErrorType.UnknownNode,
                             detail=f"No public key for {source_node}"
+                        ).model_dump()
+                    )
+
+                # Validate key is usable (catch malformed/corrupt keys)
+                try:
+                    _ = public_key.key_size
+                except Exception as exc:
+                    self.logger.warning(
+                        f"KOI-net {endpoint_name}: invalid key for {source_node} - {exc}"
+                    )
+                    return JSONResponse(
+                        status_code=400,
+                        content=ErrorResponse(
+                            error=ErrorType.InvalidKey,
+                            detail=f"Public key for {source_node} is malformed"
                         ).model_dump()
                     )
 
@@ -842,12 +753,29 @@ class KOICoordinator:
 
                 payload = body["payload"]
             else:
+                # Unsigned request
+                if self.koi_net_require_signed:
+                    self.logger.warning(
+                        f"KOI-net {endpoint_name}: unsigned request rejected "
+                        f"(KOI_NET_REQUIRE_SIGNED=true)"
+                    )
+                    return JSONResponse(
+                        status_code=400,
+                        content=ErrorResponse(
+                            error="unsigned_not_allowed",
+                            detail="This endpoint requires a SignedEnvelope. "
+                                   "Set KOI_NET_REQUIRE_SIGNED=false to allow unsigned requests."
+                        ).model_dump()
+                    )
                 payload = body
                 source_node = None
 
-            # Process the request
+            # Process the request (supports sync or async process_fn)
             try:
-                response_payload = process_fn(payload)
+                import inspect as _inspect
+                response_payload = process_fn(payload, source_node)
+                if _inspect.isawaitable(response_payload):
+                    response_payload = await response_payload
                 if hasattr(response_payload, "model_dump"):
                     response_dict = response_payload.model_dump(exclude_none=True)
                 else:
@@ -907,11 +835,39 @@ class KOICoordinator:
             Wire Manifest: {rid, timestamp, sha256_hash} only
             Timestamp: Z suffix (not +00:00)
             Hash: Recomputed via rid-lib JCS from contents
-            Queue: Read-only (does NOT mark events as delivered)
+
+            Signed requests: per-node destructive flush (BlockScience compat)
+            Unsigned requests: read-only queue view (backward compat)
 
             For signed requests, response is also signed.
             """
-            def process_poll(payload: dict):
+            # We need source_node from envelope to do per-node flush,
+            # so we handle envelope unwrapping here before calling process_fn
+            try:
+                body = await request.json()
+            except Exception:
+                return JSONResponse(
+                    status_code=400,
+                    content=ErrorResponse(
+                        error="invalid_json",
+                        detail="Request body is not valid JSON"
+                    ).model_dump()
+                )
+
+            # Check if request is a SignedEnvelope
+            is_signed = (
+                isinstance(body, dict) and
+                "signature" in body and
+                "payload" in body and
+                "source_node" in body and
+                "target_node" in body
+            )
+
+            source_node = None
+            if is_signed:
+                source_node = body.get("source_node")
+
+            def process_poll(payload: dict, source_node=source_node):
                 # Validate request type
                 req_type = payload.get("type", "poll_events")
                 if req_type != "poll_events":
@@ -920,17 +876,30 @@ class KOICoordinator:
                 limit = payload.get("limit", 0)
                 max_events = limit if isinstance(limit, int) and limit > 0 else 100
 
-                internal_events = self.koi_node.get_queued_events(max_events)
-                wire_events = [_to_koi_net_wire_event(event) for event in internal_events]
+                if source_node:
+                    # Signed request: per-node destructive flush (BlockScience compat)
+                    internal_events, _event_ids = self.koi_node.get_queued_events_for_delivery(
+                        source_node, max_events
+                    )
+                    self.logger.info(
+                        f"KOI-net poll: returning {len(internal_events)} events "
+                        f"for {source_node} (per-node flush)"
+                    )
+                else:
+                    # Unsigned request: read-only queue view (backward compat)
+                    internal_events = self.koi_node.get_queued_events(max_events)
+                    self.logger.info(
+                        f"KOI-net poll: returning {len(internal_events)} events (read-only)"
+                    )
 
-                self.logger.info(f"KOI-net poll: returning {len(wire_events)} events (read-only)")
+                wire_events = [_to_koi_net_wire_event(event) for event in internal_events]
 
                 return KoiNetEventsPayloadResponse(
                     type="events_payload",
                     events=wire_events
                 )
 
-            return await _handle_koi_net_envelope(request, process_poll, "events/poll")
+            return await _handle_koi_net_envelope(request, process_poll, "events/poll", body=body)
 
         @self.app.post("/koi-net/events/broadcast")
         async def koi_net_broadcast_events(request: Request):
@@ -946,7 +915,7 @@ class KOICoordinator:
             Accepts events from external KOI-net nodes.
             For signed requests, response is also signed.
             """
-            def process_broadcast(payload: dict):
+            async def process_broadcast(payload: dict, source_node=None):
                 req_type = payload.get("type", "events_payload")
                 if req_type != "events_payload":
                     raise ValueError(f"Expected type='events_payload', got '{req_type}'")
@@ -955,46 +924,14 @@ class KOICoordinator:
                 if not isinstance(events, list):
                     raise ValueError("events must be a list")
 
-                processed = 0
-                for event_data in events:
-                    if not isinstance(event_data, dict):
-                        continue
-
-                    # Convert KOI-net event format to internal format
-                    rid = event_data.get("rid")
-                    event_type = event_data.get("event_type", "NEW")
-                    manifest = event_data.get("manifest")
-                    contents = event_data.get("contents")
-
-                    if not rid:
-                        continue
-
-                    # Build internal event
-                    internal_event_data = {
-                        "event_type": event_type,
-                        "rid": rid,
-                        "timestamp": manifest.get("timestamp") if manifest else datetime.now(timezone.utc).isoformat(),
-                        "source_node": "koi-net-external"
-                    }
-
-                    if manifest or contents:
-                        internal_event_data["bundle"] = {
-                            "rid": rid,
-                            "manifest": manifest or {},
-                            "contents": contents or {}
-                        }
-
-                    try:
-                        event = KOIEvent.from_dict(internal_event_data)
-                        # Store in cache and queue for internal processing
-                        asyncio.create_task(self.koi_node.handle_event(event))
-                        processed += 1
-                    except Exception as e:
-                        self.logger.warning(f"Failed to process event {rid}: {e}")
+                events_data = [
+                    _koi_net_event_to_koi_event_data(e, source_node)
+                    for e in events if isinstance(e, dict)
+                ]
+                results = await self._ingest_events(events_data)
+                processed = sum(1 for r in results if r["status"] == "success")
 
                 self.logger.info(f"KOI-net broadcast: processed {processed}/{len(events)} events")
-
-                # Return empty success response (KOI-net convention)
                 return {"status": "ok", "processed": processed}
 
             return await _handle_koi_net_envelope(request, process_broadcast, "events/broadcast")
@@ -1011,7 +948,7 @@ class KOICoordinator:
 
             For signed requests, response is also signed.
             """
-            def process_fetch_rids(payload: dict):
+            def process_fetch_rids(payload: dict, source_node=None):
                 req_type = payload.get("type", "fetch_rids")
                 if req_type != "fetch_rids":
                     raise ValueError(f"Expected type='fetch_rids', got '{req_type}'")
@@ -1040,7 +977,7 @@ class KOICoordinator:
 
             For signed requests, response is also signed.
             """
-            def process_fetch_manifests(payload: dict):
+            def process_fetch_manifests(payload: dict, source_node=None):
                 req_type = payload.get("type", "fetch_manifests")
                 if req_type != "fetch_manifests":
                     raise ValueError(f"Expected type='fetch_manifests', got '{req_type}'")
@@ -1085,7 +1022,7 @@ class KOICoordinator:
 
             For signed requests, response is also signed.
             """
-            def process_fetch_bundles(payload: dict):
+            def process_fetch_bundles(payload: dict, source_node=None):
                 req_type = payload.get("type", "fetch_bundles")
                 if req_type != "fetch_bundles":
                     raise ValueError(f"Expected type='fetch_bundles', got '{req_type}'")
@@ -1116,6 +1053,168 @@ class KOICoordinator:
                 )
 
             return await _handle_koi_net_envelope(request, process_fetch_bundles, "bundles/fetch")
+
+        # ====================================================================
+        # Phase 1: Handshake endpoint for peer discovery
+        # ====================================================================
+
+        @self.app.post("/koi-net/handshake")
+        async def koi_net_handshake(request: Request):
+            """KOI-net peer handshake endpoint.
+
+            Implements the BlockScience handshake protocol:
+            1. Incoming node sends events_payload with FORGET (reset) + NEW (own NodeProfile)
+            2. We store peer's NodeProfile, respond with our own
+            3. We propose an EdgeProfile (POLL type)
+
+            Request (unsigned or SignedEnvelope):
+                {"type": "events_payload", "events": [
+                    {"rid": "<peer_rid>", "event_type": "FORGET"},
+                    {"rid": "<peer_rid>", "event_type": "NEW",
+                     "manifest": {...}, "contents": {<NodeProfile>}}
+                ]}
+
+            Response:
+                {"type": "handshake_response",
+                 "node_rid": "<our_rid>",
+                 "profile": {<our NodeProfile>},
+                 "proposed_edge": {<EdgeProfile>} | null}
+            """
+            def process_handshake(payload: dict, source_node=None):
+                req_type = payload.get("type", "events_payload")
+                events = payload.get("events", [])
+
+                peer_rid = None
+                peer_profile_data = None
+
+                for event in events:
+                    event_type = event.get("event_type", "")
+                    rid = event.get("rid", "")
+
+                    if event_type == "FORGET" and "koi-net.node" in rid:
+                        # Reset stale state for this peer
+                        if rid in self.known_peers:
+                            self.logger.info(f"Handshake FORGET: clearing stale state for {rid}")
+                            del self.known_peers[rid]
+
+                    elif event_type == "NEW" and "koi-net.node" in rid:
+                        peer_rid = rid
+                        peer_profile_data = event.get("contents", {})
+
+                if not peer_rid or not peer_profile_data:
+                    raise ValueError(
+                        "Handshake requires a NEW event with node RID and NodeProfile contents"
+                    )
+
+                # Validate and store peer profile
+                try:
+                    peer_profile = KoiNetNodeProfile.model_validate(peer_profile_data)
+                except Exception as e:
+                    raise ValueError(f"Invalid NodeProfile in handshake: {e}")
+
+                self.known_peers[peer_rid] = {
+                    "profile": peer_profile.model_dump(),
+                    "last_seen": datetime.now(timezone.utc).isoformat(),
+                    "edges": [],
+                }
+                self._save_peers()
+                self.logger.info(f"Handshake: stored peer profile for {peer_rid}")
+
+                # Build our own profile
+                our_rid = self.koi_node.node_id
+                our_profile = self.koi_node.to_koi_net_profile()
+
+                # If config provides base_url, use it
+                if self.node_config and self.node_config.koi_net.node_profile.base_url:
+                    our_profile.base_url = self.node_config.koi_net.node_profile.base_url
+                elif self.port:
+                    our_profile.base_url = f"http://0.0.0.0:{self.port}/koi-net"
+
+                # Propose an edge (POLL type — peer polls us)
+                proposed_edge = None
+                edge_bundle = generate_edge_bundle(
+                    source=our_rid,
+                    target=peer_rid,
+                    rid_types=[],  # All types for now
+                    edge_type=EdgeType.POLL,
+                )
+                edge_rid = edge_bundle["rid"]
+                edge_profile = EdgeProfile.model_validate(edge_bundle["contents"])
+                self.edges[edge_rid] = edge_profile
+
+                # Track edge on peer
+                self.known_peers[peer_rid]["edges"].append(edge_rid)
+                self._save_peers()
+
+                proposed_edge = edge_profile.model_dump()
+                self.logger.info(f"Handshake: proposed POLL edge {edge_rid} to {peer_rid}")
+
+                return {
+                    "type": "handshake_response",
+                    "node_rid": our_rid,
+                    "profile": our_profile.model_dump(),
+                    "proposed_edge": proposed_edge,
+                    "edge_rid": edge_rid,
+                }
+
+            return await _handle_koi_net_envelope(request, process_handshake, "handshake")
+
+        @self.app.post("/koi-net/edges/approve")
+        async def koi_net_approve_edge(request: Request):
+            """Approve a proposed edge (completes handshake).
+
+            Request:
+                {"type": "edge_approve", "edge_rid": "...", "node_rid": "..."}
+
+            Response:
+                {"type": "edge_approved", "edge_rid": "...", "status": "APPROVED"}
+            """
+            def process_approve(payload: dict, source_node=None):
+                edge_rid = payload.get("edge_rid")
+                approving_node = payload.get("node_rid")
+
+                if not edge_rid:
+                    raise ValueError("edge_rid is required")
+
+                edge = self.edges.get(edge_rid)
+                if not edge:
+                    raise ValueError(f"Unknown edge: {edge_rid}")
+
+                if edge.status == EdgeStatus.APPROVED:
+                    return {"type": "edge_approved", "edge_rid": edge_rid, "status": "APPROVED"}
+
+                # Approve the edge
+                edge.status = EdgeStatus.APPROVED
+                self.edges[edge_rid] = edge
+                self._save_peers()
+
+                self.logger.info(f"Edge {edge_rid} approved by {approving_node}")
+
+                return {"type": "edge_approved", "edge_rid": edge_rid, "status": "APPROVED"}
+
+            return await _handle_koi_net_envelope(request, process_approve, "edges/approve")
+
+        @self.app.get("/koi-net/peers")
+        async def koi_net_list_peers():
+            """List known peers and their edge status."""
+            peers = []
+            for rid, info in self.known_peers.items():
+                peer_edges = []
+                for edge_rid in info.get("edges", []):
+                    edge = self.edges.get(edge_rid)
+                    if edge:
+                        peer_edges.append({
+                            "edge_rid": edge_rid,
+                            "edge_type": edge.edge_type,
+                            "status": edge.status,
+                        })
+                peers.append({
+                    "node_rid": rid,
+                    "profile": info.get("profile"),
+                    "last_seen": info.get("last_seen"),
+                    "edges": peer_edges,
+                })
+            return {"peers": peers, "count": len(peers)}
 
         @self.app.get("/bundles/fetch/{rid}", response_model=BundleFetchResponse)
         async def fetch_bundle(rid: str):
@@ -1623,6 +1722,154 @@ class KOICoordinator:
         except Exception as e:
             self.logger.error(f"Error saving sensor registry: {e}")
 
+    # ====================================================================
+    # Phase 1: Peer discovery persistence
+    # ====================================================================
+
+    def _load_peers(self):
+        """Load known peers and edges from disk."""
+        if self.peers_file.exists():
+            try:
+                with open(self.peers_file, 'r') as f:
+                    data = json.load(f)
+                    self.known_peers = data.get('peers', {})
+                    # Reconstruct EdgeProfile objects from serialized dicts
+                    for edge_rid, edge_data in data.get('edges', {}).items():
+                        try:
+                            self.edges[edge_rid] = EdgeProfile.model_validate(edge_data)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to load edge {edge_rid}: {e}")
+                    self.logger.info(
+                        f"Loaded {len(self.known_peers)} peers, "
+                        f"{len(self.edges)} edges from {self.peers_file}"
+                    )
+            except Exception as e:
+                self.logger.error(f"Error loading peers: {e}")
+
+    def _save_peers(self):
+        """Persist known peers and edges to disk."""
+        try:
+            data = {
+                'peers': self.known_peers,
+                'edges': {
+                    rid: edge.model_dump() for rid, edge in self.edges.items()
+                },
+                'last_updated': datetime.now(timezone.utc).isoformat(),
+            }
+            temp_path = self.peers_file.with_suffix('.tmp')
+            with open(temp_path, 'w') as f:
+                json.dump(data, f, indent=2)
+            temp_path.replace(self.peers_file)
+        except Exception as e:
+            self.logger.error(f"Error saving peers: {e}")
+
+    async def handshake_with(self, target_rid: str, target_url: str):
+        """Initiate a handshake with a remote KOI-net node.
+
+        Sends FORGET (reset stale state) then NEW (our NodeProfile) to the
+        target's /koi-net/handshake endpoint.
+
+        Args:
+            target_rid: The target node's RID
+            target_url: The target node's base URL (e.g. http://host:port/koi-net)
+        """
+        our_rid = self.koi_node.node_id
+        our_profile = self.koi_node.to_koi_net_profile()
+
+        # Override base_url from config if available
+        if self.node_config and self.node_config.koi_net.node_profile.base_url:
+            our_profile.base_url = self.node_config.koi_net.node_profile.base_url
+        elif self.port:
+            our_profile.base_url = f"http://0.0.0.0:{self.port}/koi-net"
+
+        # Build handshake payload: FORGET + NEW events
+        handshake_payload = {
+            "type": "events_payload",
+            "events": [
+                {
+                    "rid": our_rid,
+                    "event_type": "FORGET",
+                },
+                {
+                    "rid": our_rid,
+                    "event_type": "NEW",
+                    "manifest": {
+                        "rid": our_rid,
+                        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                        "sha256_hash": "",
+                    },
+                    "contents": our_profile.model_dump(),
+                },
+            ],
+        }
+
+        # Optionally sign the handshake
+        if self.envelope_sign and self.envelope_private_key and target_rid:
+            handshake_payload = sign_envelope(
+                handshake_payload, our_rid, target_rid, self.envelope_private_key
+            )
+
+        url = f"{target_url.rstrip('/')}/handshake"
+        self.logger.info(f"Initiating handshake with {target_rid} at {url}")
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(url, json=handshake_payload)
+
+                if response.status_code == 200:
+                    result = response.json()
+
+                    # Unwrap envelope if signed
+                    if "payload" in result and "signature" in result:
+                        result = result["payload"]
+
+                    peer_rid = result.get("node_rid")
+                    peer_profile = result.get("profile")
+                    proposed_edge = result.get("proposed_edge")
+                    edge_rid = result.get("edge_rid")
+
+                    if peer_rid and peer_profile:
+                        self.known_peers[peer_rid] = {
+                            "profile": peer_profile,
+                            "last_seen": datetime.now(timezone.utc).isoformat(),
+                            "edges": [edge_rid] if edge_rid else [],
+                        }
+
+                        # Auto-approve the proposed edge
+                        if proposed_edge and edge_rid:
+                            edge = EdgeProfile.model_validate(proposed_edge)
+                            edge.status = EdgeStatus.APPROVED
+                            self.edges[edge_rid] = edge
+
+                            # Notify the peer that we approved
+                            approve_url = f"{target_url.rstrip('/')}/edges/approve"
+                            approve_payload = {
+                                "type": "edge_approve",
+                                "edge_rid": edge_rid,
+                                "node_rid": our_rid,
+                            }
+                            try:
+                                await client.post(approve_url, json=approve_payload)
+                                self.logger.info(f"Approved edge {edge_rid} with {peer_rid}")
+                            except Exception as e:
+                                self.logger.warning(f"Failed to send edge approval: {e}")
+
+                        self._save_peers()
+                        self.logger.info(f"Handshake complete with {peer_rid}")
+                        return True
+                    else:
+                        self.logger.warning(f"Handshake response missing node_rid or profile")
+                        return False
+                else:
+                    self.logger.error(
+                        f"Handshake failed with {target_rid}: "
+                        f"{response.status_code} - {response.text}"
+                    )
+                    return False
+        except Exception as e:
+            self.logger.error(f"Error during handshake with {target_rid}: {e}")
+            return False
+
     async def check_sensor_health(self, sensor_key: str, sensor_info: Dict) -> str:
         """
         Check health of a sensor by seeing if it responds to polls.
@@ -1712,6 +1959,24 @@ class KOICoordinator:
         # Start KOI node
         await self.koi_node.start()
 
+        # Phase 1: First-contact bootstrap (if configured and no known peers)
+        if not self.known_peers:
+            fc = None
+            if self.node_config:
+                fc = self.node_config.koi_net.first_contact
+            else:
+                fc_rid = os.getenv("KOI_FIRST_CONTACT_RID")
+                fc_url = os.getenv("KOI_FIRST_CONTACT_URL")
+                if fc_rid and fc_url:
+                    fc = NodeContact(rid=fc_rid, url=fc_url)
+
+            if fc and fc.rid and fc.url:
+                self.logger.info(
+                    f"No known peers — initiating first-contact handshake "
+                    f"with {fc.rid} at {fc.url}"
+                )
+                asyncio.create_task(self.handshake_with(fc.rid, fc.url))
+
         # Run startup health check on known sensors
         await self.startup_health_check()
 
@@ -1743,6 +2008,9 @@ class KOICoordinator:
 
         # Save final sensor registry state
         self._save_sensor_registry()
+
+        # Save peer state
+        self._save_peers()
 
         # Stop all sensor adapters
         for sensor_type in list(self.sensor_adapters.keys()):

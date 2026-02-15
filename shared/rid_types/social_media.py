@@ -194,19 +194,23 @@ class TelegramChat(ORN):
 
 class YouTubeVideo(ORN):
     """YouTube video resource identifier
-    Format: orn:youtube.video:video_id
+    Format: orn:youtube.video:channel_id/video_id
     """
     namespace = "youtube.video"
 
-    def __init__(self, video_id: str):
+    def __init__(self, channel_id: str, video_id: str):
+        self.channel_id = channel_id
         self.video_id = video_id
-        self._reference = video_id
+        self._reference = f"{channel_id}/{video_id}"
         super().__init__()
 
     @classmethod
     def from_reference(cls, reference: str):
         """Create instance from reference string"""
-        return cls(reference)
+        parts = reference.split('/')
+        if len(parts) != 2:
+            raise ValueError(f"Invalid YouTubeVideo reference: {reference}")
+        return cls(parts[0], parts[1])
 
     @property
     def reference(self) -> str:

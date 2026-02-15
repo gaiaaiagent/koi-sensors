@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 from base64 import b64decode, b64encode
+from enum import StrEnum
 from typing import Any, Dict, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict
@@ -68,11 +69,22 @@ class SignedEnvelope(BaseModel):
     signature: str
 
 
+class ErrorType(StrEnum):
+    """BlockScience koi-net protocol error types."""
+    UnknownNode = "unknown_node"
+    InvalidKey = "invalid_key"
+    InvalidSignature = "invalid_signature"
+    InvalidTarget = "invalid_target"
+
+
 class ErrorResponse(BaseModel):
     """KOI-net error response model.
 
     MUST be used instead of FastAPI's default {"detail": ...} format
     for /koi-net/* endpoints to maintain interoperability.
+
+    The error field is str (not ErrorType) to allow Regen-specific extras
+    like invalid_json, internal_error, signing_unavailable.
     """
     error: str
     detail: Optional[str] = None

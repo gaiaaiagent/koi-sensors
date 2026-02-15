@@ -30,7 +30,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from shared.persistent_state import PersistentSensorState
-from koi_protocol.core.rid_system import GmailMessageRID, GmailAttachmentRID
+from shared.rid_types.communication import GmailMessage as GmailMessageRID, GmailAttachment as GmailAttachmentRID
 
 from maildir_parser import MaildirParser
 from chunker import SentenceAwareChunker

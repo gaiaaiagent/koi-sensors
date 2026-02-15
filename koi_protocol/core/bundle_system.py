@@ -17,13 +17,8 @@ from typing import Any, Dict, Optional, Union
 from dataclasses import dataclass, asdict, field
 from .rid_system import RID
 
-# Import rid-lib for JCS canonicalization (P0 alignment)
-try:
-    from rid_lib.ext.utils import sha256_hash_json as ridlib_sha256_hash_json
-    RID_LIB_AVAILABLE = True
-except ImportError:
-    RID_LIB_AVAILABLE = False
-    ridlib_sha256_hash_json = None
+# rid-lib is a required dependency (Phase 2)
+from rid_lib.ext.utils import sha256_hash_json as ridlib_sha256_hash_json
 
 
 def _legacy_hash_content(content: Any) -> tuple[str, bytes]:
@@ -45,12 +40,12 @@ def _legacy_hash_content(content: Any) -> tuple[str, bytes]:
 def _ridlib_hash_content(content: Any) -> str:
     """
     Compute hash using rid-lib JCS canonicalization.
-    Falls back to legacy hash if rid-lib is not available.
+    Falls back to legacy hash for non-dict/list content types.
     """
-    if RID_LIB_AVAILABLE and isinstance(content, (dict, list)):
+    if isinstance(content, (dict, list)):
         return ridlib_sha256_hash_json(content)
     else:
-        # Fallback to legacy hash for non-dict/list or if rid-lib not available
+        # Legacy hash for non-dict/list content (strings, etc.)
         hash_hex, _ = _legacy_hash_content(content)
         return hash_hex
 
@@ -82,8 +77,8 @@ class Manifest:
     rid: str  # RID as string
     timestamp: str  # ISO format timestamp
     sha256_hash: str  # SHA-256 hash using rid-lib JCS canonicalization
-    size_bytes: int  # Content size in bytes
-    content_type: str  # MIME type or content type
+    size_bytes: Optional[int] = None  # Content size in bytes (optional for wire compat)
+    content_type: Optional[str] = None  # MIME type or content type (optional for wire compat)
     version: str = "1.0"  # Manifest version
     metadata: Optional[Dict[str, Any]] = None
     legacy_content_hash: Optional[str] = None  # Legacy hash for backward compatibility
@@ -118,19 +113,28 @@ class Manifest:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert manifest to dictionary with both hash fields."""
+        """Convert manifest to dictionary with both hash fields.
+
+        Omits None-valued fields so wire output stays minimal when
+        size_bytes/content_type are absent (BlockScience 3-field manifests).
+        """
         result = {
             "rid": self.rid,
             "timestamp": self.timestamp,
             "sha256_hash": self.sha256_hash,
-            "size_bytes": self.size_bytes,
-            "content_type": self.content_type,
             "version": self.version,
-            "metadata": self.metadata,
-            "legacy_content_hash": self.legacy_content_hash,
             # Also include content_hash for backward compatibility with consumers
             "content_hash": self.content_hash,
         }
+        # Include optional fields only when set
+        if self.size_bytes is not None:
+            result["size_bytes"] = self.size_bytes
+        if self.content_type is not None:
+            result["content_type"] = self.content_type
+        if self.metadata is not None:
+            result["metadata"] = self.metadata
+        if self.legacy_content_hash is not None:
+            result["legacy_content_hash"] = self.legacy_content_hash
         return result
 
     def to_json(self) -> str:
@@ -160,8 +164,8 @@ class Manifest:
             rid=data['rid'],
             timestamp=data['timestamp'],
             sha256_hash=sha256_hash,
-            size_bytes=data['size_bytes'],
-            content_type=data['content_type'],
+            size_bytes=data.get('size_bytes'),
+            content_type=data.get('content_type'),
             version=data.get('version', '1.0'),
             metadata=data.get('metadata'),
             legacy_content_hash=legacy_content_hash

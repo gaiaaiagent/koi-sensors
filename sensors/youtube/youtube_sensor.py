@@ -24,8 +24,8 @@ from dotenv import load_dotenv
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from koi_protocol.nodes.koi_node import KOIPartialNode
-from koi_protocol.core.rid_system import ORN
 from koi_protocol.core.bundle_system import document_to_bundle
+from shared.rid_types.social_media import YouTubeVideo
 from shared.persistent_state import PersistentSensorState
 
 # YouTube dependencies (lightweight - no Whisper/torch needed)
@@ -51,18 +51,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class YouTubeVideoRID(ORN):
-    """YouTube video RID: orn:youtube.video:channel_id/video_id"""
-    namespace = "youtube.video"
-
-    def __init__(self, channel_id: str, video_id: str):
-        self.channel_id = channel_id
-        self.video_id = video_id
-        super().__init__()
-
-    @property
-    def reference(self) -> str:
-        return f"{self.channel_id}/{self.video_id}"
+# Backward-compatible alias
+YouTubeVideoRID = YouTubeVideo
 
 
 class YouTubeKOISensor:

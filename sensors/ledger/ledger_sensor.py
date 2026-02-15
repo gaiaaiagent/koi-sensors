@@ -16,6 +16,7 @@ sys.path.append('/opt/projects/koi-sensors')
 
 from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.bundle_system import document_to_bundle
+from koi_protocol.core.rid_system import RID
 from shared.handlers.base_sensor import BaseSensor
 from shared.config.base import BaseSensorConfig
 
@@ -496,36 +497,36 @@ class LedgerSensor(BaseSensor):
         
         if item_type == "governance_proposal":
             proposal_id = item_data.get("proposal_id")
-            return RID.generate(f"governance:proposal:{proposal_id}")
+            return RID.parse(f"governance:proposal:{proposal_id}")
         
         elif item_type == "credit_class":
             class_id = item_data.get("class_id")
-            return RID.generate(f"ecocredit:class:{class_id}")
+            return RID.parse(f"ecocredit:class:{class_id}")
         
         elif item_type == "credit_batch":
             batch_denom = item_data.get("batch_denom")
-            return RID.generate(f"ecocredit:batch:{batch_denom}")
+            return RID.parse(f"ecocredit:batch:{batch_denom}")
         
         elif item_type == "marketplace_listing":
             order_id = item_data.get("order_id")
-            return RID.generate(f"marketplace:order:{order_id}")
+            return RID.parse(f"marketplace:order:{order_id}")
         
         elif item_type == "validator":
             address = item_data.get("address")
-            return RID.generate(f"validator:{address}")
+            return RID.parse(f"validator:{address}")
         
         elif item_type == "network_status":
             block_height = item_data.get("block_height")
-            return RID.generate(f"network:status:{block_height}")
+            return RID.parse(f"network:status:{block_height}")
         
         elif item_type == "daily_stats":
             date = item_data.get("date")
-            return RID.generate(f"stats:daily:{date}")
+            return RID.parse(f"stats:daily:{date}")
         
         else:
             # Fallback
             timestamp = datetime.now(timezone.utc).isoformat()
-            return RID.generate(f"ledger:unknown:{timestamp}")
+            return RID.parse(f"ledger:unknown:{timestamp}")
     
     def extract_content(self, item_data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract normalized content from ledger data"""
@@ -650,6 +651,12 @@ async def main():
     config = LedgerSensorConfig(
         sensor_name="ledger-sensor",
         platform="regen-ledger",
+        api={},
+        koi_net={
+            "node_name": "ledger-sensor",
+            "coordinator_url": "http://localhost:8005",
+            "cache_directory": ".sensor_cache",
+        },
         governance_interval=poll_interval,
         ecocredit_interval=poll_interval * 2,  # Less frequent
         consensus_interval=60,  # Keep frequent for consensus

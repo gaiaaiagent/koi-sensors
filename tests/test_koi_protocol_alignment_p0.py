@@ -377,5 +377,150 @@ class TestBackwardCompatibility:
         assert bundle.manifest.content_hash == legacy_bundle["manifest"]["content_hash"]
 
 
+class TestManifestOptionalFields:
+    """Test that Manifest accepts BlockScience 3-field wire format (Finding 1)."""
+
+    def test_from_dict_with_3_field_wire_manifest(self):
+        """BlockScience manifests have only {rid, timestamp, sha256_hash}."""
+        from koi_protocol.core.bundle_system import Manifest
+
+        wire_dict = {
+            "rid": "orn:koi-net.test:resource123",
+            "timestamp": "2026-02-14T10:00:00Z",
+            "sha256_hash": "a" * 64
+        }
+
+        manifest = Manifest.from_dict(wire_dict)
+
+        assert manifest.rid == wire_dict["rid"]
+        assert manifest.timestamp == wire_dict["timestamp"]
+        assert manifest.sha256_hash == wire_dict["sha256_hash"]
+        assert manifest.size_bytes is None
+        assert manifest.content_type is None
+
+    def test_3_field_manifest_roundtrip(self):
+        """3-field manifest should roundtrip through to_dict/from_dict."""
+        from koi_protocol.core.bundle_system import Manifest
+
+        wire_dict = {
+            "rid": "orn:koi-net.test:roundtrip",
+            "timestamp": "2026-02-14T10:00:00Z",
+            "sha256_hash": "b" * 64
+        }
+
+        manifest = Manifest.from_dict(wire_dict)
+        output = manifest.to_dict()
+
+        # Should NOT include size_bytes or content_type when they're None
+        assert "size_bytes" not in output
+        assert "content_type" not in output
+        # Should include the required fields
+        assert output["rid"] == wire_dict["rid"]
+        assert output["sha256_hash"] == wire_dict["sha256_hash"]
+
+    def test_full_manifest_still_includes_all_fields(self):
+        """Manifests generated internally should still include size_bytes etc."""
+        from koi_protocol.core.bundle_system import Manifest
+        from koi_protocol.core.rid_system import GenericRID
+
+        content = {"key": "value"}
+        rid = GenericRID("test", "full-manifest")
+        manifest = Manifest.generate(rid, content)
+
+        output = manifest.to_dict()
+        assert "size_bytes" in output
+        assert "content_type" in output
+        assert output["size_bytes"] > 0
+        assert output["content_type"] == "application/json"
+
+    def test_bundle_from_dict_with_3_field_manifest(self):
+        """Bundle deserialization should work with 3-field manifest."""
+        from koi_protocol.core.bundle_system import Bundle
+
+        bundle_dict = {
+            "rid": "orn:koi-net.test:bundle3field",
+            "manifest": {
+                "rid": "orn:koi-net.test:bundle3field",
+                "timestamp": "2026-02-14T10:00:00Z",
+                "sha256_hash": "c" * 64
+            },
+            "contents": {"data": "test"}
+        }
+
+        bundle = Bundle.from_dict(bundle_dict)
+        assert bundle.rid == bundle_dict["rid"]
+        assert bundle.manifest.size_bytes is None
+        assert bundle.manifest.content_type is None
+        assert bundle.contents == {"data": "test"}
+
+
+class TestStableNodeIdentity:
+    """Test that node_id is stable across restarts (Finding 4)."""
+
+    def test_node_id_stable_across_instantiations(self, tmp_path):
+        """Two nodes with same cache_dir should have the same node_id."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+
+        cache_dir = str(tmp_path / "test_cache")
+        node1 = KOIFullNode("test-node", port=9999, cache_dir=cache_dir)
+        node1_id = node1.node_id
+
+        node2 = KOIFullNode("test-node", port=9999, cache_dir=cache_dir)
+        node2_id = node2.node_id
+
+        assert node1_id == node2_id, "Node ID should be stable across restarts"
+
+    def test_node_id_uses_orn_format(self, tmp_path):
+        """Generated node_id should use orn:koi-net.node:{name}+{hash} format."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+
+        cache_dir = str(tmp_path / "orn_format_cache")
+        node = KOIFullNode("my-coordinator", port=9999, cache_dir=cache_dir)
+
+        assert node.node_id.startswith("orn:koi-net.node:my-coordinator+")
+        # Hash suffix should be 16 hex chars
+        suffix = node.node_id.split("+")[1]
+        assert len(suffix) == 16
+        assert all(c in "0123456789abcdef" for c in suffix)
+
+    def test_env_var_overrides_persisted_id(self, tmp_path, monkeypatch):
+        """KOI_NODE_ID env var should take priority over persisted file."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+
+        cache_dir = str(tmp_path / "env_override_cache")
+
+        # Create node to persist an ID
+        node1 = KOIFullNode("test-node", port=9999, cache_dir=cache_dir)
+        persisted_id = node1.node_id
+
+        # Override with env var
+        monkeypatch.setenv("KOI_NODE_ID", "custom-node-id")
+        node2 = KOIFullNode("test-node", port=9999, cache_dir=cache_dir)
+
+        assert node2.node_id == "custom-node-id"
+        assert node2.node_id != persisted_id
+
+    def test_node_id_persisted_to_file(self, tmp_path):
+        """Node ID should be written to {cache_dir}/.node_id file."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+        from pathlib import Path
+
+        cache_dir = str(tmp_path / "persist_cache")
+        node = KOIFullNode("test-node", port=9999, cache_dir=cache_dir)
+
+        id_file = Path(cache_dir) / ".node_id"
+        assert id_file.exists()
+        assert id_file.read_text().strip() == node.node_id
+
+    def test_different_cache_dirs_get_different_ids(self, tmp_path):
+        """Different cache dirs should produce different node_ids."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+
+        node1 = KOIFullNode("test-node", port=9999, cache_dir=str(tmp_path / "cache_a"))
+        node2 = KOIFullNode("test-node", port=9999, cache_dir=str(tmp_path / "cache_b"))
+
+        assert node1.node_id != node2.node_id
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

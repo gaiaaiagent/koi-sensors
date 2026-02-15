@@ -18,13 +18,8 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 import httpx
 from pydantic import BaseModel
 
-# Import rid-lib for hash verification
-try:
-    from rid_lib.ext import Manifest
-    RID_LIB_AVAILABLE = True
-except ImportError:
-    RID_LIB_AVAILABLE = False
-    print("Warning: rid-lib not available, hash verification will be skipped")
+# rid-lib is a required dependency (Phase 2)
+from rid_lib.ext import Manifest
 
 # Coordinator details
 COORDINATOR_URL = "http://localhost:8005"
@@ -230,7 +225,7 @@ def run_interop_test():
     print(f"    Bundles received: {len(bundles)}")
 
     # Test 4: Verify JCS hash parity
-    if bundles and RID_LIB_AVAILABLE:
+    if bundles:
         print("\n[7] Verifying JCS hash parity...")
         b = bundles[0]
         wire_manifest = b["manifest"]

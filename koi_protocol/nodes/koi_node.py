@@ -4,6 +4,7 @@ Base classes for Full and Partial KOI nodes following KOI-net specification
 """
 
 import asyncio
+import hashlib
 import json
 import os
 import aiohttp
@@ -25,10 +26,17 @@ except ImportError:
     PersistentBundleCache = None
     RID_LIB_CACHE_AVAILABLE = False
 
+# BlockScience-aligned protocol models (Phase 1)
+from ..protocol.node import NodeProfile as KoiNetNodeProfile, NodeType, NodeProvides
+
 
 @dataclass
-class NodeProfile:
-    """KOI Node Profile"""
+class LegacyNodeProfile:
+    """Legacy KOI Node Profile (pre-Phase 1).
+
+    Kept for backward compatibility with existing callers.
+    Use KOINodeBase.to_koi_net_profile() for BlockScience-compatible profiles.
+    """
     node_id: str
     node_name: str
     node_type: str  # "FULL" or "PARTIAL"
@@ -64,10 +72,14 @@ class KOINodeBase(ABC):
         self.node_name = node_name
         self.node_type = node_type
         self.port = port
-        self.node_id = os.getenv("KOI_NODE_ID") or f"{node_name}-{datetime.now().timestamp()}"
+        self._cache_dir = cache_dir
 
         # Logging (must be first for other init steps to use)
         self.logger = logging.getLogger(f"koi.node.{node_name}")
+
+        # Resolve stable node identity (persisted across restarts)
+        self.node_id = self._resolve_node_id()
+        self.logger.info(f"Node identity: {self.node_id}")
 
         # Node state
         self.running = False
@@ -91,7 +103,46 @@ class KOINodeBase(ABC):
 
         # HTTP session
         self.session: Optional[aiohttp.ClientSession] = None
-    
+
+    def _resolve_node_id(self) -> str:
+        """Resolve a stable node identity, persisted across restarts.
+
+        Priority:
+        1. KOI_NODE_ID env var (explicit override)
+        2. Read from {cache_dir}/.node_id file (persisted)
+        3. Generate orn:koi-net.node:{name}+{hash16}, persist to file
+        """
+        # Priority 1: explicit env var
+        env_id = os.getenv("KOI_NODE_ID")
+        if env_id:
+            return env_id
+
+        # Priority 2: persisted file
+        if self._cache_dir:
+            id_file = Path(self._cache_dir) / ".node_id"
+            if id_file.exists():
+                try:
+                    stored_id = id_file.read_text().strip()
+                    if stored_id:
+                        return stored_id
+                except Exception as e:
+                    self.logger.warning(f"Failed to read persisted node_id: {e}")
+
+        # Priority 3: generate and persist
+        random_hash = hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:16]
+        node_id = f"orn:koi-net.node:{self.node_name}+{random_hash}"
+
+        if self._cache_dir:
+            try:
+                id_file = Path(self._cache_dir) / ".node_id"
+                id_file.parent.mkdir(parents=True, exist_ok=True)
+                id_file.write_text(node_id)
+                self.logger.info(f"Persisted new node_id to {id_file}")
+            except Exception as e:
+                self.logger.warning(f"Failed to persist node_id: {e}")
+
+        return node_id
+
     async def start(self):
         """Start the node"""
         self.logger.info(f"Starting {self.node_type} node: {self.node_name}")
@@ -195,10 +246,10 @@ class KOINodeBase(ABC):
         except Exception as e:
             self.logger.error(f"Error saving event queue: {e}")
     
-    def get_profile(self) -> NodeProfile:
-        """Get node profile"""
+    def get_profile(self) -> LegacyNodeProfile:
+        """Get legacy node profile (pre-Phase 1 format)."""
         capabilities = ["events", "bundles", "manifests"]
-        
+
         endpoints = {}
         if self.node_type == "FULL" and self.port:
             base_url = f"http://localhost:{self.port}"
@@ -210,8 +261,8 @@ class KOINodeBase(ABC):
                 "rids_fetch": f"{base_url}/rids/fetch",
                 "health": f"{base_url}/health"
             }
-        
-        return NodeProfile(
+
+        return LegacyNodeProfile(
             node_id=self.node_id,
             node_name=self.node_name,
             node_type=self.node_type,
@@ -224,6 +275,50 @@ class KOINodeBase(ABC):
                 "event_queue_size": len(self.event_queue),
                 "pending_deliveries": len(self.pending_deliveries)
             }
+        )
+
+    def to_koi_net_profile(self) -> KoiNetNodeProfile:
+        """Build a BlockScience-compatible NodeProfile for this node.
+
+        Returns a Pydantic model that can be serialized as Bundle contents
+        for peer discovery.  The profile contains:
+        - base_url: for FULL nodes, the /koi-net endpoint root
+        - node_type: FULL or PARTIAL
+        - provides: RID types this node offers
+        - public_key: base64 DER if configured
+        """
+        node_type = NodeType.FULL if self.node_type == "FULL" else NodeType.PARTIAL
+
+        base_url = None
+        if node_type == NodeType.FULL and self.port:
+            base_url = f"http://localhost:{self.port}/koi-net"
+
+        # Public key from env (if available)
+        public_key = os.getenv("KOI_PUBLIC_KEY_B64")
+
+        # Declare RID types this coordinator provides (Phase 2)
+        provides = NodeProvides(
+            event=[
+                "orn:twitter.tweet",
+                "orn:discourse.post",
+                "orn:web.page",
+                "orn:notion.page",
+                "orn:github.file",
+                "orn:youtube.video",
+                "orn:gmail.message",
+                "orn:gmail.attachment",
+            ],
+            state=[
+                "orn:koi-net.node",
+                "orn:koi-net.edge",
+            ],
+        )
+
+        return KoiNetNodeProfile(
+            base_url=base_url,
+            node_type=node_type,
+            provides=provides,
+            public_key=public_key,
         )
     
     # Cache operations

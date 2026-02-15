@@ -471,5 +471,73 @@ class TestKoiNetPydanticModels:
         assert event.contents == {"key": "value"}
 
 
+class TestKoiNetPollPerNodeFlush:
+    """Test that /koi-net/events/poll uses per-node flush for signed requests (Finding 2)."""
+
+    def test_get_queued_events_for_delivery_tracks_per_node(self):
+        """Two different nodes polling should see independent event streams."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+
+        node = KOIFullNode("test-coordinator", port=9999)
+
+        # Queue 3 events
+        for i in range(3):
+            rid = GenericRID("test", f"event{i}")
+            bundle = Bundle.generate(rid, {"idx": i})
+            event = KOIEvent.new_event(bundle, "test-sensor")
+            node.queue_event(event)
+
+        # Node A polls - gets all 3
+        events_a, ids_a = node.get_queued_events_for_delivery("node-A", max_events=10)
+        assert len(events_a) == 3
+
+        # Node A polls again - gets 0 (already delivered)
+        events_a2, ids_a2 = node.get_queued_events_for_delivery("node-A", max_events=10)
+        assert len(events_a2) == 0
+
+        # Node B polls - gets all 3 (independent tracking)
+        events_b, ids_b = node.get_queued_events_for_delivery("node-B", max_events=10)
+        assert len(events_b) == 3
+
+    def test_unsigned_poll_is_read_only(self):
+        """Unsigned get_queued_events should be read-only (no delivery tracking)."""
+        from koi_protocol.nodes.koi_node import KOIFullNode
+
+        node = KOIFullNode("test-coordinator", port=9999)
+
+        rid = GenericRID("test", "readonly")
+        bundle = Bundle.generate(rid, {"data": "test"})
+        event = KOIEvent.new_event(bundle, "test-sensor")
+        node.queue_event(event)
+
+        # Read-only poll multiple times - should always return the event
+        events1 = node.get_queued_events(max_events=10)
+        events2 = node.get_queued_events(max_events=10)
+        assert len(events1) == 1
+        assert len(events2) == 1
+
+
+class TestKoiNetRequireSignedConfig:
+    """Test KOI_NET_REQUIRE_SIGNED configuration loading (Finding 3)."""
+
+    def test_require_signed_defaults_to_false(self):
+        """KOI_NET_REQUIRE_SIGNED should default to false."""
+        from koi_protocol.coordinator.koi_coordinator import KOICoordinator
+        import os
+
+        # Ensure env var is not set
+        os.environ.pop("KOI_NET_REQUIRE_SIGNED", None)
+        coordinator = KOICoordinator(node_name="test", port=19999)
+        assert coordinator.koi_net_require_signed is False
+
+    def test_require_signed_reads_env_var(self, monkeypatch):
+        """KOI_NET_REQUIRE_SIGNED=true should enable signed-only mode."""
+        monkeypatch.setenv("KOI_NET_REQUIRE_SIGNED", "true")
+        from koi_protocol.coordinator.koi_coordinator import KOICoordinator
+
+        coordinator = KOICoordinator(node_name="test-signed", port=19998)
+        assert coordinator.koi_net_require_signed is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
