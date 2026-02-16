@@ -1,0 +1,11 @@
+# Federation test dependencies (Python 3.12+)
+# These tests validate Regen ↔ BlockScience koi-net interop
+koi-net==1.2.4
+colorama
+pytest
+httpx
+fastapi
+uvicorn
+anthropic
+cryptography>=42.0.0
+rid-lib>=3.2.12

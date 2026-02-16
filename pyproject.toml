@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+markers = [
+    "federation: Phase 4 federation tests (require koi-net and Python 3.12+)",
+]
