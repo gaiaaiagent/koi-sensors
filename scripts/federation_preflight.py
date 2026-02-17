@@ -7,14 +7,21 @@ Exits 0 on success, 1 on hard failure, 2 on soft warning.
 
 Usage:
     python scripts/federation_preflight.py
-    python scripts/federation_preflight.py --regen-url http://202.61.196.119:8005/koi-net
+    python scripts/federation_preflight.py --regen-url https://regen.gaiaai.xyz/api/koi/coordinator/koi-net
     python scripts/federation_preflight.py --skip-inbound  # skip inbound reachability check
+
+Environment variables:
+    KOI_NODE_NAME       Node name for RID derivation (default: reads from run_coordinator.py)
+    KOI_CACHE_DIR       Cache directory with node_private_key.pem
+    KOI_BASE_URL        Base URL for this node (must NOT end with /koi-net)
+    KOI_PRIVATE_KEY_PASSWORD  Password for encrypted private key (optional)
 """
 
 import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from base64 import b64encode
@@ -48,8 +55,32 @@ except ImportError as e:
 # Defaults
 OCTO_URL = "http://45.132.245.30:8351/koi-net"
 OCTO_RID = "orn:koi-net.node:octo-salish-sea+50a3c9eac05c807f"
-REGEN_URL = "http://202.61.196.119:8005/koi-net"
+REGEN_URL = "https://regen.gaiaai.xyz/api/koi/coordinator/koi-net"
 TIMEOUT = 15.0
+
+
+def _resolve_node_name() -> str:
+    """Resolve node name: env var > run_coordinator.py > default.
+
+    Production uses 'koi-coordinator-main' (set in run_coordinator.py),
+    not the class default 'regen-coordinator'.
+    """
+    env_name = os.getenv("KOI_NODE_NAME")
+    if env_name:
+        return env_name
+
+    # Try to extract from run_coordinator.py
+    run_script = REPO_ROOT / "koi_protocol" / "coordinator" / "run_coordinator.py"
+    if run_script.exists():
+        try:
+            content = run_script.read_text()
+            match = re.search(r'node_name\s*=\s*["\']([^"\']+)["\']', content)
+            if match:
+                return match.group(1)
+        except Exception:
+            pass
+
+    return "regen-coordinator"
 
 
 class CheckResult:
@@ -113,8 +144,17 @@ def check_inbound_reachability(regen_url: str) -> CheckResult:
         data = resp.json()
         node = data.get("node", {})
         node_rid = node.get("node_rid")
+        base_url = node.get("base_url", "")
+
         if not node_rid:
             return CheckResult(name, False, "Missing node.node_rid")
+
+        # Verify base_url doesn't end with /koi-net (causes double-path bugs)
+        if base_url.rstrip("/").endswith("/koi-net"):
+            return CheckResult(name, False,
+                f"base_url ends with /koi-net ({base_url}) — "
+                f"peers append /koi-net/*, causing double paths. "
+                f"Fix KOI_BASE_URL in .env")
 
         return CheckResult(name, True, f"node_rid={node_rid[:40]}...")
     except httpx.TimeoutException:
@@ -125,12 +165,27 @@ def check_inbound_reachability(regen_url: str) -> CheckResult:
         return CheckResult(name, False, f"BLOCKED: {e}")
 
 
+def check_base_url_no_koi_net() -> CheckResult:
+    """Check 2b: KOI_BASE_URL env var doesn't end with /koi-net."""
+    name = "Config: KOI_BASE_URL does not end with /koi-net"
+    base_url = os.getenv("KOI_BASE_URL", "")
+    if not base_url:
+        return CheckResult(name, True, "KOI_BASE_URL not set (will use default)", warn=True)
+
+    if base_url.rstrip("/").endswith("/koi-net"):
+        return CheckResult(name, False,
+            f"KOI_BASE_URL={base_url} ends with /koi-net — "
+            f"peers append /koi-net/*, causing double paths like .../koi-net/koi-net/events/poll")
+
+    return CheckResult(name, True, f"KOI_BASE_URL={base_url}")
+
+
 def check_identity_consistency(regen_url: str) -> CheckResult:
     """Check 3: Local keypair derivation matches running node's response."""
     name = "Identity: Local derivation matches live node"
     cache_dir = os.getenv("KOI_CACHE_DIR", ".rid_cache")
     key_path = os.path.join(cache_dir, "node_private_key.pem")
-    node_name = os.getenv("KOI_NODE_NAME", "regen-coordinator")
+    node_name = _resolve_node_name()
 
     if not os.path.exists(key_path):
         return CheckResult(name, True,
@@ -159,9 +214,32 @@ def check_identity_consistency(regen_url: str) -> CheckResult:
             return CheckResult(name, True, f"Match: {local_rid[:40]}...")
         else:
             return CheckResult(name, False,
-                f"DRIFT: local={local_rid[:30]}... live={live_rid[:30]}...")
+                f"DRIFT: local={local_rid[:30]}... live={live_rid[:30]}... "
+                f"(node_name={node_name})")
     except Exception as e:
         return CheckResult(name, True, f"Skipped: {e}", warn=True)
+
+
+def _build_handshake_profile(our_rid: str, pub_b64: str, node_name: str) -> dict:
+    """Build handshake payload in the profile-exchange format.
+
+    Uses {type: "handshake", profile: NodeProfile} format which is
+    compatible with both Octo and BlockScience implementations.
+    The old events_payload format is NOT used — it causes 'Missing profile'
+    errors on Octo (discovered during Phase 5 deploy, 2026-02-17).
+    """
+    base_url = os.getenv("KOI_BASE_URL", "")
+    return {
+        "type": "handshake",
+        "profile": {
+            "node_rid": our_rid,
+            "node_name": node_name,
+            "base_url": base_url or None,
+            "node_type": "FULL",
+            "provides": {"event": [], "state": []},
+            "public_key": pub_b64,
+        },
+    }
 
 
 def check_signed_handshake(octo_url: str, octo_rid: str) -> CheckResult:
@@ -169,7 +247,7 @@ def check_signed_handshake(octo_url: str, octo_rid: str) -> CheckResult:
     name = "Handshake: Signed request accepted by Octo"
     cache_dir = os.getenv("KOI_CACHE_DIR", ".rid_cache")
     key_path = os.path.join(cache_dir, "node_private_key.pem")
-    node_name = os.getenv("KOI_NODE_NAME", "regen-coordinator")
+    node_name = _resolve_node_name()
 
     if not os.path.exists(key_path):
         return CheckResult(name, True,
@@ -185,35 +263,18 @@ def check_signed_handshake(octo_url: str, octo_rid: str) -> CheckResult:
         our_rid = derive_node_rid(node_name, pub)
         pub_b64 = public_key_to_b64der(pub)
 
-        handshake_payload = {
-            "type": "events_payload",
-            "events": [
-                {"rid": our_rid, "event_type": "FORGET"},
-                {
-                    "rid": our_rid,
-                    "event_type": "NEW",
-                    "contents": {
-                        "base_url": os.getenv("KOI_BASE_URL", "http://202.61.196.119:8005/koi-net"),
-                        "node_type": "FULL",
-                        "provides": {"event": [], "state": []},
-                        "public_key": pub_b64,
-                    },
-                },
-            ],
-        }
-
+        handshake_payload = _build_handshake_profile(our_rid, pub_b64, node_name)
         signed = sign_envelope(handshake_payload, our_rid, octo_rid, priv)
         resp = httpx.post(
             f"{octo_url}/handshake", json=signed, timeout=TIMEOUT
         )
 
         if resp.status_code == 200:
-            # Extract edge_rid from response for approval check
             result = resp.json()
             inner = result.get("payload", result)
-            edge_rid = inner.get("edge_rid")
+            accepted = inner.get("accepted")
             return CheckResult(name, True,
-                f"Handshake accepted, edge_rid={edge_rid or 'none'}")
+                f"Handshake accepted={accepted}")
         else:
             return CheckResult(name, False,
                 f"HTTP {resp.status_code}: {resp.text[:200]}")
@@ -228,7 +289,7 @@ def check_signed_edge_approve(octo_url: str, octo_rid: str) -> CheckResult:
     name = "Approve: Signed edge approval accepted by Octo"
     cache_dir = os.getenv("KOI_CACHE_DIR", ".rid_cache")
     key_path = os.path.join(cache_dir, "node_private_key.pem")
-    node_name = os.getenv("KOI_NODE_NAME", "regen-coordinator")
+    node_name = _resolve_node_name()
 
     if not os.path.exists(key_path):
         return CheckResult(name, True, "No local key — skipping", warn=True)
@@ -244,23 +305,7 @@ def check_signed_edge_approve(octo_url: str, octo_rid: str) -> CheckResult:
         pub_b64 = public_key_to_b64der(pub)
 
         # First do a handshake to get an edge_rid
-        handshake_payload = {
-            "type": "events_payload",
-            "events": [
-                {"rid": our_rid, "event_type": "FORGET"},
-                {
-                    "rid": our_rid,
-                    "event_type": "NEW",
-                    "contents": {
-                        "base_url": os.getenv("KOI_BASE_URL", "http://202.61.196.119:8005/koi-net"),
-                        "node_type": "FULL",
-                        "provides": {"event": [], "state": []},
-                        "public_key": pub_b64,
-                    },
-                },
-            ],
-        }
-
+        handshake_payload = _build_handshake_profile(our_rid, pub_b64, node_name)
         signed_hs = sign_envelope(handshake_payload, our_rid, octo_rid, priv)
         hs_resp = httpx.post(
             f"{octo_url}/handshake", json=signed_hs, timeout=TIMEOUT
@@ -304,7 +349,7 @@ def check_signed_poll(octo_url: str, octo_rid: str) -> CheckResult:
     name = "Poll: Signed poll request accepted by Octo"
     cache_dir = os.getenv("KOI_CACHE_DIR", ".rid_cache")
     key_path = os.path.join(cache_dir, "node_private_key.pem")
-    node_name = os.getenv("KOI_NODE_NAME", "regen-coordinator")
+    node_name = _resolve_node_name()
 
     if not os.path.exists(key_path):
         return CheckResult(name, True, "No local key — skipping", warn=True)
@@ -346,11 +391,14 @@ def main():
         help="Skip live handshake test")
     args = parser.parse_args()
 
+    node_name = _resolve_node_name()
+
     print(f"\n{'='*60}")
     print("Federation Preflight — Phase 5")
     print(f"{'='*60}")
-    print(f"  Octo:  {args.octo_url}")
-    print(f"  Regen: {args.regen_url}")
+    print(f"  Octo:      {args.octo_url}")
+    print(f"  Regen:     {args.regen_url}")
+    print(f"  Node name: {node_name}")
     print()
 
     results = []
@@ -361,6 +409,9 @@ def main():
     # Check 2: Inbound reachability
     if not args.skip_inbound:
         results.append(check_inbound_reachability(args.regen_url))
+
+    # Check 2b: KOI_BASE_URL sanity
+    results.append(check_base_url_no_koi_net())
 
     # Check 3: Identity consistency
     results.append(check_identity_consistency(args.regen_url))

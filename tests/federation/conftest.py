@@ -62,15 +62,21 @@ skip_no_koi_net = pytest.mark.skipif(
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line("markers", "federation: Phase 4 federation tests (require koi-net)")
+    config.addinivalue_line("markers", "no_koi_net: tests that don't require koi-net package")
 
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-apply skip marker to federation tests if koi-net unavailable."""
+    """Auto-apply skip marker to federation tests if koi-net unavailable.
+
+    Tests marked with @pytest.mark.no_koi_net are exempt (e.g. regression tests
+    that only test our own code, not koi-net interop).
+    """
     if not KOI_NET_AVAILABLE:
         federation_dir = str(Path(__file__).parent)
         for item in items:
             if str(item.fspath).startswith(federation_dir):
-                item.add_marker(skip_no_koi_net)
+                if "no_koi_net" not in [m.name for m in item.iter_markers()]:
+                    item.add_marker(skip_no_koi_net)
 
 
 # -----------------------------------------------------------------------
