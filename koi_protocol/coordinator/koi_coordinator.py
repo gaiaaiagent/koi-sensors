@@ -1972,25 +1972,16 @@ class KOICoordinator:
         elif self.port:
             our_profile.base_url = os.getenv('KOI_BASE_URL') or f"http://localhost:{self.port}/koi-net"
 
-        # Build handshake payload: FORGET + NEW events
+        # Build handshake payload with full NodeProfile
+        # Uses the direct profile-exchange format for interop with Octo and
+        # other KOI-net implementations that expect {type: "handshake", profile: ...}
+        profile_data = our_profile.model_dump()
+        profile_data["node_rid"] = our_rid
+        profile_data["node_name"] = self.node_name
+
         handshake_payload = {
-            "type": "events_payload",
-            "events": [
-                {
-                    "rid": our_rid,
-                    "event_type": "FORGET",
-                },
-                {
-                    "rid": our_rid,
-                    "event_type": "NEW",
-                    "manifest": {
-                        "rid": our_rid,
-                        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                        "sha256_hash": "",
-                    },
-                    "contents": our_profile.model_dump(),
-                },
-            ],
+            "type": "handshake",
+            "profile": profile_data,
         }
 
         # Optionally sign the handshake
@@ -2052,8 +2043,11 @@ class KOICoordinator:
 
                         result = result["payload"]
 
-                    peer_rid = result.get("node_rid")
                     peer_profile = result.get("profile")
+                    peer_rid = result.get("node_rid")
+                    # Octo-style response: node_rid lives inside profile
+                    if not peer_rid and peer_profile:
+                        peer_rid = peer_profile.get("node_rid")
                     proposed_edge = result.get("proposed_edge")
                     edge_rid = result.get("edge_rid")
 
