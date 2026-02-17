@@ -156,8 +156,15 @@ def regen_coordinator(tmp_path, regen_keypair, blockscience_keypair, regen_node_
             cache_dir=cache_dir,
         )
 
-    # Override the node_id to match the generated RID
+    # Override the node identity to match the test keypair
+    regen_priv_key = regen_priv.priv_key
     coord.koi_node.node_id = str(regen_node_rid)
+    coord.koi_node.private_key = regen_priv_key
+    coord.koi_node.public_key = regen_priv_key.public_key()
+    # Also update coordinator's envelope key to match
+    coord.envelope_private_key = regen_priv_key
+    # Re-register our own public key under the correct node_id
+    coord.envelope_public_keys[str(regen_node_rid)] = regen_priv_key.public_key()
 
     # Isolate persistent state
     coord.dedup_state_file = tmp_path / "dedup_state.json"

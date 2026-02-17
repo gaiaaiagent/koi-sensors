@@ -33,13 +33,15 @@ from ..protocol.edge import (
     generate_edge_bundle, generate_edge_rid,
 )
 from shared.koi_envelope import (
+    AmbiguousNodeError,
     EnvelopeError,
     ErrorResponse,
     ErrorType,
     load_private_key_from_env,
     load_public_keys_from_env,
+    node_rid_matches_public_key,
     sign_envelope,
-    verify_envelope
+    verify_envelope,
 )
 
 # rid-lib is a required dependency (Phase 2)
@@ -307,8 +309,17 @@ class KOICoordinator:
         self.logger = logging.getLogger("koi.coordinator")
 
         # Envelope signing/verification
-        self.envelope_private_key = load_private_key_from_env()
+        # Phase 5: Prefer key-derived identity from koi_node, fall back to env vars
+        if self.koi_node.private_key:
+            self.envelope_private_key = self.koi_node.private_key
+        else:
+            self.envelope_private_key = load_private_key_from_env()
         self.envelope_public_keys = load_public_keys_from_env()
+
+        # Auto-register our own public key so we can verify our own signed responses in tests
+        if self.koi_node.public_key and self.koi_node.node_id not in self.envelope_public_keys:
+            self.envelope_public_keys[self.koi_node.node_id] = self.koi_node.public_key
+
         self.envelope_sign = bool(self.envelope_private_key)
         self.envelope_verify = bool(self.envelope_public_keys)
         self.envelope_verify_target = os.getenv("KOI_ENVELOPE_VERIFY_TARGET", "false").lower() in ("1", "true", "yes")
@@ -381,6 +392,110 @@ class KOICoordinator:
 
         # Setup routes
         self._setup_routes()
+
+    def _lookup_public_key(self, source_node: str):
+        """Look up public key for a source_node with hash-length aliasing.
+
+        Supports both 16-char (legacy/Octo) and 64-char (BlockScience canonical) hashes.
+
+        1. Exact match against envelope_public_keys (always authoritative)
+        2. If no exact match and source_node has 16-char hash, check if any
+           64-char peer's truncated hash matches
+        3. Reject ambiguous matches (multiple 64-char peers collide at 16 chars)
+
+        Returns:
+            public_key object, or None if not found
+        """
+        # Exact match first
+        key = self.envelope_public_keys.get(source_node)
+        if key:
+            return key
+
+        # Extract hash suffix from source_node RID
+        if "+" not in source_node:
+            return None
+        suffix = source_node.rsplit("+", 1)[-1]
+
+        # Only try aliasing for 16-char (legacy) hashes
+        if len(suffix) != 16:
+            return None
+
+        # Search for 64-char peers whose truncated hash matches
+        from shared.koi_envelope import _derive_hash_from_public_key
+        candidates = []
+        for node_rid, pub_key in self.envelope_public_keys.items():
+            if "+" not in node_rid:
+                continue
+            peer_suffix = node_rid.rsplit("+", 1)[-1]
+            if len(peer_suffix) == 64:
+                try:
+                    truncated = _derive_hash_from_public_key(pub_key, length=16)
+                    if truncated == suffix:
+                        candidates.append((node_rid, pub_key))
+                except Exception:
+                    continue
+
+        if len(candidates) == 1:
+            alias_rid, alias_key = candidates[0]
+            self.logger.info(
+                f"Hash alias: {source_node} resolved to {alias_rid} (16→64 char)"
+            )
+            return alias_key
+        elif len(candidates) > 1:
+            candidate_rids = [c[0] for c in candidates]
+            self.logger.warning(
+                f"Ambiguous hash alias: {source_node} matches {len(candidates)} "
+                f"64-char peers: {candidate_rids}"
+            )
+            raise AmbiguousNodeError(
+                f"16-char hash {suffix} is ambiguous — matches {candidate_rids}"
+            )
+
+        return None
+
+    def _try_learn_public_key_from_handshake(self, payload: dict, source_node: str):
+        """Try to extract and learn public key from a handshake payload.
+
+        During first-contact, the peer's public_key is in the NodeProfile contents
+        of the NEW event. This implements TOFU (trust-on-first-use) — we accept
+        the key on first contact, then verify all subsequent messages.
+
+        Returns:
+            public_key object if successfully learned, None otherwise
+        """
+        try:
+            from shared.koi_envelope import (
+                public_key_from_b64der,
+                node_rid_matches_public_key,
+            )
+        except ImportError:
+            return None
+
+        events = payload.get("events", [])
+        for event in events:
+            if event.get("event_type") == "NEW" and "koi-net.node" in event.get("rid", ""):
+                contents = event.get("contents", {})
+                b64_key = contents.get("public_key")
+                if b64_key:
+                    try:
+                        pub_key = public_key_from_b64der(b64_key)
+                        # Verify key matches the source_node RID
+                        if node_rid_matches_public_key(source_node, pub_key):
+                            self.envelope_public_keys[source_node] = pub_key
+                            self.logger.info(
+                                f"TOFU: Learned public key for {source_node} from handshake"
+                            )
+                            return pub_key
+                        else:
+                            self.logger.warning(
+                                f"TOFU rejected: public_key in handshake does not match "
+                                f"source_node RID {source_node}"
+                            )
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Failed to learn public key from handshake: {e}"
+                        )
+        return None
 
     async def _ingest_events(self, events_data: list[dict]) -> list[dict]:
         """Shared event ingestion through pipeline. Used by both broadcast endpoints.
@@ -702,19 +817,37 @@ class KOICoordinator:
                         ).model_dump()
                     )
 
-                # Get public key for source_node
-                public_key = self.envelope_public_keys.get(source_node)
-                if not public_key:
+                # Get public key for source_node (supports 16/64-char hash aliasing)
+                try:
+                    public_key = self._lookup_public_key(source_node)
+                except AmbiguousNodeError as exc:
                     self.logger.warning(
-                        f"KOI-net {endpoint_name}: no public key for {source_node}"
+                        f"KOI-net {endpoint_name}: ambiguous node hash for {source_node}"
                     )
                     return JSONResponse(
                         status_code=400,
                         content=ErrorResponse(
                             error=ErrorType.UnknownNode,
-                            detail=f"No public key for {source_node}"
+                            detail=str(exc)
                         ).model_dump()
                     )
+                if not public_key:
+                    # Auto-learn public key from handshake payload if this is a handshake
+                    if endpoint_name == "handshake":
+                        public_key = self._try_learn_public_key_from_handshake(
+                            body.get("payload", {}), source_node
+                        )
+                    if not public_key:
+                        self.logger.warning(
+                            f"KOI-net {endpoint_name}: no public key for {source_node}"
+                        )
+                        return JSONResponse(
+                            status_code=400,
+                            content=ErrorResponse(
+                                error=ErrorType.UnknownNode,
+                                detail=f"No public key for {source_node}"
+                            ).model_dump()
+                        )
 
                 # Validate key is usable (catch malformed/corrupt keys)
                 try:
@@ -731,14 +864,13 @@ class KOICoordinator:
                         ).model_dump()
                     )
 
-                # Verify signature
+                # Verify signature using the resolved key (supports alias resolution)
+                # NOTE: We use verify_envelope_with_key (not verify_envelope) because
+                # verify_envelope re-does exact source_node lookup from the dict,
+                # which would miss alias-resolved keys for 16-char legacy peers.
+                from shared.koi_envelope import verify_envelope_with_key
                 try:
-                    verify_envelope(
-                        body,
-                        self.envelope_public_keys,
-                        expected_target=self.koi_node.node_id,
-                        enforce_target=True
-                    )
+                    verify_envelope_with_key(body, public_key)
                 except EnvelopeError as exc:
                     self.logger.warning(
                         f"KOI-net {endpoint_name}: signature verification failed - {exc}"
@@ -1128,7 +1260,7 @@ class KOICoordinator:
                 if self.node_config and self.node_config.koi_net.node_profile.base_url:
                     our_profile.base_url = self.node_config.koi_net.node_profile.base_url
                 elif self.port:
-                    our_profile.base_url = f"http://0.0.0.0:{self.port}/koi-net"
+                    our_profile.base_url = os.getenv('KOI_BASE_URL') or f"http://localhost:{self.port}/koi-net"
 
                 # Propose an edge (POLL type — peer polls us)
                 proposed_edge = None
@@ -1328,11 +1460,60 @@ class KOICoordinator:
                 self.logger.error(f"Error fetching RIDs (POST): {e}")
                 raise HTTPException(status_code=500, detail=str(e))
         
+        @self.app.get("/koi-net/health")
+        async def koi_net_health():
+            """KOI-net federation health endpoint.
+
+            Returns nested response matching Octo's contract for automatic
+            public key discovery during handshake. Peers GET this endpoint
+            and extract response["node"]["public_key"].
+            """
+            our_profile = self.koi_node.to_koi_net_profile()
+
+            # Override base_url from config if available
+            if self.node_config and self.node_config.koi_net.node_profile.base_url:
+                our_profile.base_url = self.node_config.koi_net.node_profile.base_url
+            elif self.port:
+                our_profile.base_url = os.getenv('KOI_BASE_URL') or f"http://localhost:{self.port}/koi-net"
+
+            # Build peer list
+            peers = []
+            for rid, info in self.known_peers.items():
+                for edge_rid in info.get("edges", []):
+                    edge = self.edges.get(edge_rid)
+                    if edge:
+                        peers.append({
+                            "node_rid": rid,
+                            "edge_type": edge.edge_type,
+                            "status": edge.status,
+                        })
+
+            node_data = our_profile.model_dump(exclude_none=True)
+            node_data["node_rid"] = self.koi_node.node_id
+            node_data["node_name"] = self.node_name
+            # Ensure node_type is a string
+            if hasattr(node_data.get("node_type"), "value"):
+                node_data["node_type"] = node_data["node_type"].value
+
+            return {
+                "status": "healthy",
+                "node": node_data,
+                "peers": peers,
+                "event_queue_size": len(self.koi_node.event_queue),
+                "protocol": {
+                    "strict_mode": self.koi_net_require_signed,
+                    "require_signed_envelopes": self.koi_net_require_signed,
+                    "envelope_sign": self.envelope_sign,
+                    "envelope_verify": self.envelope_verify,
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            }
+
         @self.app.get("/health", response_model=HealthResponse)
         async def health_check():
             """Health check endpoint (KOI-net endpoint)"""
             uptime = (datetime.now() - self.start_time).total_seconds()
-            
+
             return HealthResponse(
                 status="healthy" if self.koi_node.running else "stopped",
                 node_id=self.koi_node.node_id,
@@ -1769,10 +1950,19 @@ class KOICoordinator:
         Sends FORGET (reset stale state) then NEW (our NodeProfile) to the
         target's /koi-net/handshake endpoint.
 
+        Phase 5 enhancements:
+        - Signs edge approval when envelope_sign is True
+        - Verifies response signature when peer key is known
+        - Validates envelope↔payload identity binding (anti-spoofing)
+        - TOFU for first contact (accept unverified when no key yet)
+        - Auto-learns peer public key from /koi-net/health
+
         Args:
             target_rid: The target node's RID
             target_url: The target node's base URL (e.g. http://host:port/koi-net)
         """
+        from shared.koi_envelope import verify_envelope_with_key
+
         our_rid = self.koi_node.node_id
         our_profile = self.koi_node.to_koi_net_profile()
 
@@ -1780,7 +1970,7 @@ class KOICoordinator:
         if self.node_config and self.node_config.koi_net.node_profile.base_url:
             our_profile.base_url = self.node_config.koi_net.node_profile.base_url
         elif self.port:
-            our_profile.base_url = f"http://0.0.0.0:{self.port}/koi-net"
+            our_profile.base_url = os.getenv('KOI_BASE_URL') or f"http://localhost:{self.port}/koi-net"
 
         # Build handshake payload: FORGET + NEW events
         handshake_payload = {
@@ -1814,13 +2004,52 @@ class KOICoordinator:
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
+                # Try to learn peer's public key from /koi-net/health first
+                await self._try_learn_key_from_health(client, target_url, target_rid)
+
                 response = await client.post(url, json=handshake_payload)
 
                 if response.status_code == 200:
                     result = response.json()
 
-                    # Unwrap envelope if signed
+                    # Verify signed response if we have peer's key
                     if "payload" in result and "signature" in result:
+                        envelope_source = result.get("source_node")
+                        peer_key = self._lookup_public_key(envelope_source) if envelope_source else None
+
+                        if peer_key and self.envelope_verify:
+                            try:
+                                verify_envelope_with_key(result, peer_key)
+                            except EnvelopeError:
+                                self.logger.warning(
+                                    f"Handshake response from {envelope_source} failed signature verification"
+                                )
+                                return False
+
+                            # Enforce target_node matches us (anti-replay/misdirection)
+                            envelope_target = result.get("target_node")
+                            if envelope_target and envelope_target != our_rid:
+                                self.logger.warning(
+                                    f"Handshake response target mismatch: "
+                                    f"target_node={envelope_target}, expected={our_rid}"
+                                )
+                                return False
+
+                            # Bind envelope identity to payload identity (anti-spoofing)
+                            inner = result["payload"]
+                            payload_node_rid = inner.get("node_rid") or inner.get("source_node")
+                            if payload_node_rid and payload_node_rid != envelope_source:
+                                self.logger.warning(
+                                    f"Identity mismatch: envelope source={envelope_source}, "
+                                    f"payload node_rid={payload_node_rid} — rejecting"
+                                )
+                                return False
+                        elif not peer_key:
+                            self.logger.info(
+                                f"First contact with {envelope_source} — "
+                                f"accepting unverified response (no key yet)"
+                            )
+
                         result = result["payload"]
 
                     peer_rid = result.get("node_rid")
@@ -1829,6 +2058,23 @@ class KOICoordinator:
                     edge_rid = result.get("edge_rid")
 
                     if peer_rid and peer_profile:
+                        # Learn public key from handshake response profile
+                        peer_pub_key_b64 = peer_profile.get("public_key")
+                        if peer_pub_key_b64 and peer_rid not in self.envelope_public_keys:
+                            try:
+                                from shared.koi_envelope import (
+                                    public_key_from_b64der,
+                                    node_rid_matches_public_key,
+                                )
+                                learned_key = public_key_from_b64der(peer_pub_key_b64)
+                                if node_rid_matches_public_key(peer_rid, learned_key):
+                                    self.envelope_public_keys[peer_rid] = learned_key
+                                    self.logger.info(
+                                        f"Learned public key for {peer_rid} from handshake response"
+                                    )
+                            except Exception as e:
+                                self.logger.warning(f"Failed to learn peer key from response: {e}")
+
                         self.known_peers[peer_rid] = {
                             "profile": peer_profile,
                             "last_seen": datetime.now(timezone.utc).isoformat(),
@@ -1841,18 +2087,42 @@ class KOICoordinator:
                             edge.status = EdgeStatus.APPROVED
                             self.edges[edge_rid] = edge
 
-                            # Notify the peer that we approved
+                            # Step 4a: Sign the edge approval
                             approve_url = f"{target_url.rstrip('/')}/edges/approve"
                             approve_payload = {
                                 "type": "edge_approve",
                                 "edge_rid": edge_rid,
                                 "node_rid": our_rid,
                             }
+                            if self.envelope_sign and self.envelope_private_key:
+                                approve_payload = sign_envelope(
+                                    approve_payload, our_rid, peer_rid,
+                                    self.envelope_private_key
+                                )
+                            approval_ok = False
                             try:
-                                await client.post(approve_url, json=approve_payload)
-                                self.logger.info(f"Approved edge {edge_rid} with {peer_rid}")
+                                approve_resp = await client.post(approve_url, json=approve_payload)
+                                if approve_resp.status_code == 200:
+                                    self.logger.info(f"Approved edge {edge_rid} with {peer_rid}")
+                                    approval_ok = True
+                                else:
+                                    self.logger.warning(
+                                        f"Edge approval failed for {edge_rid}: "
+                                        f"{approve_resp.status_code} - {approve_resp.text[:200]}"
+                                    )
+                                    edge.status = EdgeStatus.PROPOSED
+                                    self.edges[edge_rid] = edge
                             except Exception as e:
                                 self.logger.warning(f"Failed to send edge approval: {e}")
+                                edge.status = EdgeStatus.PROPOSED
+                                self.edges[edge_rid] = edge
+
+                            if not approval_ok:
+                                self._save_peers()
+                                self.logger.warning(
+                                    f"Handshake with {peer_rid} incomplete — edge approval failed"
+                                )
+                                return False
 
                         self._save_peers()
                         self.logger.info(f"Handshake complete with {peer_rid}")
@@ -1869,6 +2139,43 @@ class KOICoordinator:
         except Exception as e:
             self.logger.error(f"Error during handshake with {target_rid}: {e}")
             return False
+
+    async def _try_learn_key_from_health(self, client, target_url: str, target_rid: str):
+        """Try to learn peer's public key from /koi-net/health before handshake.
+
+        Matches Octo's pattern of auto-discovering public keys from the health endpoint.
+        """
+        if target_rid in self.envelope_public_keys:
+            return  # Already have key
+
+        health_url = f"{target_url.rstrip('/')}/health"
+        try:
+            resp = await client.get(health_url, timeout=10.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                node_data = data.get("node", {})
+                pub_key_b64 = node_data.get("public_key")
+                node_rid = node_data.get("node_rid")
+                if pub_key_b64 and node_rid:
+                    from shared.koi_envelope import (
+                        public_key_from_b64der,
+                        node_rid_matches_public_key,
+                    )
+                    pub_key = public_key_from_b64der(pub_key_b64)
+                    if node_rid_matches_public_key(node_rid, pub_key):
+                        self.envelope_public_keys[node_rid] = pub_key
+                        # Also store under target_rid if different (hash length alias)
+                        if target_rid != node_rid:
+                            self.envelope_public_keys[target_rid] = pub_key
+                        self.logger.info(
+                            f"Learned public key for {node_rid} from /koi-net/health"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Public key from {health_url} doesn't match node_rid {node_rid}"
+                        )
+        except Exception as e:
+            self.logger.debug(f"Could not fetch /koi-net/health from {target_url}: {e}")
 
     async def check_sensor_health(self, sensor_key: str, sensor_info: Dict) -> str:
         """

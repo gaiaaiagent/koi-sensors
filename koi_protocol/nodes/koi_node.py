@@ -77,6 +77,10 @@ class KOINodeBase(ABC):
         # Logging (must be first for other init steps to use)
         self.logger = logging.getLogger(f"koi.node.{node_name}")
 
+        # Cryptographic identity (Phase 5: key-derived RID)
+        self.private_key = None
+        self.public_key = None
+
         # Resolve stable node identity (persisted across restarts)
         self.node_id = self._resolve_node_id()
         self.logger.info(f"Node identity: {self.node_id}")
@@ -107,17 +111,75 @@ class KOINodeBase(ABC):
     def _resolve_node_id(self) -> str:
         """Resolve a stable node identity, persisted across restarts.
 
+        Phase 5: Key-derived identity using ECDSA P-256 keypair.
+
         Priority:
-        1. KOI_NODE_ID env var (explicit override)
-        2. Read from {cache_dir}/.node_id file (persisted)
-        3. Generate orn:koi-net.node:{name}+{hash16}, persist to file
+        1. KOI_NODE_ID env var (explicit override — skips key derivation)
+        2. Load keypair from {cache_dir}/node_private_key.pem → derive RID
+        3. Generate new keypair → derive RID → persist
+
+        The node RID is derived deterministically:
+            orn:koi-net.node:{name}+sha256(base64(DER(public_key)))
+        producing a 64-character hex hash matching BlockScience's canonical pattern.
+
+        Migration: If an old .node_id exists with a different (16-char random) hash,
+        the old RID is backed up and peer state is updated.
         """
-        # Priority 1: explicit env var
+        # Priority 1: explicit env var (escape hatch, skips crypto)
         env_id = os.getenv("KOI_NODE_ID")
         if env_id:
             return env_id
 
-        # Priority 2: persisted file
+        # Priority 2+3: key-derived identity
+        try:
+            from shared.koi_envelope import (
+                generate_and_save_keypair,
+                derive_node_rid,
+                _CRYPTO_AVAILABLE,
+            )
+        except ImportError:
+            self.logger.warning("shared.koi_envelope not available — falling back to legacy identity")
+            return self._resolve_node_id_legacy()
+
+        if not _CRYPTO_AVAILABLE:
+            self.logger.warning("cryptography not installed — falling back to legacy identity")
+            return self._resolve_node_id_legacy()
+
+        if not self._cache_dir:
+            # No cache dir — generate ephemeral keypair (no persistence)
+            from shared.koi_envelope import generate_keypair
+            self.private_key, self.public_key = generate_keypair()
+            return derive_node_rid(self.node_name, self.public_key)
+
+        # Load or generate keypair from persistent storage
+        key_path = str(Path(self._cache_dir) / "node_private_key.pem")
+        password = os.getenv("KOI_PRIVATE_KEY_PASSWORD")
+        self.private_key, self.public_key = generate_and_save_keypair(key_path, password)
+
+        new_rid = derive_node_rid(self.node_name, self.public_key)
+
+        # Check for migration from old .node_id
+        id_file = Path(self._cache_dir) / ".node_id"
+        if id_file.exists():
+            try:
+                old_rid = id_file.read_text().strip()
+                if old_rid and old_rid != new_rid:
+                    self._migrate_node_identity(old_rid, new_rid, id_file)
+            except Exception as e:
+                self.logger.warning(f"Failed to check old node_id for migration: {e}")
+
+        # Persist new RID
+        try:
+            id_file.parent.mkdir(parents=True, exist_ok=True)
+            id_file.write_text(new_rid)
+        except Exception as e:
+            self.logger.warning(f"Failed to persist node_id: {e}")
+
+        self.logger.info(f"Key-derived identity: {new_rid}")
+        return new_rid
+
+    def _resolve_node_id_legacy(self) -> str:
+        """Legacy identity resolution (pre-Phase 5, no cryptography)."""
         if self._cache_dir:
             id_file = Path(self._cache_dir) / ".node_id"
             if id_file.exists():
@@ -128,7 +190,6 @@ class KOINodeBase(ABC):
                 except Exception as e:
                     self.logger.warning(f"Failed to read persisted node_id: {e}")
 
-        # Priority 3: generate and persist
         random_hash = hashlib.sha256(uuid.uuid4().bytes).hexdigest()[:16]
         node_id = f"orn:koi-net.node:{self.node_name}+{random_hash}"
 
@@ -142,6 +203,49 @@ class KOINodeBase(ABC):
                 self.logger.warning(f"Failed to persist node_id: {e}")
 
         return node_id
+
+    def _migrate_node_identity(self, old_rid: str, new_rid: str, id_file: Path):
+        """Migrate from old (random/16-char) node identity to new (key-derived/64-char).
+
+        Steps:
+        1. Backup old .node_id to .node_id.legacy
+        2. Update peer state file (replace old self-RID with new)
+        3. Log migration warning
+        """
+        self.logger.warning(
+            f"Node identity migrated from {old_rid} to {new_rid}. "
+            f"Peers using old RID will need re-handshake."
+        )
+
+        # Backup old identity
+        legacy_file = id_file.with_suffix(".legacy")
+        try:
+            legacy_file.write_text(old_rid)
+            self.logger.info(f"Backed up old node_id to {legacy_file}")
+        except Exception as e:
+            self.logger.warning(f"Failed to backup old node_id: {e}")
+
+        # Update coordinator_peers.json if it exists
+        # The peers file may be at a different path; look for it relative to this module
+        peers_candidates = [
+            Path(self._cache_dir).parent / "koi_protocol" / "coordinator" / "coordinator_peers.json",
+            Path(__file__).parent.parent / "coordinator" / "coordinator_peers.json",
+        ]
+        for peers_path in peers_candidates:
+            if peers_path.exists():
+                try:
+                    raw = peers_path.read_text()
+                    if old_rid in raw:
+                        updated = raw.replace(old_rid, new_rid)
+                        temp = peers_path.with_suffix(".tmp")
+                        temp.write_text(updated)
+                        temp.replace(peers_path)
+                        self.logger.info(f"Updated peer state: replaced {old_rid} with {new_rid} in {peers_path}")
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to update peer state in {peers_path}: {e}. "
+                        f"Manual intervention may be required."
+                    )
 
     async def start(self):
         """Start the node"""
@@ -293,8 +397,16 @@ class KOINodeBase(ABC):
         if node_type == NodeType.FULL and self.port:
             base_url = f"http://localhost:{self.port}/koi-net"
 
-        # Public key from env (if available)
-        public_key = os.getenv("KOI_PUBLIC_KEY_B64")
+        # Public key: prefer key-derived (Phase 5), fall back to env var
+        public_key = None
+        if self.public_key:
+            try:
+                from shared.koi_envelope import public_key_to_b64der
+                public_key = public_key_to_b64der(self.public_key)
+            except Exception:
+                pass
+        if not public_key:
+            public_key = os.getenv("KOI_PUBLIC_KEY_B64")
 
         # Declare RID types this coordinator provides (Phase 2)
         provides = NodeProvides(

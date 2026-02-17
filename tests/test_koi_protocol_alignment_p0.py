@@ -478,9 +478,9 @@ class TestStableNodeIdentity:
         node = KOIFullNode("my-coordinator", port=9999, cache_dir=cache_dir)
 
         assert node.node_id.startswith("orn:koi-net.node:my-coordinator+")
-        # Hash suffix should be 16 hex chars
+        # Hash suffix: 64 hex chars (Phase 5 key-derived) or 16 (legacy fallback)
         suffix = node.node_id.split("+")[1]
-        assert len(suffix) == 16
+        assert len(suffix) in (16, 64)
         assert all(c in "0123456789abcdef" for c in suffix)
 
     def test_env_var_overrides_persisted_id(self, tmp_path, monkeypatch):

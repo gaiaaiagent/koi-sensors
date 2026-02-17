@@ -90,6 +90,10 @@ class ErrorResponse(BaseModel):
     detail: Optional[str] = None
 
 
+class AmbiguousNodeError(EnvelopeError):
+    """Raised when a short hash matches multiple known peers."""
+
+
 def _normalize_pem(pem: str) -> str:
     return pem.replace("\\n", "\n")
 
@@ -270,3 +274,167 @@ def verify_envelope_with_key(envelope: Dict[str, Any], public_key) -> bool:
         return True
     except InvalidSignature as exc:
         raise EnvelopeError("Invalid envelope signature") from exc
+
+
+# ============================================================================
+# Key generation and node identity derivation (Phase 5)
+# ============================================================================
+
+def generate_keypair():
+    """Generate a new ECDSA P-256 keypair.
+
+    Returns:
+        (private_key, public_key) tuple
+    """
+    if not _CRYPTO_AVAILABLE:
+        raise EnvelopeError("cryptography is required for keypair generation")
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    return private_key, private_key.public_key()
+
+
+def save_private_key(private_key, path: str, password: Optional[str] = None):
+    """Save private key to PEM file.
+
+    Args:
+        private_key: ECDSA private key
+        path: File path to write PEM
+        password: Optional password for encryption
+    """
+    from pathlib import Path as _Path
+
+    password_bytes = password.encode() if password else None
+    encryption = (
+        serialization.BestAvailableEncryption(password_bytes)
+        if password_bytes
+        else serialization.NoEncryption()
+    )
+    pem_data = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        encryption,
+    )
+    p = _Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(pem_data)
+
+
+def load_private_key(path: str, password: Optional[str] = None):
+    """Load private key from PEM file.
+
+    Returns:
+        ECDSA private key, or None if file doesn't exist
+    """
+    if not _CRYPTO_AVAILABLE:
+        return None
+    from pathlib import Path as _Path
+    p = _Path(path)
+    if not p.exists():
+        return None
+    pem_data = p.read_bytes()
+    password_bytes = password.encode() if password else None
+    return serialization.load_pem_private_key(pem_data, password=password_bytes)
+
+
+def generate_and_save_keypair(path: str, password: Optional[str] = None):
+    """Generate ECDSA P-256 keypair and save private key to PEM file.
+
+    If key file already exists, loads existing key instead of generating.
+
+    Returns:
+        (private_key, public_key) tuple
+    """
+    existing = load_private_key(path, password)
+    if existing:
+        return existing, existing.public_key()
+    private_key, public_key = generate_keypair()
+    save_private_key(private_key, path, password)
+    return private_key, public_key
+
+
+def public_key_to_b64der(public_key) -> str:
+    """Encode public key as base64(DER) string — the canonical wire format."""
+    if not _CRYPTO_AVAILABLE:
+        raise EnvelopeError("cryptography is required")
+    der_bytes = public_key.public_bytes(
+        serialization.Encoding.DER,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    return b64encode(der_bytes).decode()
+
+
+def public_key_from_b64der(b64der: str):
+    """Decode public key from base64(DER) string."""
+    if not _CRYPTO_AVAILABLE:
+        raise EnvelopeError("cryptography is required")
+    der_bytes = b64decode(b64der)
+    return serialization.load_der_public_key(der_bytes)
+
+
+def derive_node_rid(name: str, public_key) -> str:
+    """Derive a node RID from name and public key.
+
+    Matches BlockScience's canonical pattern: sha256(base64(DER(public_key)))
+    producing a full 64-character hex hash.
+
+    Args:
+        name: Node name (e.g., "regen-coordinator")
+        public_key: ECDSA P-256 public key
+
+    Returns:
+        Node RID string: "orn:koi-net.node:{name}+{64char_hex}"
+    """
+    import hashlib
+    b64der = public_key_to_b64der(public_key)
+    full_hash = hashlib.sha256(b64der.encode()).hexdigest()
+    return f"orn:koi-net.node:{name}+{full_hash}"
+
+
+def _derive_hash_from_public_key(public_key, length: Optional[int] = None) -> str:
+    """Derive the hash portion of a node RID from a public key.
+
+    Args:
+        public_key: ECDSA P-256 public key
+        length: If provided, truncate hash to this many chars (e.g. 16 for legacy)
+
+    Returns:
+        Hex hash string
+    """
+    import hashlib
+    b64der = public_key_to_b64der(public_key)
+    full_hash = hashlib.sha256(b64der.encode()).hexdigest()
+    if length:
+        return full_hash[:length]
+    return full_hash
+
+
+def node_rid_matches_public_key(
+    node_rid: str,
+    public_key,
+    allow_legacy16: bool = True,
+    allow_der64: bool = True,
+) -> bool:
+    """Match node RID hash against public key using both hash modes.
+
+    Replicates Octo's node_identity.py pattern for interoperability.
+    Supports both 64-char (BlockScience canonical) and 16-char (legacy) hashes.
+
+    Args:
+        node_rid: Full node RID (e.g., "orn:koi-net.node:name+hash")
+        public_key: ECDSA P-256 public key
+        allow_legacy16: Accept 16-char truncated hash match
+        allow_der64: Accept 64-char full hash match
+
+    Returns:
+        True if the hash in node_rid matches the public key
+    """
+    suffix = node_rid.rsplit("+", 1)[-1] if "+" in node_rid else ""
+    if not suffix:
+        return False
+
+    full_hash = _derive_hash_from_public_key(public_key)
+
+    if len(suffix) == 64 and allow_der64:
+        return suffix == full_hash
+    if len(suffix) == 16 and allow_legacy16:
+        return suffix == full_hash[:16]
+    return False

@@ -183,7 +183,7 @@ class NodeConfig(BaseModel):
                 node_rid=existing_rid,
                 node_profile=NodeProfile(
                     node_type=node_type,
-                    base_url=f"http://0.0.0.0:{port}/koi-net" if node_type == NodeType.FULL else None,
+                    base_url=(os.getenv('KOI_BASE_URL') or f"http://localhost:{port}/koi-net") if node_type == NodeType.FULL else None,
                 ),
                 cache_directory_path=cache_dir,
                 polling_interval=poll_interval,
@@ -213,18 +213,25 @@ class NodeConfig(BaseModel):
         private_key = ec.generate_private_key(ec.SECP256R1())
         public_key = private_key.public_key()
 
-        # Derive node RID from public key DER hash
-        pub_der = public_key.public_bytes(
-            serialization.Encoding.DER,
-            serialization.PublicFormat.SubjectPublicKeyInfo,
-        )
-        pub_hash = hashlib.sha256(pub_der).hexdigest()[:16]
-        self.koi_net.node_rid = (
-            f"orn:koi-net.node:{self.koi_net.node_name}+{pub_hash}"
-        )
-
-        # Store public key in profile (base64 DER)
-        self.koi_net.node_profile.public_key = b64encode(pub_der).decode()
+        # Derive node RID from public key — full 64-char hash matching
+        # BlockScience's canonical sha256(base64(DER)) pattern.
+        # Uses shared/koi_envelope.py as single source of truth.
+        try:
+            from shared.koi_envelope import derive_node_rid, public_key_to_b64der
+            self.koi_net.node_rid = derive_node_rid(self.koi_net.node_name, public_key)
+            self.koi_net.node_profile.public_key = public_key_to_b64der(public_key)
+        except ImportError:
+            # Fallback if shared module not available
+            pub_der = public_key.public_bytes(
+                serialization.Encoding.DER,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            pub_b64 = b64encode(pub_der).decode()
+            pub_hash = hashlib.sha256(pub_b64.encode()).hexdigest()
+            self.koi_net.node_rid = (
+                f"orn:koi-net.node:{self.koi_net.node_name}+{pub_hash}"
+            )
+            self.koi_net.node_profile.public_key = pub_b64
 
         # Persist private key to PEM
         pem_path = Path(self.koi_net.private_key_pem_path)
