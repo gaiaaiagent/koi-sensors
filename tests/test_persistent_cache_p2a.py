@@ -207,8 +207,8 @@ class TestKOINodeBasePersistence:
         node2 = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
 
         # Run start() to load bundles from disk
-        asyncio.get_event_loop().run_until_complete(node2.start())
-        asyncio.get_event_loop().run_until_complete(node2.stop())
+        asyncio.run(node2.start())
+        asyncio.run(node2.stop())
 
         # Bundle should be available
         read_bundle = node2.get_cached_bundle(sample_bundle.rid)
@@ -312,7 +312,7 @@ class TestEventSemanticsPersistence:
         # Create and handle FORGET event (use RID object, not string)
         rid = RID.parse(sample_bundle.rid)
         forget_event = KOIEvent.forget_event(rid, "test-node", "test deletion")
-        asyncio.get_event_loop().run_until_complete(node.handle_event(forget_event))
+        asyncio.run(node.handle_event(forget_event))
 
         # Verify deleted from memory and disk
         assert not node.has_cached_bundle(sample_bundle.rid)
@@ -330,12 +330,12 @@ class TestEventSemanticsPersistence:
 
         rid = RID.parse(sample_bundle.rid)
         forget_event = KOIEvent.forget_event(rid, "test-node", "test deletion")
-        asyncio.get_event_loop().run_until_complete(node1.handle_event(forget_event))
+        asyncio.run(node1.handle_event(forget_event))
 
         # Second node: verify bundle is gone
         node2 = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
-        asyncio.get_event_loop().run_until_complete(node2.start())
-        asyncio.get_event_loop().run_until_complete(node2.stop())
+        asyncio.run(node2.start())
+        asyncio.run(node2.stop())
 
         assert not node2.has_cached_bundle(sample_bundle.rid)
 
@@ -359,7 +359,7 @@ class TestEventSemanticsPersistence:
 
         # Handle UPDATE event
         update_event = KOIEvent.update_event(updated_bundle, "test-node")
-        asyncio.get_event_loop().run_until_complete(node.handle_event(update_event))
+        asyncio.run(node.handle_event(update_event))
 
         # Verify bundle was updated
         read_bundle = node.get_cached_bundle(sample_bundle.rid)
@@ -385,12 +385,12 @@ class TestEventSemanticsPersistence:
         updated_bundle = Bundle.generate(rid, updated_contents)
 
         update_event = KOIEvent.update_event(updated_bundle, "test-node")
-        asyncio.get_event_loop().run_until_complete(node1.handle_event(update_event))
+        asyncio.run(node1.handle_event(update_event))
 
         # Second node: verify updated contents
         node2 = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
-        asyncio.get_event_loop().run_until_complete(node2.start())
-        asyncio.get_event_loop().run_until_complete(node2.stop())
+        asyncio.run(node2.start())
+        asyncio.run(node2.stop())
 
         read_bundle = node2.get_cached_bundle(sample_bundle.rid)
         assert read_bundle.contents == updated_contents
@@ -497,8 +497,8 @@ class TestSignedPersistenceIntegration:
         # Restart: create new node instance
         node2 = KOIFullNode("test-coordinator", port=8000, cache_dir=temp_cache_dir)
         node2.node_id = coordinator_id
-        asyncio.get_event_loop().run_until_complete(node2.start())
-        asyncio.get_event_loop().run_until_complete(node2.stop())
+        asyncio.run(node2.start())
+        asyncio.run(node2.stop())
 
         # Verify bundle persisted
         read_bundle = node2.get_cached_bundle(sample_bundle.rid)
@@ -541,8 +541,8 @@ class TestSignedPersistenceIntegration:
 
         # Second node: read back
         node2 = KOIFullNode("test-node", port=8000, cache_dir=temp_cache_dir)
-        asyncio.get_event_loop().run_until_complete(node2.start())
-        asyncio.get_event_loop().run_until_complete(node2.stop())
+        asyncio.run(node2.start())
+        asyncio.run(node2.stop())
 
         read_bundle = node2.get_cached_bundle(sample_bundle.rid)
 
