@@ -331,6 +331,22 @@ class KOICoordinator:
         self.koi_net_require_signed = os.getenv(
             "KOI_NET_REQUIRE_SIGNED", "false"
         ).lower() in ("1", "true", "yes")
+        # When true, poll delivery filters events by edge rid_types (Phase 6)
+        self.koi_net_edge_filtering = os.getenv(
+            "KOI_NET_EDGE_FILTERING", "false"
+        ).lower() in ("1", "true", "yes")
+        # When true, polls return empty if no APPROVED edge exists for the polling node (Phase 6a)
+        self.koi_net_require_approved_edge_for_poll = os.getenv(
+            "KOI_NET_REQUIRE_APPROVED_EDGE_FOR_POLL", "false"
+        ).lower() in ("1", "true", "yes")
+        # When false, proposed edges stay PROPOSED in handshake_with() (Phase 6a)
+        self.koi_net_auto_approve_edges = os.getenv(
+            "KOI_NET_AUTO_APPROVE_EDGES", "true"
+        ).lower() in ("1", "true", "yes")
+        # Inbound broadcast policy: "allow" (default) or "deny" (Phase 6a)
+        self.koi_net_inbound_broadcast = os.getenv(
+            "KOI_NET_INBOUND_BROADCAST", "allow"
+        ).lower()
         
         # Sensor adapters
         self.sensor_adapters: Dict[str, Any] = {}
@@ -920,6 +936,14 @@ class KOICoordinator:
                         detail=str(exc)
                     ).model_dump()
                 )
+            except PermissionError as exc:
+                return JSONResponse(
+                    status_code=403,
+                    content=ErrorResponse(
+                        error="forbidden",
+                        detail=str(exc)
+                    ).model_dump()
+                )
             except Exception as exc:
                 self.logger.error(f"KOI-net {endpoint_name}: processing error - {exc}")
                 return JSONResponse(
@@ -1009,16 +1033,51 @@ class KOICoordinator:
                 max_events = limit if isinstance(limit, int) and limit > 0 else 100
 
                 if source_node:
+                    # Phase 6a: Require approved edge check
+                    if self.koi_net_require_approved_edge_for_poll:
+                        has_approved = self._has_approved_edge_for_peer(source_node)
+                        if not has_approved:
+                            self.logger.info(
+                                f"KOI-net poll: no approved edge for {source_node}, returning empty"
+                            )
+                            return KoiNetEventsPayloadResponse(
+                                type="events_payload",
+                                events=[]
+                            )
+
+                    # Phase 6: Edge RID-type filtering (filter before delivery-marking)
+                    rid_types = None
+                    if self.koi_net_edge_filtering:
+                        rid_types_list = self._get_edge_rid_types_for_peer(source_node)
+                        if rid_types_list:
+                            rid_types = rid_types_list
+
                     # Signed request: per-node destructive flush (BlockScience compat)
                     internal_events, _event_ids = self.koi_node.get_queued_events_for_delivery(
-                        source_node, max_events
+                        source_node, max_events, rid_types=rid_types
                     )
+
+                    if rid_types:
+                        self.logger.info(
+                            f"KOI-net poll: edge filter applied for {source_node} "
+                            f"(rid_types={rid_types}), {len(internal_events)} events delivered"
+                        )
+
                     self.logger.info(
                         f"KOI-net poll: returning {len(internal_events)} events "
                         f"for {source_node} (per-node flush)"
                     )
                 else:
                     # Unsigned request: read-only queue view (backward compat)
+                    # Phase 6a: If approved edge required, unsigned polls get empty
+                    if self.koi_net_require_approved_edge_for_poll:
+                        self.logger.info(
+                            "KOI-net poll: unsigned poll with REQUIRE_APPROVED_EDGE_FOR_POLL=true, returning empty"
+                        )
+                        return KoiNetEventsPayloadResponse(
+                            type="events_payload",
+                            events=[]
+                        )
                     internal_events = self.koi_node.get_queued_events(max_events)
                     self.logger.info(
                         f"KOI-net poll: returning {len(internal_events)} events (read-only)"
@@ -1048,6 +1107,10 @@ class KOICoordinator:
             For signed requests, response is also signed.
             """
             async def process_broadcast(payload: dict, source_node=None):
+                # Phase 6a: Inbound broadcast policy
+                if self.koi_net_inbound_broadcast == "deny":
+                    raise PermissionError("Inbound broadcasts disabled")
+
                 req_type = payload.get("type", "events_payload")
                 if req_type != "events_payload":
                     raise ValueError(f"Expected type='events_payload', got '{req_type}'")
@@ -1944,6 +2007,60 @@ class KOICoordinator:
         except Exception as e:
             self.logger.error(f"Error saving peers: {e}")
 
+    @staticmethod
+    def _node_rids_match(rid_a: str, rid_b: str) -> bool:
+        """Check if two node RIDs refer to the same node (alias-aware).
+
+        Handles 16-char (legacy) and 64-char (canonical) hash suffixes.
+        Requires same prefix (before +), valid hash lengths {16,64}, hex-only.
+        """
+        if rid_a == rid_b:
+            return True
+        if "+" not in rid_a or "+" not in rid_b:
+            return False
+        prefix_a, suffix_a = rid_a.rsplit("+", 1)
+        prefix_b, suffix_b = rid_b.rsplit("+", 1)
+        if prefix_a != prefix_b:
+            return False
+        if len(suffix_a) not in (16, 64) or len(suffix_b) not in (16, 64):
+            return False
+        if not all(c in '0123456789abcdef' for c in suffix_a):
+            return False
+        if not all(c in '0123456789abcdef' for c in suffix_b):
+            return False
+        shorter, longer = sorted([suffix_a, suffix_b], key=len)
+        return longer.startswith(shorter)
+
+    def _has_approved_edge_for_peer(self, peer_node_rid: str) -> bool:
+        """Check if any APPROVED edge exists where peer is the target (alias-aware)."""
+        for edge in self.edges.values():
+            if (self._node_rids_match(edge.target, peer_node_rid) and
+                    edge.status == EdgeStatus.APPROVED):
+                return True
+        return False
+
+    def _get_edge_rid_types_for_peer(self, peer_node_rid: str) -> list[str]:
+        """Get the combined rid_types from all APPROVED edges where peer is target.
+
+        Returns empty list if no edges have rid_types set (meaning allow all).
+        Uses alias-aware RID matching to handle 16/64-char hash variants.
+        """
+        rid_types = []
+        for edge in self.edges.values():
+            if (self._node_rids_match(edge.target, peer_node_rid) and
+                    edge.status == EdgeStatus.APPROVED and
+                    edge.rid_types):
+                rid_types.extend(edge.rid_types)
+        return rid_types
+
+    @staticmethod
+    def _rid_matches_types(rid: str, rid_types: list[str]) -> bool:
+        """Check if a RID string matches any of the allowed RID type prefixes.
+
+        Delegates to KOIFullNode._rid_matches_types for single implementation.
+        """
+        return KOIFullNode._rid_matches_types(rid, rid_types)
+
     async def handshake_with(self, target_rid: str, target_url: str):
         """Initiate a handshake with a remote KOI-net node.
 
@@ -2075,9 +2192,18 @@ class KOICoordinator:
                             "edges": [edge_rid] if edge_rid else [],
                         }
 
-                        # Auto-approve the proposed edge
+                        # Auto-approve the proposed edge (or leave PROPOSED if disabled)
                         if proposed_edge and edge_rid:
                             edge = EdgeProfile.model_validate(proposed_edge)
+                            if not self.koi_net_auto_approve_edges:
+                                edge.status = EdgeStatus.PROPOSED
+                                self.edges[edge_rid] = edge
+                                self.logger.info(
+                                    f"Auto-approve disabled: edge {edge_rid} stays PROPOSED"
+                                )
+                                self._save_peers()
+                                self.logger.info(f"Handshake complete with {peer_rid} (edge PROPOSED)")
+                                return True
                             edge.status = EdgeStatus.APPROVED
                             self.edges[edge_rid] = edge
 

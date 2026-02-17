@@ -515,8 +515,16 @@ class KOINodeBase(ABC):
             return events[:max_events]
         return events
 
-    def get_queued_events_for_delivery(self, node_id: str, max_events: int = None) -> Tuple[List[KOIEvent], List[str]]:
-        """Get queued events for a specific node, returning events and their IDs"""
+    def get_queued_events_for_delivery(self, node_id: str, max_events: int = None, rid_types: list = None) -> Tuple[List[KOIEvent], List[str]]:
+        """Get queued events for a specific node, returning events and their IDs.
+
+        Args:
+            node_id: The node to deliver events to.
+            max_events: Maximum number of events to return.
+            rid_types: Optional list of RID type prefixes to filter by.
+                Only events matching these types are delivered and marked.
+                Events not matching are left unmarked for other peers.
+        """
         events = []
         event_ids = []
 
@@ -527,6 +535,9 @@ class KOINodeBase(ABC):
 
             # Only include events that haven't been delivered to this node yet
             if node_id not in queued_event.delivered_to:
+                # Phase 6a: Filter by RID type BEFORE marking as delivered
+                if rid_types and not self._rid_matches_types(queued_event.event.rid, rid_types):
+                    continue
                 events.append(queued_event.event)
                 event_ids.append(queued_event.event_id)
                 # Mark as delivered to this node
@@ -537,6 +548,20 @@ class KOINodeBase(ABC):
         if events:
             self._persist_event_queue()
         return events, event_ids
+
+    @staticmethod
+    def _rid_matches_types(rid: str, rid_types: list) -> bool:
+        """Check if a RID string matches any of the allowed RID type prefixes.
+
+        RID format: "orn:<namespace>:<reference>" or "urn:<namespace>:<reference>"
+        Type prefix: "orn:<namespace>" (no trailing colon)
+
+        Returns True if rid starts with any type prefix followed by ':'.
+        """
+        for rid_type in rid_types:
+            if rid.startswith(rid_type + ":"):
+                return True
+        return False
     
     def clear_event_queue(self, max_events: int = None):
         """Clear processed events from queue (legacy method - use confirm_delivery instead)"""

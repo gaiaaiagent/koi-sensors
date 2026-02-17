@@ -158,8 +158,11 @@ class TestBaseUrlNormalization:
         """NodeConfig.from_env should not append /koi-net to KOI_BASE_URL."""
         from koi_protocol.protocol.config import NodeConfig
 
-        with patch.dict(os.environ, {"KOI_BASE_URL": "https://example.com/api"}):
-            config = NodeConfig.from_env(port=8005)
+        with patch.dict(os.environ, {
+            "KOI_BASE_URL": "https://example.com/api",
+            "KOI_COORDINATOR_PORT": "8005",
+        }):
+            config = NodeConfig.from_env()
             base_url = config.koi_net.node_profile.base_url
             if base_url:
                 assert not base_url.rstrip("/").endswith("/koi-net"), \

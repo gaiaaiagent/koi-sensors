@@ -220,7 +220,12 @@ async def test_rid_type_filtering(
     make_koi_net_event, blockscience_node_rid, blockscience_keypair,
     verify_as_blockscience, regen_node_rid
 ):
-    """Edge with rid_types filter → only matching events propagated."""
+    """Edge with rid_types filter → only matching events propagated (Phase 6).
+
+    When KOI_NET_EDGE_FILTERING is disabled, all events are returned regardless
+    of edge rid_types. This test documents that baseline behavior.
+    See test_phase6_edge_filtering.py for filtering-enabled tests.
+    """
     from koi_protocol.protocol.edge import EdgeProfile, EdgeType, EdgeStatus
 
     # Manually create an edge with rid_types filter
@@ -243,8 +248,7 @@ async def test_rid_type_filtering(
         signed = sign_as_blockscience(payload_to_dict(payload))
         await regen_client.post("/koi-net/events/broadcast", json=signed)
 
-    # Poll — current implementation returns all events regardless of edge filter
-    # This test documents current behavior; edge filtering is a Phase 4+ enhancement
+    # With filtering disabled (default), all events returned regardless of edge rid_types
     poll = PollEvents(limit=50)
     signed_poll = sign_as_blockscience(payload_to_dict(poll))
     resp = await regen_client.post("/koi-net/events/poll", json=signed_poll)
@@ -252,9 +256,10 @@ async def test_rid_type_filtering(
 
     inner = verify_as_blockscience(resp.json())
     events_payload = EventsPayload.model_validate(inner)
-    # Both events are returned (edge filtering not yet enforced)
     rids = [str(e.rid) for e in events_payload.events]
+    # Both events returned when filtering is off (backward compat)
     assert "orn:test.allowed:item/1" in rids
+    assert "orn:test.blocked:item/1" in rids
 
 
 # ---------------------------------------------------------------------------
