@@ -36,6 +36,11 @@ if [ -f "$KOI_ROOT/.env" ]; then
     set +a
 fi
 
+# Sensors are local to the coordinator — disable envelope signing.
+# The coordinator signs for external federation peers; sensors don't
+# need their own PKI identity for localhost broadcasts.
+export KOI_ENVELOPE_SIGN=false
+
 # Determine which Python script to run based on sensor
 case $SENSOR in
     discourse)
