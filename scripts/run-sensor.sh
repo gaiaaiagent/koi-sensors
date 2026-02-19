@@ -36,10 +36,13 @@ if [ -f "$KOI_ROOT/.env" ]; then
     set +a
 fi
 
-# Sensors are local to the coordinator — disable envelope signing.
-# The coordinator signs for external federation peers; sensors don't
-# need their own PKI identity for localhost broadcasts.
-export KOI_ENVELOPE_SIGN=false
+# Local sensors don't need envelope signing — the coordinator handles
+# signing for external federation. Override only when broadcasting to
+# localhost; remote sensor deployments should set KOI_ENVELOPE_SIGN
+# explicitly in their own .env or systemd override.
+if [ -z "${KOI_SENSOR_REMOTE:-}" ]; then
+    export KOI_ENVELOPE_SIGN=false
+fi
 
 # Determine which Python script to run based on sensor
 case $SENSOR in
