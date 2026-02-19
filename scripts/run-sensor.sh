@@ -97,5 +97,16 @@ if [ ! -f "$SCRIPT" ]; then
     exit 1
 fi
 
+# Preflight: verify critical shared dependencies are importable
+# Catches venv drift before systemd burns through restart limits
+PREFLIGHT_DEPS="rid_lib cryptography"
+for dep in $PREFLIGHT_DEPS; do
+    if ! python3 -c "import $dep" 2>/dev/null; then
+        echo "PREFLIGHT FAILED: $SENSOR venv is missing '$dep'"
+        echo "Fix: $(which pip) install -r $KOI_ROOT/requirements.txt"
+        exit 1
+    fi
+done
+
 echo "Starting $SENSOR sensor: python3 $SCRIPT"
 exec python3 "$SCRIPT"

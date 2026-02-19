@@ -155,18 +155,15 @@ class LedgerSensor(BaseSensor):
             await self.send_heartbeat_event()
 
     async def handle_coordinator_events(self):
-        """Listen for ping requests from coordinator"""
-        try:
-            # Subscribe to coordinator events
-            async for event in self.koi_node.event_stream():
-                if event.get('type') == 'PING_REQUEST':
-                    # Check if this ping is for us
-                    target = event.get('target')
-                    if target == 'ledger-sensor' or target == 'all':
-                        self.logger.info(f"Received ping request, responding...")
-                        await self.send_heartbeat_event(response_to=event.get('id'))
-        except Exception as e:
-            self.logger.error(f"Error handling coordinator events: {e}")
+        """Listen for ping requests from coordinator.
+
+        Note: KOIPartialNode uses HTTP polling, not push/streaming.
+        Coordinator ping responses are handled via periodic heartbeats.
+        This is a no-op until event_stream() is implemented on KOIPartialNode.
+        """
+        if not hasattr(self.koi_node, 'event_stream'):
+            self.logger.debug("Coordinator event streaming not available (partial node uses polling)")
+            return
     
     async def _select_active_endpoints(self):
         """Test endpoints and select working ones"""
