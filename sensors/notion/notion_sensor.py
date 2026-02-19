@@ -50,6 +50,11 @@ class NotionPageRID(ORN):
         self.page_id = page_id.replace('-', '')  # Remove hyphens from Notion IDs
         super().__init__()
     
+    @classmethod
+    def from_reference(cls, reference: str):
+        workspace, page_id = reference.split('/', 1)
+        return cls(workspace, page_id)
+    
     @property
     def reference(self) -> str:
         return f"{self.workspace}/{self.page_id}"
@@ -63,6 +68,11 @@ class NotionDatabaseRID(ORN):
         self.workspace = workspace
         self.database_id = database_id.replace('-', '')
         super().__init__()
+
+    @classmethod
+    def from_reference(cls, reference: str):
+        workspace, database_id = reference.split('/', 1)
+        return cls(workspace, database_id)
 
     @property
     def reference(self) -> str:

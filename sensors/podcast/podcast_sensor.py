@@ -47,6 +47,11 @@ class PodcastEpisodeRID(ORN):
         self.episode_id = episode_id
         super().__init__()
     
+    @classmethod
+    def from_reference(cls, reference: str):
+        platform, episode_id = reference.split('/', 1)
+        return cls(platform, episode_id)
+    
     @property
     def reference(self) -> str:
         return f"{self.platform}/{self.episode_id}"
