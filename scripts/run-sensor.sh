@@ -29,6 +29,10 @@ fi
 # Set Python path
 export PYTHONPATH="$KOI_ROOT:$PYTHONPATH"
 
+# Force unbuffered stdout so heartbeats and log lines reach journald
+# immediately instead of batching with the next collection cycle flush.
+export PYTHONUNBUFFERED=1
+
 # Source environment
 if [ -f "$KOI_ROOT/.env" ]; then
     set -a
