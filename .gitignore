@@ -166,3 +166,10 @@ coordinator_sensor_registry.json
 
 # P2a Persistent bundle cache
 .rid_cache/
+
+# Claude Code auto-generated context files (keep root CLAUDE.md only)
+**/CLAUDE.md
+!/CLAUDE.md
+
+# Runtime logs
+log.ndjson
