@@ -19,6 +19,7 @@ import asyncpg
 import json
 import hashlib
 import os
+import re
 import sys
 import logging
 import argparse
@@ -27,6 +28,8 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from urllib.parse import urlparse, urlunparse
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 import yaml
 
 # Configure logging
@@ -579,12 +582,39 @@ class ClaudeSessionSensor:
             self.stats['sessions_processed'] += 1
             self.stats['chunks_created'] += len(chunks)
 
-            logger.info(f"Processed session {session.session_id}: {len(chunks)} chunks")
+            # Entity extraction and knowledge graph linking
+            entities_linked = 0
+            extraction_config = self.config.get('entity_extraction', {})
+            if extraction_config.get('enabled', False) and extraction_config.get('link_existing', True):
+                entities, extraction_success = self._extract_entities(chunks)
+
+                if extraction_success:
+                    # Valid extraction (even if empty) — call /ingest with replace_existing
+                    # Always call /ingest on valid extraction — even empty lists
+                    # clear stale links via replace_existing=True
+                    link_existing_only = not extraction_config.get('extract_new', False)
+                    ingest_result = await asyncio.to_thread(
+                        self._call_ingest,
+                        session.session_id,
+                        entities,
+                        session,
+                        link_existing_only,
+                    )
+                    if ingest_result:
+                            stats = ingest_result.get('stats', {})
+                            entities_linked = stats.get('resolved_entities', 0) + stats.get('new_entities', 0)
+                            self.stats['entities_linked'] += entities_linked
+                else:
+                    # Extraction failed — preserve existing links (don't call /ingest)
+                    logger.warning(f"Entity extraction failed for session {session.session_id} — preserving existing links")
+
+            logger.info(f"Processed session {session.session_id}: {len(chunks)} chunks, {entities_linked} entities linked")
 
             return ProcessingResult(
                 session_id=session.session_id,
                 success=True,
-                chunks_created=len(chunks)
+                chunks_created=len(chunks),
+                entities_linked=entities_linked
             )
 
         except Exception as e:
@@ -697,6 +727,213 @@ class ClaudeSessionSensor:
             'cwd': cwd,
             'git_branch': git_branch
         }
+
+    # =========================================================================
+    # Entity Extraction (Session → Knowledge Graph)
+    # =========================================================================
+
+    # Regex patterns for redacting secrets before LLM extraction
+    _REDACT_PATTERNS = [
+        # Environment variable assignments: KEY=value, KEY='val ue', KEY="val ue"
+        (re.compile(r"""\b[A-Z_]{2,}=(?:"[^"]*"|'[^']*'|\S+)"""), '[REDACTED_ENV]'),
+        # API keys: sk-..., ghp_..., ghu_..., Bearer tokens
+        (re.compile(r'\b(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|ghu_[a-zA-Z0-9]{20,}|github_pat_[a-zA-Z0-9_]{20,})'), '[REDACTED_KEY]'),
+        (re.compile(r'Bearer\s+[a-zA-Z0-9._\-]{20,}'), 'Bearer [REDACTED]'),
+        # Private keys
+        (re.compile(r'-----BEGIN[A-Z ]*PRIVATE KEY-----[\s\S]*?-----END[A-Z ]*PRIVATE KEY-----'), '[REDACTED_PRIVATE_KEY]'),
+        # Connection strings with credentials
+        (re.compile(r'(postgresql|postgres|mongodb|mysql|redis)://[^\s]+'), '[REDACTED_CONN_STRING]'),
+        # URLs with embedded credentials (user:pass@host)
+        (re.compile(r'https?://[^:]+:[^@]+@[^\s]+'), '[REDACTED_URL_CREDS]'),
+        # Base64 blobs longer than 50 chars (likely encoded secrets)
+        (re.compile(r'[A-Za-z0-9+/]{50,}={0,2}'), '[REDACTED_BASE64]'),
+        # File paths containing sensitive filenames
+        (re.compile(r'[^\s]*(?:\.env|credentials|secrets|\.pem|\.key)[^\s]*'), '[REDACTED_PATH]'),
+    ]
+
+    @staticmethod
+    def _redact_for_extraction(text: str) -> str:
+        """
+        Redact secrets from text before sending to external LLM for entity extraction.
+
+        Strips API keys, tokens, connection strings, private keys, and base64 blobs.
+        Returns redacted text with substitution markers.
+        """
+        redaction_count = 0
+        for pattern, replacement in ClaudeSessionSensor._REDACT_PATTERNS:
+            text, count = pattern.subn(replacement, text)
+            redaction_count += count
+
+        if redaction_count > 0:
+            logger.info(f"Redacted {redaction_count} potential secrets before extraction")
+
+        return text
+
+    def _extract_entities(self, chunks: List['SessionChunk']) -> Tuple[List[Dict], bool]:
+        """
+        Extract named entities from session chunks using OpenAI gpt-4o-mini.
+
+        Returns:
+            (entities, success): List of entity dicts matching /ingest schema,
+            and bool indicating whether extraction succeeded.
+            On failure, returns ([], False) — caller should preserve existing links.
+        """
+        if not self.openai_client:
+            logger.warning("OpenAI client not available — skipping entity extraction")
+            return [], False
+
+        extraction_config = self.config.get('entity_extraction', {})
+        max_chunks = extraction_config.get('max_chunks', 5)
+        model = extraction_config.get('model', 'gpt-4o-mini')
+
+        # Take first N chunks (covers main conversation)
+        selected_chunks = chunks[:max_chunks]
+        if not selected_chunks:
+            return [], True  # Valid empty — no chunks to process
+
+        # Concatenate and redact chunk text
+        raw_text = "\n\n---\n\n".join(c.chunk_text for c in selected_chunks)
+        redacted_text = self._redact_for_extraction(raw_text)
+
+        # Truncate to ~10k chars to stay within reasonable token limits
+        if len(redacted_text) > 10000:
+            redacted_text = redacted_text[:10000] + "\n\n[truncated]"
+
+        prompt = """Extract named entities mentioned in this Claude Code session transcript.
+Return a JSON array of objects with: name, type, confidence.
+
+Types: Person, Organization, Project, Concept
+Confidence: 1.0 = explicitly named, 0.7 = inferred from context
+
+Rules:
+- Only extract entities explicitly mentioned by proper name
+- Skip generic references ("the project", "the team", "the user")
+- Skip tool names, file paths, and code identifiers (tracked separately)
+- Skip the AI assistant itself (Claude, GPT, etc.)
+- For ambiguous names, include the most specific form used
+
+Session text:
+"""
+
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "You extract named entities from text. Always respond with valid JSON arrays."},
+                    {"role": "user", "content": prompt + redacted_text}
+                ],
+                temperature=0.0,
+                response_format={"type": "json_object"}
+            )
+
+            content = response.choices[0].message.content
+            if not content:
+                logger.warning("Empty response from entity extraction LLM")
+                return [], True  # Valid empty response
+
+            parsed = json.loads(content)
+
+            # Handle {"entities": [...]} or bare [...] — reject unrecognized shapes
+            if isinstance(parsed, dict) and ('entities' in parsed or 'results' in parsed):
+                entities_raw = parsed.get('entities', parsed.get('results'))
+                if not isinstance(entities_raw, list):
+                    logger.warning(f"Extraction response 'entities' key is not a list: {type(entities_raw)}")
+                    return [], False
+            elif isinstance(parsed, list):
+                entities_raw = parsed
+            else:
+                logger.warning(f"Unrecognized extraction response shape (keys={list(parsed.keys()) if isinstance(parsed, dict) else type(parsed)}), treating as failure")
+                return [], False
+
+            # Convert to /ingest schema format
+            entities = []
+            seen_names = set()
+            for ent in entities_raw:
+                name = ent.get('name', '').strip()
+                ent_type = ent.get('type', 'Concept').strip()
+                confidence = float(ent.get('confidence', 0.7))
+
+                if not name or name.lower() in seen_names:
+                    continue
+                seen_names.add(name.lower())
+
+                # Validate entity type
+                if ent_type not in ('Person', 'Organization', 'Project', 'Concept'):
+                    ent_type = 'Concept'
+
+                entities.append({
+                    'name': name,
+                    'type': ent_type,
+                    'confidence': confidence,
+                    'context': f"Mentioned in Claude Code session"
+                })
+
+            logger.info(f"Extracted {len(entities)} entities from {len(selected_chunks)} chunks")
+            return entities, True
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse entity extraction response: {e}")
+            return [], False
+        except Exception as e:
+            logger.error(f"Entity extraction failed: {e}")
+            return [], False
+
+    def _call_ingest(
+        self,
+        session_id: str,
+        entities: List[Dict],
+        session: 'SessionMetadata',
+        link_existing_only: bool = True
+    ) -> Optional[Dict]:
+        """
+        Call the personal-koi /ingest endpoint to resolve entities and create document links.
+
+        Uses replace_existing=True for idempotent reprocessing.
+        Returns the API response dict, or None on failure.
+        """
+        api_url = self.config.get('koi_backend', {}).get('api_url', 'http://localhost:8351')
+        ingest_url = f"{api_url}/ingest"
+
+        # Build request matching IngestRequest schema
+        payload = {
+            "document_rid": f"claude-session:{session_id}",
+            "entities": entities,
+            "source": "claude-sessions-sensor",
+            "replace_existing": True,
+            "link_existing_only": link_existing_only,
+            "context": {
+                "project": session.project_path,
+                "topics": [session.first_prompt[:100]] if session.first_prompt else []
+            }
+        }
+
+        try:
+            req = Request(
+                ingest_url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            with urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read().decode('utf-8'))
+                stats = result.get('stats', {})
+                logger.info(
+                    f"Ingest result for session {session_id}: "
+                    f"resolved={stats.get('resolved_entities', 0)}, "
+                    f"new={stats.get('new_entities', 0)}, "
+                    f"skipped={stats.get('skipped_entities', 0)}, "
+                    f"failed={stats.get('failed_entities', 0)}"
+                )
+                return result
+        except HTTPError as e:
+            logger.error(f"Ingest API HTTP error for session {session_id}: {e.code} {e.reason}")
+            return None
+        except URLError as e:
+            logger.error(f"Ingest API connection error for session {session_id}: {e.reason}")
+            return None
+        except Exception as e:
+            logger.error(f"Ingest API call failed for session {session_id}: {e}")
+            return None
 
     def _create_chunks(
         self,

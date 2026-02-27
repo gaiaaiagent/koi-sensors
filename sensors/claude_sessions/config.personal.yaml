@@ -40,8 +40,12 @@ entity_extraction:
   enabled: true
   # Link to existing entities in personal KOI
   link_existing: true
-  # Extract new entities from sessions
-  extract_new: false  # Keep simple for now
+  # Extract new entities from sessions (creates new entities in registry)
+  extract_new: false  # Keep simple — resolve to existing only
+  # LLM model for entity extraction (same API key as embeddings)
+  model: "gpt-4o-mini"
+  # Max chunks to send for extraction (first N turn-pairs)
+  max_chunks: 5
 
 # Personal KOI backend
 koi_backend:

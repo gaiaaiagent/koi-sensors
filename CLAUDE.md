@@ -136,3 +136,25 @@ The Notion sensor now extracts author metadata for author-based search:
 - `last_edited_by`: Name of last editor
 
 This enables `person_activity` intent queries like "what is X working on" to find Notion pages authored by specific people.
+
+### Claude Sessions Entity Extraction (2026-02-27)
+
+The Claude sessions sensor now extracts named entities from session transcripts and links them to the personal knowledge graph.
+
+**How it works**:
+1. After chunking + embedding, first N turn-pair chunks are sent to OpenAI `gpt-4o-mini`
+2. Text is redacted before LLM call (env vars, API keys, connection strings, private keys)
+3. Extracted entities are sent to `POST /ingest` on the personal-koi backend
+4. The 4-tier entity resolution pipeline handles deduplication
+5. `document_entity_links` are created with `claude-session:{session_id}` RIDs
+
+**Config** (`sensors/claude_sessions/config.personal.yaml`):
+- `entity_extraction.enabled: true` — gate extraction
+- `entity_extraction.link_existing: true` — gate `/ingest` call
+- `entity_extraction.extract_new: false` — resolve to existing entities only (no Tier 3)
+- `entity_extraction.model: gpt-4o-mini` — extraction model
+- `entity_extraction.max_chunks: 5` — chunks sent to LLM
+
+**Key files**: `sensors/claude_sessions/claude_session_sensor.py`, `sensors/claude_sessions/config.personal.yaml`
+
+**Known limitation**: Secret redaction regex does not handle escaped quotes inside quoted env values. Accepted as impractical edge case.
