@@ -9,46 +9,186 @@ sensor:
   koi_bridge_url: "http://localhost:8200"   # KOI Event Bridge endpoint
 
 # GitHub repositories to monitor
+# NOTE: The sensor currently reads repos from hardcoded list in github_sensor.py main().
+# This config.yaml is kept as documentation of all monitored repos.
 repositories:
+  # Regen Network Org
   - name: regen-ledger
     url: https://github.com/regen-network/regen-ledger
     branch: main
-    paths: ["."]  # All documentation in the repository
+    paths: ["."]
     priority: high
-    check_interval: 7200  # 2 hours
-    notes: "Main Regen Network blockchain implementation"
-    
+    check_interval: 7200
+    notes: "Regen Network blockchain implementation (Go, Cosmos SDK)"
+
   - name: regen-web
     url: https://github.com/regen-network/regen-web
-    branch: main
-    paths: ["docs", "README.md"]
+    branch: master
+    paths: ["."]
     priority: high
-    check_interval: 7200  # 2 hours
-    notes: "Regen Network web application"
-    
+    check_interval: 7200
+    notes: "Regen Network web application (TypeScript)"
+
   - name: regen-data-standards
     url: https://github.com/regen-network/regen-data-standards
     branch: main
     paths: ["."]
     priority: medium
-    check_interval: 14400  # 4 hours
-    notes: "Regen Network data standards repository"
-    
+    check_interval: 14400
+    notes: "Regen Network data standards"
+
+  - name: regen-registry-handbook
+    url: https://github.com/regen-network/regen-registry-handbook
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400
+    notes: "Registry program handbook (Markdown)"
+
+  - name: regen-registry-methodology-library
+    url: https://github.com/regen-network/regen-registry-methodology-library
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400
+    notes: "Credit class methodologies (Markdown)"
+
+  - name: regen-compute
+    url: https://github.com/regen-network/regen-compute
+    branch: main
+    paths: ["."]
+    priority: high
+    check_interval: 7200
+    notes: "Regen Compute - TypeScript cloud functions"
+
+  - name: revenue-hunter-cec
+    url: https://github.com/regen-network/revenue-hunter-cec
+    branch: main
+    paths: ["."]
+    priority: high
+    check_interval: 7200
+    notes: "Revenue Hunter CEC - Next.js/TypeScript claims platform"
+
+  - name: regen-ai-core
+    url: https://github.com/regen-network/regen-ai-core
+    branch: main
+    paths: ["."]
+    priority: high
+    check_interval: 7200
+    notes: "Regen AI Core - private repo"
+
+  - name: regen-js
+    url: https://github.com/regen-network/regen-js
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400
+    notes: "Regen JS SDK (TypeScript)"
+
+  - name: agentic-tokenomics
+    url: https://github.com/regen-network/agentic-tokenomics
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400
+    notes: "Agentic tokenomics (JavaScript)"
+
+  - name: protocol-politicians
+    url: https://github.com/regen-network/protocol-politicians
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400
+    notes: "Protocol Politicians - private repo"
+
+  - name: regen-claude-config
+    url: https://github.com/regen-network/regen-claude-config
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400
+    notes: "Regen Claude Config - private repo"
+
   - name: regenie-corpus
     url: https://github.com/regen-network/regenie-corpus
     branch: main
     paths: ["."]
     priority: medium
-    check_interval: 14400  # 4 hours
+    check_interval: 14400
     notes: "Regen Network knowledge corpus"
-    
+
   - name: mcp
     url: https://github.com/regen-network/mcp
     branch: main
-    paths: ["docs", "README.md", "src"]
+    paths: ["."]
     priority: medium
-    check_interval: 14400  # 4 hours
-    notes: "Regen Network MCP (Model Control Protocol)"
+    check_interval: 14400
+    notes: "Regen Network MCP server"
+
+  - name: pacto-framework
+    url: https://github.com/regen-network/pacto-framework
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400
+    notes: "Pacto Framework (Markdown)"
+
+  - name: koi-gov
+    url: https://github.com/regen-network/koi-gov
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400
+    notes: "KOI Governance (Markdown)"
+
+  # GAIA AI Agent Org
+  - name: koi-sensors
+    url: https://github.com/gaiaaiagent/koi-sensors
+    branch: main
+    paths: ["."]
+    priority: high
+    check_interval: 7200
+    notes: "KOI data ingestion sensors"
+
+  - name: koi-processor
+    url: https://github.com/gaiaaiagent/koi-processor
+    branch: main
+    paths: ["."]
+    priority: high
+    check_interval: 7200
+    notes: "KOI knowledge graph processing (private)"
+
+  - name: koi-research
+    url: https://github.com/gaiaaiagent/koi-research
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400
+    notes: "KOI research and documentation"
+
+  - name: regen-koi-mcp
+    url: https://github.com/gaiaaiagent/regen-koi-mcp
+    branch: main
+    paths: ["."]
+    priority: high
+    check_interval: 7200
+    notes: "KOI MCP server"
+
+  - name: regen-python-mcp
+    url: https://github.com/gaiaaiagent/regen-python-mcp
+    branch: main
+    paths: ["."]
+    priority: medium
+    check_interval: 14400
+    notes: "Regen Ledger Python MCP tools"
+
+  - name: regen-ai-claude
+    url: https://github.com/gaiaaiagent/regen-ai-claude
+    branch: main
+    paths: ["."]
+    priority: high
+    check_interval: 7200
+    notes: "Regen AI Claude - MCP plugin marketplace"
 
 # File patterns to index
 doc_extensions:

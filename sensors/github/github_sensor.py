@@ -723,7 +723,81 @@ async def main():
                 "url": "https://github.com/gaiaaiagent/regen-python-mcp",
                 "branch": "main",
                 "paths": ["."]
-            }
+            },
+            # Batch 1 - High priority new repos
+            {
+                "name": "regen-compute",
+                "url": "https://github.com/regen-network/regen-compute",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "revenue-hunter-cec",
+                "url": "https://github.com/regen-network/revenue-hunter-cec",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "regen-ai-core",
+                "url": "https://github.com/regen-network/regen-ai-core",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "regen-ai-claude",
+                "url": "https://github.com/gaiaaiagent/regen-ai-claude",
+                "branch": "main",
+                "paths": ["."]
+            },
+            # Batch 2 - Additional repos
+            {
+                "name": "regen-js",
+                "url": "https://github.com/regen-network/regen-js",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "agentic-tokenomics",
+                "url": "https://github.com/regen-network/agentic-tokenomics",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "protocol-politicians",
+                "url": "https://github.com/regen-network/protocol-politicians",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "regen-claude-config",
+                "url": "https://github.com/regen-network/regen-claude-config",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "regenie-corpus",
+                "url": "https://github.com/regen-network/regenie-corpus",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "mcp",
+                "url": "https://github.com/regen-network/mcp",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "pacto-framework",
+                "url": "https://github.com/regen-network/pacto-framework",
+                "branch": "main",
+                "paths": ["."]
+            },
+            {
+                "name": "koi-gov",
+                "url": "https://github.com/regen-network/koi-gov",
+                "branch": "main",
+                "paths": ["."]
+            },
         ]
     )
     
