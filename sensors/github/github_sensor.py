@@ -798,6 +798,12 @@ async def main():
                 "branch": "main",
                 "paths": ["."]
             },
+            {
+                "name": "regen-demos",
+                "url": "https://github.com/regen-network/regen-demos",
+                "branch": "main",
+                "paths": ["."]
+            },
         ]
     )
     
