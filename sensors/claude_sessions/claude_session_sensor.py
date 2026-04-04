@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
+import requests
 import yaml
 
 # Configure logging
@@ -93,6 +94,7 @@ class ClaudeSessionSensor:
         self.config = self._load_config(config_path)
         self.db_pool: Optional[asyncpg.Pool] = None
         self.openai_client: Optional[OpenAI] = None
+        self.poly_embed_url: Optional[str] = None
         self.db_url = self._resolve_backend_setting(
             configured_value=self.config.get('koi_backend', {}).get('database_url'),
             env_var_names=('PERSONAL_KOI_DB_URL', 'KOI_DATABASE_URL', 'DATABASE_URL'),
@@ -136,14 +138,15 @@ class ClaudeSessionSensor:
         # Ensure schema exists
         await self._ensure_schema()
 
-        # OpenAI client
-        if OPENAI_AVAILABLE and self.config['embeddings']['enabled']:
-            api_key = os.getenv('OPENAI_API_KEY')
-            if api_key:
-                self.openai_client = OpenAI(api_key=api_key)
-                logger.info(f"OpenAI client initialized (model: {self.config['embeddings']['model']})")
+        # Poly embedding client (direct HTTP to custom FastAPI service at /embed)
+        if self.config['embeddings']['enabled']:
+            embed_cfg = self.config.get('embeddings', {})
+            api_base = embed_cfg.get('api_base')
+            if api_base:
+                self.poly_embed_url = api_base
+                logger.info(f"Poly embed client initialized (model: {embed_cfg.get('model')}, url: {api_base})")
             else:
-                logger.warning("OPENAI_API_KEY not set. Embeddings disabled.")
+                logger.warning("embeddings.api_base not set. Embeddings disabled.")
 
     @staticmethod
     def _resolve_backend_setting(
@@ -474,7 +477,7 @@ class ClaudeSessionSensor:
             chunks = self._create_chunks(session.session_id, messages)
 
             # Generate embeddings
-            if self.openai_client and chunks:
+            if self.poly_embed_url and chunks:
                 chunks = await self._generate_embeddings(chunks)
 
             # Store chunks
@@ -1047,11 +1050,10 @@ Session text:
         self,
         chunks: List[SessionChunk]
     ) -> List[SessionChunk]:
-        """Generate embeddings for chunks using OpenAI."""
-        if not self.openai_client:
+        """Generate embeddings for chunks using poly embedding service."""
+        if not self.poly_embed_url:
             return chunks
 
-        model = self.config['embeddings']['model']
         batch_size = self.config['embeddings']['batch_size']
 
         # Process in batches
@@ -1060,13 +1062,16 @@ Session text:
             texts = [c.chunk_text for c in batch]
 
             try:
-                response = self.openai_client.embeddings.create(
-                    model=model,
-                    input=texts
+                resp = requests.post(
+                    f"{self.poly_embed_url}/embed",
+                    json={"texts": texts, "is_query": False},
+                    timeout=60
                 )
+                resp.raise_for_status()
+                embeddings = resp.json()["embeddings"]
 
-                for j, embedding_data in enumerate(response.data):
-                    batch[j].embedding = embedding_data.embedding
+                for j, emb in enumerate(embeddings):
+                    batch[j].embedding = emb
 
             except Exception as e:
                 logger.error(f"Error generating embeddings: {e}")
@@ -1147,8 +1152,8 @@ Session text:
         Generate embeddings for chunks that don't have them.
         Used to backfill embeddings after initial scan without OpenAI key.
         """
-        if not self.openai_client:
-            logger.error("OpenAI client not available. Set OPENAI_API_KEY environment variable.")
+        if not self.poly_embed_url:
+            logger.error("Poly embed URL not configured. Set embeddings.api_base in config.")
             return
 
         async with self.db_pool.acquire() as conn:
@@ -1180,14 +1185,16 @@ Session text:
                 ids = [row['id'] for row in rows]
 
                 try:
-                    response = self.openai_client.embeddings.create(
-                        model=self.config['embeddings']['model'],
-                        input=texts
+                    resp = requests.post(
+                        f"{self.poly_embed_url}/embed",
+                        json={"texts": texts, "is_query": False},
+                        timeout=30
                     )
+                    resp.raise_for_status()
+                    embeddings_list = resp.json()["embeddings"]
 
                     # Update each chunk with its embedding
-                    for i, embedding_data in enumerate(response.data):
-                        embedding = embedding_data.embedding
+                    for i, embedding in enumerate(embeddings_list):
                         await conn.execute("""
                             UPDATE session_chunks
                             SET embedding = $1::vector

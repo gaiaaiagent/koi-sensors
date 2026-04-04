@@ -31,13 +31,15 @@ processing:
 # Embedding configuration
 embeddings:
   enabled: true
-  model: "text-embedding-ada-002"
+  model: "Qwen/Qwen3-Embedding-0.6B"
   # Batch size for embedding API calls
-  batch_size: 20
+  batch_size: 5
+  api_base: "http://10.100.0.1:8352"
+  api_key: "not-needed"
 
 # Entity extraction
 entity_extraction:
-  enabled: true
+  enabled: false
   # Link to existing entities in personal KOI
   link_existing: true
   # Extract new entities from sessions (creates new entities in registry)
