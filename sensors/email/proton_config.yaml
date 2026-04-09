@@ -1,0 +1,85 @@
+# Proton Mail Sensor Configuration
+# Indexes Proton Mail emails into personal-KOI via Proton Bridge IMAP
+
+sensor:
+  name: proton-email
+  description: "Proton Mail IMAP sensor via Proton Bridge"
+  version: "1.0.0"
+
+# Proton Bridge IMAP connection
+imap:
+  host: "127.0.0.1"
+  port: 1143
+  # Your Proton email address
+  username: "darrenzal@protonmail.com"
+  # Retrieve Bridge password from macOS Keychain
+  # Store with: security add-generic-password -s proton-bridge -a "darrenzal@protonmail.com" -w "<bridge-password>"
+  password_cmd: "security find-generic-password -s proton-bridge -a darrenzal@protonmail.com -w"
+
+  # Connection mode: Bridge uses STARTTLS on 1143 (not direct SSL)
+  starttls: true
+
+  # Folders to sync (case-sensitive, as shown by Bridge)
+  folders:
+    - "INBOX"
+    - "Sent"
+    - "Archive"
+
+  # Folders to exclude
+  exclude_folders:
+    - "Spam"
+    - "Trash"
+    - "Drafts"
+    - "All Mail"
+    - "Starred"
+    - "Labels"
+    - "Folders"
+
+# Filtering configuration
+filtering:
+  max_age_years: 5
+  min_body_length: 50
+  max_email_size: 10485760  # 10MB
+
+# Chunking configuration
+chunking:
+  chunk_size: 500
+  chunk_overlap: 50
+  min_chunk_size: 100
+
+# Embedding configuration
+embeddings:
+  enabled: true
+  bge_server_url: "http://localhost:8091/encode"
+  dimension: 1024
+  batch_size: 20
+  doc_embedding_tokens: 512
+
+# Entity extraction
+entity_extraction:
+  enabled: true
+  extract_from_headers: true
+  extract_from_body: true
+  llm_provider: "openai"
+  llm_model: "gpt-4o-mini"
+  link_existing: true
+
+# Personal KOI backend
+koi_backend:
+  api_url: "http://localhost:8351"
+  database_url: "postgresql://localhost:5432/personal_koi"
+
+# Storage configuration
+storage:
+  is_private: true
+  access_source: "email-sensor"
+  # Same sensor namespace as Gmail for unified email search
+  source_sensor: "email-sensor"
+
+# Sensor runtime
+runtime:
+  # Poll interval in minutes (Bridge syncs faster than mbsync)
+  scan_interval: 15
+  mode: "daemon"
+  log_level: "INFO"
+  state_file: "proton_sensor_state.json"

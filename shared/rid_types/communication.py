@@ -60,6 +60,44 @@ class GmailMessage(ORN):
         return self._reference
 
 
+class ProtonMessage(ORN):
+    """Proton Mail message resource identifier
+    Format: orn:proton.message:message_id_hash
+
+    Uses SHA256 hash of Message-ID header, same approach as GmailMessage.
+    """
+    namespace = "proton.message"
+
+    def __init__(self, message_id: str):
+        self.message_id = message_id
+        self.message_id_hash = hashlib.sha256(message_id.encode('utf-8')).hexdigest()[:16]
+        self._reference = self.message_id_hash
+        super().__init__()
+
+    @classmethod
+    def from_reference(cls, reference: str):
+        instance = cls.__new__(cls)
+        instance.message_id = f"<unknown-{reference}>"
+        instance.message_id_hash = reference
+        instance._reference = reference
+        instance.namespace = "proton.message"
+        ORN.__init__(instance)
+        return instance
+
+    @classmethod
+    def from_raw_message_id(cls, raw_message_id: str) -> 'ProtonMessage':
+        message_id = raw_message_id.strip()
+        if not message_id.startswith('<'):
+            message_id = f'<{message_id}'
+        if not message_id.endswith('>'):
+            message_id = f'{message_id}>'
+        return cls(message_id)
+
+    @property
+    def reference(self) -> str:
+        return self._reference
+
+
 class GmailAttachment(ORN):
     """Gmail attachment resource identifier
     Format: orn:gmail.attachment:message_hash/index_content_hash
