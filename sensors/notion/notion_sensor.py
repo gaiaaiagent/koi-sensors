@@ -1144,7 +1144,7 @@ class NotionKOISensor:
                             "event_type": event_type,
                             "source": "notion",
                             "source_type": "notion",  # Required for document_to_rid to work properly
-                            "rid": NotionPageRID(self.workspace_id, page_id).to_orn(),
+                            "rid": str(NotionPageRID(self.workspace_id, page_id)),
                             "title": title,
                             "content": content,
                             "metadata": {
