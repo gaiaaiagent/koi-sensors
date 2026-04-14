@@ -103,7 +103,7 @@ class Manifest:
         ridlib_hash = _ridlib_hash_content(content)
 
         return cls(
-            rid=rid.to_string(),
+            rid=str(rid),
             timestamp=datetime.now(timezone.utc).isoformat(),
             sha256_hash=ridlib_hash,
             size_bytes=len(content_bytes),
@@ -216,7 +216,7 @@ class Bundle:
         )
         
         return cls(
-            rid=rid.to_string(),
+            rid=str(rid),
             manifest=manifest,
             contents=contents
         )
@@ -304,7 +304,7 @@ class KOIEvent:
         """Create FORGET event"""
         return cls(
             event_type="FORGET",
-            rid=rid.to_string(),
+            rid=str(rid),
             timestamp=datetime.now(timezone.utc).isoformat(),
             source_node=source_node,
             reason=reason
@@ -378,7 +378,7 @@ def document_to_bundle(document: Dict[str, Any], source_node: str = "regen-colle
         },
         "metadata": document.get("metadata", {}),
         "processing": {
-            "koi_rid": rid.to_string(),
+            "koi_rid": str(rid),
             "converted_at": datetime.now(timezone.utc).isoformat(),
             "source_node": source_node
         }
