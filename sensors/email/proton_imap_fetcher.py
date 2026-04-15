@@ -373,24 +373,35 @@ class ProtonIMAPFetcher:
             return attachments
         for idx, part in enumerate(msg.walk()):
             disposition = str(part.get('Content-Disposition', ''))
-            if 'attachment' not in disposition:
+            content_type = (part.get_content_type() or '').lower()
+            filename = part.get_filename()
+            is_calendar = (
+                content_type in ('text/calendar', 'application/ics')
+                or (content_type == 'application/octet-stream'
+                    and filename and filename.lower().endswith('.ics'))
+            )
+            if 'attachment' not in disposition and not is_calendar:
                 continue
-            filename = part.get_filename() or f"attachment_{idx}"
-            content_type = part.get_content_type()
+            filename = filename or f"attachment_{idx}"
             try:
                 payload = part.get_payload(decode=True)
                 size = len(payload) if payload else 0
                 content_hash = hashlib.sha256(payload).hexdigest()[:16] if payload else "empty"
             except Exception:
+                payload = None
                 size = 0
                 content_hash = "error"
-            attachments.append({
+            att = {
                 'index': len(attachments),
                 'filename': filename,
                 'content_type': content_type,
                 'size': size,
                 'content_hash': content_hash,
-            })
+            }
+            if is_calendar and payload:
+                att['ics_payload'] = payload
+                att['is_inline_calendar'] = 'attachment' not in (disposition or '')
+            attachments.append(att)
         return attachments
 
     @staticmethod

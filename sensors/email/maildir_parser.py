@@ -360,7 +360,12 @@ class MaildirParser:
             return ""
 
     def _extract_attachments(self, msg: EmailMessage) -> List[Dict[str, Any]]:
-        """Extract attachment metadata from email."""
+        """Extract attachment metadata from email.
+
+        Walks ALL MIME parts (not only `attachment`-disposition) so inline
+        text/calendar parts are captured. Non-calendar inline parts are still
+        skipped via the is_calendar gate below.
+        """
         attachments = []
 
         if not msg.is_multipart():
@@ -368,12 +373,17 @@ class MaildirParser:
 
         for idx, part in enumerate(msg.walk()):
             content_disposition = str(part.get('Content-Disposition', ''))
-
-            if 'attachment' not in content_disposition:
+            content_type = (part.get_content_type() or '').lower()
+            filename = part.get_filename()
+            is_calendar = (
+                content_type in ('text/calendar', 'application/ics')
+                or (content_type == 'application/octet-stream'
+                    and filename and filename.lower().endswith('.ics'))
+            )
+            if 'attachment' not in content_disposition and not is_calendar:
                 continue
 
-            filename = part.get_filename() or f"attachment_{idx}"
-            content_type = part.get_content_type()
+            filename = filename or f"attachment_{idx}"
 
             try:
                 payload = part.get_payload(decode=True)
@@ -381,19 +391,25 @@ class MaildirParser:
                     size = len(payload)
                     content_hash = hashlib.sha256(payload).hexdigest()[:16]
                 else:
+                    payload = None
                     size = 0
                     content_hash = "empty"
             except Exception:
+                payload = None
                 size = 0
                 content_hash = "error"
 
-            attachments.append({
+            att = {
                 'index': len(attachments),
                 'filename': filename,
                 'content_type': content_type,
                 'size': size,
                 'content_hash': content_hash,
-            })
+            }
+            if is_calendar and payload:
+                att['ics_payload'] = payload
+                att['is_inline_calendar'] = 'attachment' not in (content_disposition or '')
+            attachments.append(att)
 
         return attachments
 

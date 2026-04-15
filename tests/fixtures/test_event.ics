@@ -1,0 +1,19 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//ICS Parser Test//EN
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:indigenomics-victoria-apr17-2026@example.com
+DTSTAMP:20260410T120000Z
+DTSTART:20260417T170000Z
+DTEND:20260417T190000Z
+SUMMARY:Indigenomics GPU + in person session - Victoria
+LOCATION:Victoria, BC
+ORGANIZER:mailto:organizer@example.com
+ATTENDEE:mailto:darrenzal@protonmail.com
+ATTENDEE:mailto:someone@example.com
+DESCRIPTION:GPU scoping session
+SEQUENCE:0
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR

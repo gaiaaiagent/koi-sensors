@@ -1,3 +1,5 @@
 anthropic==0.69.0
 cryptography>=42.0.0
 rid-lib==3.2.12
+icalendar==7.0.3
+pytz==2026.1.post1

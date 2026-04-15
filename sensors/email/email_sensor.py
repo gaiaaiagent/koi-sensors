@@ -35,6 +35,7 @@ from shared.rid_types.communication import GmailMessage as GmailMessageRID, Gmai
 from maildir_parser import MaildirParser
 from chunker import SentenceAwareChunker
 from embedder import EmailEmbedder
+from ics_writer import process_ics_attachments
 
 # Configure logging
 logging.basicConfig(
@@ -267,6 +268,39 @@ class EmailSensor:
 
             # Store email metadata
             await self._upsert_email_metadata(memory_id, email_rid, email_data)
+
+            # ICS calendar attachments (mirrors proton_sensor wiring)
+            attachments = email_data.get('attachments', []) or []
+            has_ics_attachment = any(a.get('ics_payload') for a in attachments)
+            has_inline_calendar = any(a.get('is_inline_calendar') for a in attachments)
+
+            if has_inline_calendar:
+                try:
+                    async with self.db_pool.acquire() as conn:
+                        await conn.execute(
+                            """
+                            UPDATE koi_memories SET metadata = jsonb_set(
+                                COALESCE(metadata, '{}'::jsonb),
+                                '{has_inline_calendar}', 'true'::jsonb
+                            ) WHERE rid = $1
+                            """,
+                            email_rid,
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to set has_inline_calendar for {email_rid}: {e}")
+
+            if has_ics_attachment:
+                try:
+                    import uuid as _uuid
+                    pm_id = memory_id if isinstance(memory_id, _uuid.UUID) else _uuid.UUID(str(memory_id))
+                    await process_ics_attachments(
+                        self.db_pool, attachments, email_rid, pm_id,
+                        'gmail', self.embedder, self.chunker,
+                    )
+                except Exception as e:
+                    logger.error(f"ICS processing failed for {email_rid}: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             # Extract and link entities (optional)
             if self.config['entity_extraction'].get('enabled', True):
