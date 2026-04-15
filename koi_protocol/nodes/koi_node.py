@@ -102,7 +102,7 @@ class KOINodeBase(ABC):
 
         # Event delivery tracking
         self.pending_deliveries: Dict[str, QueuedEvent] = {}  # event_id -> QueuedEvent
-        self.delivery_timeout_seconds = 300  # 5 minutes
+        self.delivery_timeout_seconds = int(os.getenv("KOI_DELIVERY_TIMEOUT_SECONDS", "3600"))  # 1h default; tunable for burst loads
         self.event_queue_path: Optional[Path] = None
 
         # HTTP session
