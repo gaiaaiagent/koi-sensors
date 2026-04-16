@@ -72,6 +72,12 @@ class SessionMetadata:
     created_at: Optional[datetime] = None
     modified_at: Optional[datetime] = None
     file_mtime: Optional[float] = None
+    source_host: str = 'macbook'
+
+
+class EmbeddingTimeout(Exception):
+    """Raised when poly embedding endpoint fails after all retry attempts."""
+    pass
 
 
 @dataclass
@@ -103,10 +109,15 @@ class ClaudeSessionSensor:
             setting_name='koi_backend.database_url'
         )
 
-        # Expand paths
-        self.sessions_base = Path(
-            os.path.expanduser(self.config['sessions']['base_path'])
-        )
+        # Back-compat: some legacy call paths still reference self.sessions_base
+        # (the singular macbook path). The authoritative iterator is
+        # _iter_base_paths(), which reads config.sessions.base_paths (list) or
+        # config.sessions.base_path (string). This field is advisory only.
+        sessions_cfg = self.config.get('sessions', {})
+        legacy_path = sessions_cfg.get('base_path')
+        if legacy_path is None and 'base_paths' in sessions_cfg:
+            legacy_path = sessions_cfg['base_paths'][0]['path']
+        self.sessions_base = Path(os.path.expanduser(legacy_path or '~/.claude/projects'))
 
         # Stats
         self.stats = {
@@ -301,29 +312,95 @@ class ClaudeSessionSensor:
     # Session Discovery
     # =========================================================================
 
+    def _iter_base_paths(self):
+        """Yield (base_path, host_tag) tuples.
+
+        Phase 1: single macbook path from config.sessions.base_path.
+        Phase 5b will populate this from config.sessions.base_paths list
+        without changing callers. A legacy `base_path` key continues to
+        work to avoid a forced config migration on deploy.
+        """
+        sessions_cfg = self.config['sessions']
+        if 'base_paths' in sessions_cfg:
+            for entry in sessions_cfg['base_paths']:
+                yield (entry['path'], entry.get('host_tag', 'macbook'))
+        else:
+            base_path = sessions_cfg.get('base_path', '~/.claude/projects')
+            yield (base_path, 'macbook')
+
+    def _dead_letter(
+        self,
+        session_id: str,
+        project: str,
+        reason: str,
+        error: Optional[str] = None,
+    ) -> None:
+        """Append one JSON line to the session-sensor dead-letter log.
+
+        See plan §1e for the canonical `reason` taxonomy.
+        """
+        log_dir = Path.home() / '.claude' / 'local' / 'darren-workflow' / 'logs'
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            entry = {
+                'timestamp': int(datetime.now(timezone.utc).timestamp() * 1000),
+                'session_id': session_id,
+                'project': project,
+                'reason': reason,
+            }
+            if error:
+                entry['error'] = error
+            with open(log_dir / 'session-sensor-skipped.jsonl', 'a') as f:
+                f.write(json.dumps(entry) + '\n')
+        except Exception as e:
+            logger.warning(f"Dead-letter write failed: {e}")
+
     def discover_sessions(self) -> List[SessionMetadata]:
-        """
-        Discover all Claude Code session files.
+        """Discover all Claude Code sessions across configured base paths.
 
-        Returns list of SessionMetadata for each session found.
+        Disk scan is authoritative for path/mtime/message_count/content.
+        sessions-index.json is overlay-only for advisory fields (summary,
+        first_prompt). A stale index cannot cause a disk-resident session
+        to be dropped. Collision policy: first base_path wins (plan §
+        Session-ID collision policy).
         """
-        sessions = []
+        seen: Dict[str, SessionMetadata] = {}
 
-        # Find all project directories
-        for project_dir in self.sessions_base.iterdir():
-            if not project_dir.is_dir():
+        for base_path, host_tag in self._iter_base_paths():
+            base = Path(base_path).expanduser()
+            if not base.exists():
+                logger.warning(f"Base path does not exist: {base}")
                 continue
 
-            # Check for sessions-index.json
-            index_path = project_dir / 'sessions-index.json'
-            if index_path.exists():
-                sessions.extend(self._parse_sessions_index(index_path, project_dir))
-            else:
-                # Fallback: scan for JSONL files directly
-                sessions.extend(self._scan_jsonl_files(project_dir))
+            for project_dir in base.iterdir():
+                if not project_dir.is_dir():
+                    continue
 
-        logger.info(f"Discovered {len(sessions)} sessions")
-        return sessions
+                for sm in self._scan_jsonl_files(project_dir):
+                    if sm.session_id in seen:
+                        logger.warning(
+                            f"Session ID collision for {sm.session_id}: "
+                            f"{seen[sm.session_id].transcript_path} vs {sm.transcript_path}"
+                        )
+                        continue
+                    sm.source_host = host_tag
+                    seen[sm.session_id] = sm
+
+                index_path = project_dir / 'sessions-index.json'
+                if index_path.exists():
+                    for sm in self._parse_sessions_index(index_path, project_dir):
+                        existing = seen.get(sm.session_id)
+                        if existing:
+                            if sm.summary:
+                                existing.summary = sm.summary
+                            if sm.first_prompt:
+                                existing.first_prompt = sm.first_prompt
+                        else:
+                            sm.source_host = host_tag
+                            seen[sm.session_id] = sm
+
+        logger.info(f"Discovered {len(seen)} sessions")
+        return list(seen.values())
 
     def _parse_sessions_index(
         self,
@@ -336,6 +413,11 @@ class ClaudeSessionSensor:
         try:
             with open(index_path, 'r') as f:
                 index_data = json.load(f)
+
+            if not isinstance(index_data, dict):
+                raise ValueError(
+                    f"sessions-index.json is not a dict: got {type(index_data).__name__}"
+                )
 
             for entry in index_data.get('entries', []):
                 session_id = entry.get('sessionId')
@@ -350,7 +432,7 @@ class ClaudeSessionSensor:
                     if not Path(transcript_path).exists():
                         continue
 
-                # Get file mtime
+                # Get file mtime (disk is authoritative; index values are advisory)
                 file_mtime = Path(transcript_path).stat().st_mtime
 
                 # Parse dates
@@ -384,29 +466,58 @@ class ClaudeSessionSensor:
                 ))
 
         except Exception as e:
-            logger.error(f"Error parsing sessions index {index_path}: {e}")
+            logger.warning(
+                f"Parse failed for {index_path}: {e} — falling back to glob"
+            )
+            self._dead_letter(
+                session_id=f"index:{index_path.parent.name}",
+                project=str(project_dir),
+                reason='index_parse_error',
+                error=str(e),
+            )
+            return self._scan_jsonl_files(project_dir)
 
         return sessions
 
     def _scan_jsonl_files(self, project_dir: Path) -> List[SessionMetadata]:
-        """Fallback: scan for JSONL files directly."""
+        """Disk scan: the authoritative source for discoverable sessions.
+
+        Recursive (rglob) and populates message_count by line-counting the
+        JSONL. An uncounted session (message_count=0 dataclass default) used
+        to be silently dropped by the min_messages filter downstream.
+        """
         sessions = []
 
-        for jsonl_file in project_dir.glob('*.jsonl'):
-            # Extract session ID from filename
-            session_id = jsonl_file.stem
-
-            # Skip if in exclude patterns
+        for jsonl_file in project_dir.rglob('*.jsonl'):
+            # Skip scratchpads and subagent transcripts (subagents live at
+            # <project>/<sid>/subagents/agent-*.jsonl and are not primary
+            # sessions — indexing them would pollute the session corpus).
+            if 'scratchpad' in jsonl_file.parts or 'subagents' in jsonl_file.parts:
+                continue
             if any(jsonl_file.match(pat) for pat in self.config['sessions'].get('exclude', [])):
                 continue
 
-            file_mtime = jsonl_file.stat().st_mtime
+            session_id = jsonl_file.stem
+
+            try:
+                file_mtime = jsonl_file.stat().st_mtime
+            except OSError as e:
+                self._dead_letter(session_id, str(project_dir), 'jsonl_read_error', error=str(e))
+                continue
+
+            try:
+                with open(jsonl_file, 'rb') as f:
+                    message_count = sum(1 for _ in f)
+            except Exception as e:
+                logger.warning(f"Could not count lines in {jsonl_file}: {e}")
+                message_count = 0
 
             sessions.append(SessionMetadata(
                 session_id=session_id,
                 transcript_path=str(jsonl_file),
                 project_path=str(project_dir),
-                file_mtime=file_mtime
+                message_count=message_count,
+                file_mtime=file_mtime,
             ))
 
         return sessions
@@ -435,10 +546,13 @@ class ClaudeSessionSensor:
             ingested = {row['session_id']: row for row in rows}
 
         # Filter to sessions needing processing
+        min_messages = self.config['processing']['min_messages']
         needs_processing = []
         for session in all_sessions:
-            # Check minimum message count
-            if session.message_count < self.config['processing']['min_messages']:
+            # Let message_count == 0 through (disk scan authoritative; the
+            # transcript parser handles truly empty files). Only skip when
+            # we have a positive count below the threshold.
+            if 0 < session.message_count < min_messages:
                 continue
 
             ingestion_record = ingested.get(session.session_id)
@@ -446,7 +560,7 @@ class ClaudeSessionSensor:
             if ingestion_record is None:
                 # Never processed
                 needs_processing.append(session)
-            elif session.file_mtime and session.file_mtime > ingestion_record['file_mtime']:
+            elif session.file_mtime and session.file_mtime > (ingestion_record['file_mtime'] or 0):
                 # File modified since last ingestion
                 needs_processing.append(session)
 
@@ -525,8 +639,9 @@ class ClaudeSessionSensor:
                         INSERT INTO session_ingestion_log
                         (session_id, transcript_path, project_path, summary, first_prompt,
                          message_count, chunk_count, file_mtime, last_ingested_at,
-                         tools_used, tool_counts, mcp_servers, files_accessed, model, cwd, git_branch)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15)
+                         tools_used, tool_counts, mcp_servers, files_accessed, model, cwd, git_branch,
+                         source_host)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11, $12, $13, $14, $15, $16)
                         ON CONFLICT (session_id) DO UPDATE SET
                             transcript_path = EXCLUDED.transcript_path,
                             summary = EXCLUDED.summary,
@@ -541,6 +656,7 @@ class ClaudeSessionSensor:
                             model = EXCLUDED.model,
                             cwd = EXCLUDED.cwd,
                             git_branch = EXCLUDED.git_branch,
+                            source_host = EXCLUDED.source_host,
                             last_ingested_at = NOW()
                     """,
                         session.session_id,
@@ -557,7 +673,8 @@ class ClaudeSessionSensor:
                         metadata['files_accessed'],
                         metadata['model'],
                         metadata['cwd'],
-                        metadata['git_branch']
+                        metadata['git_branch'],
+                        session.source_host,
                     )
 
                     # Store tool usage details
@@ -585,10 +702,15 @@ class ClaudeSessionSensor:
             self.stats['sessions_processed'] += 1
             self.stats['chunks_created'] += len(chunks)
 
-            # Entity extraction and knowledge graph linking
+            # Entity extraction and knowledge graph linking (legacy OpenAI path).
+            # Skipped when Phase 2 extractor_prompt is configured — extraction
+            # runs as a separate batch phase in run_scan() instead of inline.
             entities_linked = 0
             extraction_config = self.config.get('entity_extraction', {})
-            if extraction_config.get('enabled', False) and extraction_config.get('link_existing', True):
+            use_legacy = (extraction_config.get('enabled', False)
+                          and extraction_config.get('link_existing', True)
+                          and not extraction_config.get('extractor_prompt'))
+            if use_legacy:
                 entities, extraction_success = self._extract_entities(chunks)
 
                 if extraction_success:
@@ -620,8 +742,31 @@ class ClaudeSessionSensor:
                 entities_linked=entities_linked
             )
 
+        except EmbeddingTimeout as e:
+            logger.warning(
+                f"Embedding timeout for session {session.session_id}: {e} "
+                f"— skipping ingestion log write (next scan will retry)"
+            )
+            self._dead_letter(
+                session_id=session.session_id,
+                project=session.project_path,
+                reason='embed_timeout',
+                error=str(e),
+            )
+            self.stats['errors'] += 1
+            return ProcessingResult(
+                session_id=session.session_id,
+                success=False,
+                error=f"embed_timeout: {e}",
+            )
         except Exception as e:
             logger.error(f"Error processing session {session.session_id}: {e}")
+            self._dead_letter(
+                session_id=session.session_id,
+                project=session.project_path,
+                reason='processing_error',
+                error=str(e),
+            )
             self.stats['errors'] += 1
             return ProcessingResult(
                 session_id=session.session_id,
@@ -1050,33 +1195,357 @@ Session text:
         self,
         chunks: List[SessionChunk]
     ) -> List[SessionChunk]:
-        """Generate embeddings for chunks using poly embedding service."""
+        """Generate embeddings for chunks using poly embedding service.
+
+        Raises EmbeddingTimeout if any batch fails all 3 retry attempts.
+        The caller (process_session) dead-letters and skips the session
+        without marking it ingested, so the next scan cycle retries.
+        """
         if not self.poly_embed_url:
             return chunks
 
         batch_size = self.config['embeddings']['batch_size']
+        delays = [1, 4, 16]
 
-        # Process in batches
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i:i + batch_size]
             texts = [c.chunk_text for c in batch]
+            last_err: Optional[Exception] = None
 
-            try:
-                resp = requests.post(
-                    f"{self.poly_embed_url}/embed",
-                    json={"texts": texts, "is_query": False},
-                    timeout=60
+            for attempt in range(3):
+                try:
+                    resp = requests.post(
+                        f"{self.poly_embed_url}/embed",
+                        json={"texts": texts, "is_query": False},
+                        timeout=60,
+                    )
+                    resp.raise_for_status()
+                    embeddings = resp.json()["embeddings"]
+                    for j, emb in enumerate(embeddings):
+                        batch[j].embedding = emb
+                    break
+                except Exception as e:
+                    last_err = e
+                    logger.warning(
+                        f"Embed attempt {attempt + 1}/3 failed: {e}"
+                    )
+                    if attempt < 2:
+                        await asyncio.sleep(delays[attempt])
+            else:
+                raise EmbeddingTimeout(
+                    f"poly embed failed after 3 attempts: {last_err}"
                 )
-                resp.raise_for_status()
-                embeddings = resp.json()["embeddings"]
-
-                for j, emb in enumerate(embeddings):
-                    batch[j].embedding = emb
-
-            except Exception as e:
-                logger.error(f"Error generating embeddings: {e}")
 
         return chunks
+
+    # =========================================================================
+    # Phase 2: claude -p Entity/Fact Extraction (runs as a batch phase in
+    # run_scan, NOT inline in process_session — plan §2d).
+    # =========================================================================
+
+    def _build_extraction_text(self, transcript_path: str) -> str:
+        """Read session JSONL and build turn-pair text for the extractor.
+
+        Caps at ~60,000 chars (first 20k + middle 20k + last 20k for very
+        long sessions). Redacts secrets before returning.
+        """
+        messages = self._parse_transcript(transcript_path)
+        pairs: List[str] = []
+        i = 0
+        while i < len(messages):
+            msg = messages[i]
+            if msg.get('type') == 'user':
+                user_text = self._extract_text(msg)
+                asst_text = ''
+                if i + 1 < len(messages) and messages[i + 1].get('type') == 'assistant':
+                    asst_text = self._extract_text(messages[i + 1])
+                    i += 1
+                pairs.append(f"User: {user_text}\n\nAssistant: {asst_text}")
+            i += 1
+
+        full_text = '\n\n---\n\n'.join(pairs)
+
+        # Cap and redact
+        cap = 60000
+        if len(full_text) > cap:
+            third = cap // 3
+            mid_start = len(full_text) // 2 - third // 2
+            full_text = (
+                full_text[:third]
+                + '\n\n[...middle...]\n\n'
+                + full_text[mid_start:mid_start + third]
+                + '\n\n[...end...]\n\n'
+                + full_text[-third:]
+            )
+
+        return self._redact_for_extraction(full_text)
+
+    async def _extract_via_claude(self, prompt_text: str) -> Tuple[Optional[dict], Optional[str]]:
+        """Call claude -p subprocess with the extraction prompt.
+
+        Returns (parsed_json, None) on success or (None, error_string) on failure.
+        """
+        ext_cfg = self.config.get('entity_extraction', {})
+        claude_bin = ext_cfg.get('claude_binary', '/Users/darrenzal/.local/bin/claude')
+        timeout_s = ext_cfg.get('timeout', 120)
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                claude_bin, '-p', '--output-format', 'json',
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(input=prompt_text.encode('utf-8')),
+                timeout=timeout_s,
+            )
+        except asyncio.TimeoutError:
+            return None, 'extract_timeout'
+        except FileNotFoundError:
+            return None, f'extract_auth_error: {claude_bin} not found'
+        except Exception as e:
+            return None, f'extract_timeout: {e}'
+
+        if proc.returncode != 0:
+            stderr_text = stderr_bytes.decode('utf-8', errors='replace')[:500]
+            if '401' in stderr_text or 'auth' in stderr_text.lower():
+                return None, f'extract_auth_error: {stderr_text}'
+            return None, f'extract_parse_error: exit {proc.returncode}: {stderr_text}'
+
+        try:
+            raw = stdout_bytes.decode('utf-8').strip()
+            # claude -p --output-format json wraps in {"result": ...} — extract
+            outer = json.loads(raw)
+            if isinstance(outer, dict) and 'result' in outer:
+                inner = outer['result']
+                if isinstance(inner, str):
+                    parsed = json.loads(inner)
+                else:
+                    parsed = inner
+            else:
+                parsed = outer
+
+            # Validate required keys
+            if not isinstance(parsed, dict) or 'entities' not in parsed:
+                return None, f'extract_parse_error: missing "entities" key'
+            return parsed, None
+        except json.JSONDecodeError as e:
+            return None, f'extract_parse_error: {e}'
+
+    async def _post_extraction(
+        self,
+        session_id: str,
+        source_host: str,
+        project_path: str,
+        transcript_path: str,
+        extracted: dict,
+    ) -> Tuple[bool, Optional[str]]:
+        """POST extraction results to /knowledge/episodes + /ingest.
+
+        Returns (True, None) on success or (False, error_reason) on failure.
+        """
+        api_url = self.config.get('koi_backend', {}).get('api_url', 'http://localhost:8351')
+        entities = extracted.get('entities', [])
+        facts = extracted.get('facts', [])
+
+        # 1. POST /knowledge/episodes (episode + facts + entity resolution)
+        episode_payload = {
+            'name': extracted.get('episode_name', f'Session {session_id[:8]}'),
+            'content': extracted.get('episode_summary', ''),
+            'source_description': 'claude_session',
+            'source_document': session_id,
+            'metadata': {
+                'session_id': session_id,
+                'source_host': source_host or 'macbook',
+                'transcript_path': transcript_path,
+            },
+            'facts': facts,
+            'create_entities': True,
+        }
+        try:
+            req = Request(
+                f'{api_url}/knowledge/episodes',
+                data=json.dumps(episode_payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            with urlopen(req, timeout=60) as resp:
+                episode_result = json.loads(resp.read().decode('utf-8'))
+                logger.info(
+                    f"Episode created for {session_id[:8]}: "
+                    f"episode_id={episode_result.get('episode_id')}, "
+                    f"facts_created={episode_result.get('facts_created', 0)}"
+                )
+        except HTTPError as e:
+            reason = 'episode_write_error' if e.code >= 500 else 'extract_parse_error'
+            return False, f'{reason}: {e.code} {e.reason}'
+        except Exception as e:
+            return False, f'episode_write_error: {e}'
+
+        # 2. POST /ingest (document_entity_links for search_sessions_by_entity)
+        if entities:
+            ingest_payload = {
+                'document_rid': f'claude-session:{session_id}',
+                'entities': [{'name': e['name'], 'type': e.get('type', 'Concept')}
+                             for e in entities],
+                'source': 'extract-session-entities',
+                'replace_existing': True,
+                'context': {'project': project_path},
+            }
+            try:
+                req = Request(
+                    f'{api_url}/ingest',
+                    data=json.dumps(ingest_payload).encode('utf-8'),
+                    headers={'Content-Type': 'application/json'},
+                    method='POST',
+                )
+                with urlopen(req, timeout=30) as resp:
+                    ingest_result = json.loads(resp.read().decode('utf-8'))
+                    stats = ingest_result.get('stats', {})
+                    logger.info(
+                        f"Entity links for {session_id[:8]}: "
+                        f"resolved={stats.get('resolved_entities', 0)}, "
+                        f"new={stats.get('new_entities', 0)}"
+                    )
+            except HTTPError as e:
+                if e.code >= 500:
+                    return False, f'entity_resolve_error: {e.code} {e.reason}'
+                logger.warning(f"Ingest 4xx for {session_id[:8]}: {e.code} — continuing")
+            except Exception as e:
+                return False, f'entity_resolve_error: {e}'
+
+        return True, None
+
+    async def _extract_single_session(
+        self,
+        session_id: str,
+        transcript_path: str,
+        source_host: str,
+        project_path: str,
+    ) -> bool:
+        """Run full extraction pipeline on one session. Returns True on success."""
+        ext_cfg = self.config.get('entity_extraction', {})
+        prompt_path = ext_cfg.get('extractor_prompt', '')
+
+        if not prompt_path or not Path(prompt_path).exists():
+            logger.error(f"Extractor prompt not found: {prompt_path}")
+            return False
+
+        # Build prompt: template + session text
+        with open(prompt_path, 'r') as f:
+            prompt_template = f.read()
+
+        session_text = self._build_extraction_text(transcript_path)
+        if not session_text.strip():
+            # Empty session — mark extracted with empty results
+            async with self.db_pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE session_ingestion_log
+                    SET entities_extracted_at = NOW(),
+                        extraction_attempts = extraction_attempts + 1,
+                        extraction_last_error = NULL
+                    WHERE session_id = $1
+                """, session_id)
+            return True
+
+        full_prompt = prompt_template + '\n' + session_text
+
+        # Call claude -p
+        extracted, error = await self._extract_via_claude(full_prompt)
+
+        if error:
+            async with self.db_pool.acquire() as conn:
+                await conn.execute("""
+                    UPDATE session_ingestion_log
+                    SET extraction_attempts = extraction_attempts + 1,
+                        extraction_last_error = $2
+                    WHERE session_id = $1
+                """, session_id, error)
+            self._dead_letter(session_id, project_path, error.split(':')[0], error=error)
+            logger.warning(f"Extraction failed for {session_id[:8]}: {error}")
+            return False
+
+        # POST results (uses synchronous urlopen — acceptable for serial sensor)
+        success, post_error = await self._post_extraction(
+            session_id, source_host, project_path, transcript_path, extracted
+        )
+
+        async with self.db_pool.acquire() as conn:
+            if success:
+                await conn.execute("""
+                    UPDATE session_ingestion_log
+                    SET entities_extracted_at = NOW(),
+                        extraction_attempts = extraction_attempts + 1,
+                        extraction_last_error = NULL
+                    WHERE session_id = $1
+                """, session_id)
+                n_ent = len(extracted.get('entities', []))
+                n_fact = len(extracted.get('facts', []))
+                logger.info(
+                    f"Extracted {session_id[:8]}: "
+                    f"{n_ent} entities, {n_fact} facts"
+                )
+                return True
+            else:
+                await conn.execute("""
+                    UPDATE session_ingestion_log
+                    SET extraction_attempts = extraction_attempts + 1,
+                        extraction_last_error = $2
+                    WHERE session_id = $1
+                """, session_id, post_error)
+                self._dead_letter(session_id, project_path, (post_error or '').split(':')[0], error=post_error)
+                logger.warning(f"Post-extraction failed for {session_id[:8]}: {post_error}")
+                return False
+
+    async def _run_extraction_batch(self, limit: Optional[int] = None, time_budget: Optional[float] = None) -> int:
+        """Run extraction on eligible sessions.
+
+        Called from run_scan (with limit + time_budget from config) and from
+        backfill_session_entities.py (with limit=None for exhaustive mode).
+
+        Uses FOR UPDATE SKIP LOCKED (plan §2d) so concurrent runs don't race.
+        """
+        ext_cfg = self.config.get('entity_extraction', {})
+        if not ext_cfg.get('enabled', False) or not ext_cfg.get('extractor_prompt'):
+            return 0
+
+        max_attempts = ext_cfg.get('max_attempts', 5)
+        effective_limit = limit or ext_cfg.get('max_per_cycle', 5)
+        budget_end = (datetime.now(timezone.utc).timestamp() + time_budget) if time_budget else None
+
+        extracted_count = 0
+        async with self.db_pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT session_id, transcript_path, source_host, project_path
+                FROM session_ingestion_log
+                WHERE (entities_extracted_at IS NULL AND extraction_attempts < $1)
+                   OR (entities_extracted_at IS NOT NULL AND entities_extracted_at < last_ingested_at)
+                ORDER BY last_ingested_at DESC
+                LIMIT $2
+            """, max_attempts, effective_limit)
+
+        if not rows:
+            return 0
+
+        logger.info(f"Extraction batch: {len(rows)} sessions eligible")
+
+        for row in rows:
+            if budget_end and datetime.now(timezone.utc).timestamp() > budget_end:
+                logger.info(f"Extraction batch: time budget exceeded after {extracted_count} sessions")
+                break
+
+            success = await self._extract_single_session(
+                row['session_id'],
+                row['transcript_path'],
+                row['source_host'] or 'macbook',
+                row['project_path'] or '',
+            )
+            if success:
+                extracted_count += 1
+
+        logger.info(f"Extraction batch complete: {extracted_count}/{len(rows)} succeeded")
+        return extracted_count
 
     # =========================================================================
     # Real-time Hook Processing
@@ -1135,15 +1604,31 @@ Session text:
             await asyncio.sleep(interval)
 
     async def run_scan(self):
-        """Run a single scan of all sessions."""
+        """Run a single scan: two sequential phases (plan §2d).
+
+        Phase 1: chunk ingestion (discover → process → embed → store).
+        Phase 2: entity/fact extraction batch (claude -p, capped at
+                 max_per_cycle sessions, 2-min time budget).
+        """
         logger.info("Starting session scan...")
 
+        # Phase 1: chunk ingestion
         sessions = await self.get_sessions_needing_processing()
-
         for session in sessions:
             result = await self.process_session(session)
             if not result.success:
                 logger.warning(f"Failed to process {session.session_id}: {result.error}")
+
+        logger.info(f"Chunk phase complete. Stats: {self.stats}")
+
+        # Phase 2: extraction batch (plan §2d — separate from chunk writes)
+        ext_cfg = self.config.get('entity_extraction', {})
+        if ext_cfg.get('enabled', False) and ext_cfg.get('extractor_prompt'):
+            extracted = await self._run_extraction_batch(
+                limit=ext_cfg.get('max_per_cycle', 5),
+                time_budget=120,  # 2 min budget for extraction phase
+            )
+            self.stats['entities_extracted'] = self.stats.get('entities_extracted', 0) + extracted
 
         logger.info(f"Scan complete. Stats: {self.stats}")
 

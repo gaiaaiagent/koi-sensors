@@ -8,11 +8,13 @@ sensor:
 
 # Session file locations
 sessions:
-  # Base path for Claude Code projects
-  base_path: "~/.claude/projects"
-  # Pattern to find session JSONL files
+  # Multi-host base paths (Phase 5b). Each entry tags the sessions it
+  # discovers with a host_tag that becomes session_ingestion_log.source_host.
+  # Legacy key `base_path` (string) still supported by _iter_base_paths().
+  base_paths:
+    - {path: "~/.claude/projects",     host_tag: "macbook"}
+    - {path: "~/.claude/nuc-projects", host_tag: "dobby"}
   pattern: "**/*.jsonl"
-  # Exclude patterns
   exclude:
     - "**/scratchpad/**"
 
@@ -37,16 +39,25 @@ embeddings:
   api_base: "http://10.100.0.1:8352"
   api_key: "not-needed"
 
-# Entity extraction
+# Entity extraction (Phase 2) — uses claude -p subprocess, zero $ API cost.
+# The old OpenAI gpt-4o-mini path is superseded; extraction now reads the
+# canonical prompt from extractor_prompt_path and calls claude -p.
 entity_extraction:
-  enabled: false
-  # Link to existing entities in personal KOI
+  enabled: true
+  # Absolute path to the shared prompt file (sensor + skill + backfill).
+  extractor_prompt: "/Users/darrenzal/projects/darren-workflow/skills/extract-session-entities/extractor-prompt.md"
+  # Claude CLI binary (macOS; on NUC it's /usr/bin/claude but NUC doesn't run extraction — §2a constraint).
+  claude_binary: "/Users/darrenzal/.local/bin/claude"
+  # Per-session timeout for claude -p subprocess (seconds).
+  timeout: 120
+  # Max sessions to extract per scan cycle (keeps scan < 5 min budget).
+  max_per_cycle: 5
+  # Terminal retry limit per session (plan §2c.1).
+  max_attempts: 5
+  # Legacy flags (kept for backward compat but not used by the new path):
   link_existing: true
-  # Extract new entities from sessions (creates new entities in registry)
-  extract_new: false  # Keep simple — resolve to existing only
-  # LLM model for entity extraction (same API key as embeddings)
+  extract_new: false
   model: "gpt-4o-mini"
-  # Max chunks to send for extraction (first N turn-pairs)
   max_chunks: 5
 
 # Personal KOI backend
