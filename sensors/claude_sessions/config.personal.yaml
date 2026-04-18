@@ -39,22 +39,27 @@ embeddings:
   api_base: "http://10.100.0.1:8352"
   api_key: "not-needed"
 
-# Entity extraction (Phase 2) — uses claude -p subprocess, zero $ API cost.
-# The old OpenAI gpt-4o-mini path is superseded; extraction now reads the
-# canonical prompt from extractor_prompt_path and calls claude -p.
+# Deep extraction (v2) — post-cutover 2026-04-17.
+# Sensor Phase 2 invokes extract_deep_sessions.py as a subprocess per batch.
+# The orchestrator handles v2 discourse + continuity + facts extraction via
+# claude -p + optional TELUS Gemma routing. See deep-session-extraction plan
+# (Decisions 75/95/102/128/135).
+deep_extraction:
+  enabled: true
+  # Max sessions per scan cycle (each ~30s via claude-p; 5 fits the scan budget).
+  max_per_cycle: 5
+
+# Legacy v1 entity extraction — disabled at cutover by removing `extractor_prompt`.
+# Kept for 2-week rollback window per Decision 136. To roll back v2: restore
+# extractor_prompt below, set deep_extraction.enabled: false, bounce the sensor.
 entity_extraction:
   enabled: true
-  # Absolute path to the shared prompt file (sensor + skill + backfill).
-  extractor_prompt: "/Users/darrenzal/projects/darren-workflow/skills/extract-session-entities/extractor-prompt.md"
-  # Claude CLI binary (macOS; on NUC it's /usr/bin/claude but NUC doesn't run extraction — §2a constraint).
+  # extractor_prompt removed at cutover (Decision 102). Uncomment to roll back.
+  # extractor_prompt: "/Users/darrenzal/projects/darren-workflow/skills/extract-session-entities/extractor-prompt.md"
   claude_binary: "/Users/darrenzal/.local/bin/claude"
-  # Per-session timeout for claude -p subprocess (seconds).
   timeout: 120
-  # Max sessions to extract per scan cycle (keeps scan < 5 min budget).
   max_per_cycle: 5
-  # Terminal retry limit per session (plan §2c.1).
   max_attempts: 5
-  # Legacy flags (kept for backward compat but not used by the new path):
   link_existing: true
   extract_new: false
   model: "gpt-4o-mini"

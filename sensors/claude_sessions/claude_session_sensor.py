@@ -15,6 +15,7 @@ Runs as:
 """
 
 import asyncio
+import contextlib
 import asyncpg
 import json
 import hashlib
@@ -1621,9 +1622,21 @@ Session text:
 
         logger.info(f"Chunk phase complete. Stats: {self.stats}")
 
-        # Phase 2: extraction batch (plan §2d — separate from chunk writes)
+        # Phase 2: extraction batch (plan §2d — separate from chunk writes).
+        # Post-v2 cutover: deep_extraction.enabled=true routes to the
+        # extract_deep_sessions.py orchestrator (v2 discourse + continuity + facts).
+        # Legacy v1 path (entity_extraction) kept for 2-week rollback window
+        # per deep-session-extraction plan Decision 136 — activates only if
+        # deep_extraction is disabled AND the legacy extractor_prompt key is set.
+        deep_cfg = self.config.get('deep_extraction', {})
         ext_cfg = self.config.get('entity_extraction', {})
-        if ext_cfg.get('enabled', False) and ext_cfg.get('extractor_prompt'):
+
+        if deep_cfg.get('enabled', False):
+            extracted = await self._run_deep_extraction_batch(
+                limit=deep_cfg.get('max_per_cycle', 5),
+            )
+            self.stats['deep_extracted'] = self.stats.get('deep_extracted', 0) + extracted
+        elif ext_cfg.get('enabled', False) and ext_cfg.get('extractor_prompt'):
             extracted = await self._run_extraction_batch(
                 limit=ext_cfg.get('max_per_cycle', 5),
                 time_budget=120,  # 2 min budget for extraction phase
@@ -1631,6 +1644,52 @@ Session text:
             self.stats['entities_extracted'] = self.stats.get('entities_extracted', 0) + extracted
 
         logger.info(f"Scan complete. Stats: {self.stats}")
+
+    async def _run_deep_extraction_batch(self, limit: int = 5) -> int:
+        """Invoke the v2 deep-extraction orchestrator as a subprocess.
+
+        Sensor is the scheduler; orchestrator (extract_deep_sessions.py) is
+        the executor. Per-session advisory lock + orchestrator PID lock
+        prevent duplicate work if sensor + manual backfill overlap
+        (deep-session-extraction plan Decision 75/82/112).
+        """
+        shim = "/Users/darrenzal/projects/regenai/koi-processor/scripts/extract_deep_sessions_shim.sh"
+        args = [
+            shim,
+            "--auto-select",
+            "--limit", str(limit),
+            "--min-chunks", "3",  # filter out thin meta-sessions (Decision 131)
+        ]
+        logger.info(f"Deep-extraction batch: invoking {' '.join(args)}")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(),
+                    timeout=900,  # 15 min upper bound for a ~5-session batch
+                )
+            except asyncio.TimeoutError:
+                with contextlib.suppress(ProcessLookupError):
+                    proc.kill()
+                await proc.wait()
+                logger.warning("Deep-extraction batch timed out after 900s; killed")
+                return 0
+        except FileNotFoundError:
+            logger.warning(f"Deep-extraction shim not found at {shim}; skipping")
+            return 0
+
+        if proc.returncode != 0:
+            logger.warning(
+                f"Deep-extraction shim exit={proc.returncode} "
+                f"stderr={(stderr or b'').decode(errors='replace')[:200]}"
+            )
+        # Orchestrator writes its own run summary to /tmp/deep_extract/<run_id>.summary.json;
+        # sensor stats only tracks "batch completed", not per-session outcomes.
+        return 1 if proc.returncode == 0 else 0
 
     async def backfill_embeddings(self, batch_size: int = 100):
         """
