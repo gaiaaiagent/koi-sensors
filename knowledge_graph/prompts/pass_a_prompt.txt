@@ -3,13 +3,49 @@ Extract entities and statements from the following text.
 Return your response as a JSON object with two arrays: "entities" and "statements".
 
 Entity Types:
-- Person (schema:Person): Individual humans mentioned by name
-- Organization (schema:Organization): Companies, NGOs, government bodies
-- Project (reg:Project): Specific initiatives or programs
+
+Core types:
+- Person: Individual humans mentioned by name (schema:Person)
+- Organization: Companies, foundations, NGOs, institutions, DAOs, networks, agencies, groups, teams (schema:Organization)
+- Project: Named non-software initiatives, programs, or campaigns — e.g. "Czech-Slovak Soil Carbon Project", "Bioregional Finance Initiative" (reg:Project)
+- Concept: Methodologies, frameworks, theories, principles, or abstract ideas — e.g. "TNFD", "SBTi", "Federated Knowledge Commons", "Bioregionalism"
+- Technology: Software systems, platforms, tools, AI systems, APIs, services — e.g. "Claims Engine", "KOI", "Regen Ledger", "Cosmos SDK", "Keplr"
+- Claim: Atomic factual assertions or positions someone is taking
+- Evidence: Concrete data, measurements, reports, or documents that support a claim
+- Question: Open questions or inquiries raised in the text
+- Location: Geographic places — countries, cities, regions, bioregions (e.g. "Salish Sea", "Prague")
+- Event: Named events — conferences, summits, workshops, launches (e.g. "GreenBiz Summit 2026"). Do NOT use for generic meeting mentions like "Tuesday standup"
+
+Regen / Cosmos domain types (use only when clearly applicable):
+- CreditClass: Carbon or eco-credit classes (e.g. "C01", "CarbonPlus", "MBS01")
+- GovernanceProposal: On-chain governance proposals by name or ID
+- Validator: Blockchain validators by moniker or operator address
+- Module: Cosmos SDK modules — e.g. "x/ecocredit", "x/group", "x/data". Only when the text clearly discusses SDK code
+- ApiMessage: Protobuf message types — e.g. "MsgAttest", "MsgCreateBatch", "MsgSend". Only when the text clearly discusses protocol messages
+- Keeper: Cosmos SDK keeper interfaces. Only when the text clearly discusses SDK code
+
+General domain types:
+- License: Software or content licenses (e.g. "MIT", "CC-BY-SA", "AGPL-3.0")
+- Standard: Standards or specifications (e.g. "ISO 14064", "Verra VCS", "GBF")
+- Process: Named business or technical processes (e.g. "MRV workflow", "attestation pipeline")
+- Material: Physical materials or resources (e.g. "biochar", "compost", "topsoil")
+
+Agentic governance types:
+- Agent: Autonomous or semi-autonomous software agents by name (e.g. "Registry Review Agent", "Revenue Hunter")
+- WorkOrder: Discrete units of work from governance processes, by ID or name
+
+Disambiguation guidelines:
+- Technology vs Project: Technology = software/tools/platforms. Project = named non-software initiatives, pilots, or programs. When in doubt, prefer Technology if it sounds like a system that runs code.
+- Concept vs Technology: Concept = methodology/framework/idea. Technology = actual built system. "TNFD" = Concept (a reporting framework). "Regen Ledger" = Technology (the running chain).
+- Project vs Organization: Project = an initiative. Organization = an entity that runs initiatives. "Regen Network" = Organization. "Bioregional Knowledge Commons" = Project.
+- Event: only use for events that have a proper name. Don't emit Event for "Tuesday standup", "weekly sync", etc.
+- Module / ApiMessage / Keeper: only when the text clearly discusses Cosmos SDK code, protobuf messages, or keeper interfaces — not for casual mentions of "a cosmos module" in a strategic doc.
+- "Product" is NOT a standalone type — treat products as Projects.
+- When ambiguous, prefer the more general canonical type (Technology over Module, Project over Initiative, Concept over Methodology).
 
 For each entity in the "entities" array, provide:
 - name: The entity's name as mentioned in the text
-- type: One of the entity types above (Person, Organization, or Project)
+- type: One of the entity types above (use the name exactly as written, e.g. "Person", "Technology", "CreditClass", "ApiMessage")
 - confidence: A score between 0.0 and 1.0 indicating your confidence in the extraction
 
 For each statement in the "statements" array, provide:
@@ -23,10 +59,13 @@ Example response format:
 {
   "entities": [
     {"name": "Regen Network", "type": "Organization", "confidence": 0.95},
-    {"name": "Jane Doe", "type": "Person", "confidence": 0.90}
+    {"name": "Claims Engine", "type": "Technology", "confidence": 0.92},
+    {"name": "TNFD", "type": "Concept", "confidence": 0.9},
+    {"name": "MsgAttest", "type": "ApiMessage", "confidence": 0.85},
+    {"name": "Jane Doe", "type": "Person", "confidence": 0.9}
   ],
   "statements": [
-    {"subject": "Regen Network", "predicate": "develops", "object": "blockchain for ecological data", "statementType": "claim", "confidence": 0.85}
+    {"subject": "Regen Network", "predicate": "develops", "object": "Claims Engine", "statementType": "claim", "confidence": 0.85}
   ]
 }
 
