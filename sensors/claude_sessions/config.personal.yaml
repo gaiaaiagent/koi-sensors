@@ -31,11 +31,23 @@ processing:
   max_age_days: 0
 
 # Embedding configuration
+#
+# Provider: "openai" (DEFAULT post-2026-04-28) writes 3072-dim
+# text-embedding-3-large to session_chunks.embedding_3072. Aligns with
+# KOI 3072 migration (P_E re-embed) and knowledge_router.py c212d684.
+# Requires OPENAI_API_KEY env var on the LaunchAgent
+# (set in plist EnvironmentVariables block).
+#
+# Legacy: provider=poly retained for rollback (1024-dim Qwen, writes
+# legacy session_chunks.embedding column).
 embeddings:
   enabled: true
-  model: "Qwen/Qwen3-Embedding-0.6B"
-  # Batch size for embedding API calls
-  batch_size: 5
+  provider: "openai"            # openai | poly
+  model: "text-embedding-3-large"
+  dimensions: 3072
+  # Batch size for embedding API calls (OpenAI handles larger batches than poly)
+  batch_size: 16
+  # Legacy poly fallback config (used only when provider=poly)
   api_base: "http://10.100.0.1:8352"
   api_key: "not-needed"
 

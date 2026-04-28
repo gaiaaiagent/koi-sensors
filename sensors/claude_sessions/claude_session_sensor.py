@@ -77,7 +77,7 @@ class SessionMetadata:
 
 
 class EmbeddingTimeout(Exception):
-    """Raised when poly embedding endpoint fails after all retry attempts."""
+    """Raised when embedding endpoint (OpenAI or poly) fails after all retry attempts."""
     pass
 
 
@@ -102,6 +102,13 @@ class ClaudeSessionSensor:
         self.db_pool: Optional[asyncpg.Pool] = None
         self.openai_client: Optional[OpenAI] = None
         self.poly_embed_url: Optional[str] = None
+        # Embedding provider: "openai" (text-embedding-3-large @ 3072-dim, writes
+        # session_chunks.embedding_3072) or "poly" (legacy 1024-dim Qwen via
+        # http://10.100.0.1:8352/embed, writes session_chunks.embedding). Default
+        # is "openai" post-2026-04-28 to align with KOI 3072 migration (P_E).
+        self.embed_provider: str = "openai"
+        self.openai_embed_model: str = "text-embedding-3-large"
+        self.openai_embed_dim: int = 3072
         self.db_url = self._resolve_backend_setting(
             configured_value=self.config.get('koi_backend', {}).get('database_url'),
             env_var_names=('PERSONAL_KOI_DB_URL', 'KOI_DATABASE_URL', 'DATABASE_URL'),
@@ -150,15 +157,45 @@ class ClaudeSessionSensor:
         # Ensure schema exists
         await self._ensure_schema()
 
-        # Poly embedding client (direct HTTP to custom FastAPI service at /embed)
+        # Embedding client init — provider selected by config.embeddings.provider.
         if self.config['embeddings']['enabled']:
             embed_cfg = self.config.get('embeddings', {})
-            api_base = embed_cfg.get('api_base')
-            if api_base:
-                self.poly_embed_url = api_base
-                logger.info(f"Poly embed client initialized (model: {embed_cfg.get('model')}, url: {api_base})")
+            self.embed_provider = embed_cfg.get('provider', 'openai').lower()
+
+            if self.embed_provider == 'openai':
+                if not OPENAI_AVAILABLE:
+                    raise RuntimeError(
+                        "embeddings.provider=openai but openai package not installed; "
+                        "either pip install openai in the sensor venv or set provider=poly."
+                    )
+                api_key = os.environ.get('OPENAI_API_KEY')
+                if not api_key:
+                    raise RuntimeError(
+                        "embeddings.provider=openai requires OPENAI_API_KEY env var. "
+                        "Set it in the LaunchAgent plist EnvironmentVariables block."
+                    )
+                self.openai_client = OpenAI(api_key=api_key)
+                self.openai_embed_model = embed_cfg.get('model', 'text-embedding-3-large')
+                self.openai_embed_dim = int(embed_cfg.get('dimensions', 3072))
+                logger.info(
+                    f"OpenAI embed client initialized (model: {self.openai_embed_model}, "
+                    f"dim: {self.openai_embed_dim}) — writes session_chunks.embedding_3072"
+                )
+            elif self.embed_provider == 'poly':
+                api_base = embed_cfg.get('api_base')
+                if api_base:
+                    self.poly_embed_url = api_base
+                    logger.info(
+                        f"Poly embed client initialized (model: {embed_cfg.get('model')}, "
+                        f"url: {api_base}) — writes legacy session_chunks.embedding column"
+                    )
+                else:
+                    logger.warning("embeddings.api_base not set. Embeddings disabled.")
             else:
-                logger.warning("embeddings.api_base not set. Embeddings disabled.")
+                raise RuntimeError(
+                    f"Unknown embeddings.provider: {self.embed_provider!r} "
+                    "(expected 'openai' or 'poly')"
+                )
 
     @staticmethod
     def _resolve_backend_setting(
@@ -591,11 +628,17 @@ class ClaudeSessionSensor:
             # Create chunks
             chunks = self._create_chunks(session.session_id, messages)
 
-            # Generate embeddings
-            if self.poly_embed_url and chunks:
+            # Generate embeddings (provider-routed: OpenAI 3072 or poly 1024)
+            if self._embed_enabled() and chunks:
                 chunks = await self._generate_embeddings(chunks)
 
             # Store chunks
+            #
+            # Column write-target depends on embed_provider:
+            #   openai → embedding_3072 (matches KOI 3072 migration P_E + knowledge_router.py c212d684)
+            #   poly   → embedding (legacy 1024-dim Qwen; deprecated, retained for rollback)
+            embed_col = "embedding_3072" if self.embed_provider == "openai" else "embedding"
+            embed_cast = "vector(3072)" if self.embed_provider == "openai" else "vector"
             async with self.db_pool.acquire() as conn:
                 async with conn.transaction():
                     # Delete existing chunks for this session (replace strategy)
@@ -608,10 +651,10 @@ class ClaudeSessionSensor:
                         session_rid = f"claude-session:{session.session_id}"
 
                         if chunk.embedding:
-                            await conn.execute("""
+                            await conn.execute(f"""
                                 INSERT INTO session_chunks
-                                (session_rid, session_id, chunk_index, chunk_text, role, timestamp, embedding)
-                                VALUES ($1, $2, $3, $4, $5, $6, $7::vector)
+                                (session_rid, session_id, chunk_index, chunk_text, role, timestamp, {embed_col})
+                                VALUES ($1, $2, $3, $4, $5, $6, $7::{embed_cast})
                             """,
                                 session_rid,
                                 chunk.session_id,
@@ -1192,17 +1235,29 @@ Session text:
 
         return ""
 
+    def _embed_enabled(self) -> bool:
+        """True if any embed provider is configured + ready."""
+        if self.embed_provider == "openai":
+            return self.openai_client is not None
+        return self.poly_embed_url is not None
+
     async def _generate_embeddings(
         self,
         chunks: List[SessionChunk]
     ) -> List[SessionChunk]:
-        """Generate embeddings for chunks using poly embedding service.
+        """Generate embeddings for chunks via configured provider.
+
+        Provider routing:
+          - openai → text-embedding-3-large @ 3072-dim via OpenAI Embeddings API
+                     (writes session_chunks.embedding_3072 by upstream INSERT)
+          - poly   → Qwen 1024-dim via http://10.100.0.1:8352/embed
+                     (writes session_chunks.embedding by upstream INSERT — legacy)
 
         Raises EmbeddingTimeout if any batch fails all 3 retry attempts.
         The caller (process_session) dead-letters and skips the session
         without marking it ingested, so the next scan cycle retries.
         """
-        if not self.poly_embed_url:
+        if not self._embed_enabled():
             return chunks
 
         batch_size = self.config['embeddings']['batch_size']
@@ -1215,26 +1270,39 @@ Session text:
 
             for attempt in range(3):
                 try:
-                    resp = requests.post(
-                        f"{self.poly_embed_url}/embed",
-                        json={"texts": texts, "is_query": False},
-                        timeout=60,
-                    )
-                    resp.raise_for_status()
-                    embeddings = resp.json()["embeddings"]
+                    if self.embed_provider == "openai":
+                        # OpenAI Embeddings API call. Run in thread to avoid
+                        # blocking the asyncio loop on the synchronous SDK call.
+                        resp = await asyncio.to_thread(
+                            self.openai_client.embeddings.create,
+                            model=self.openai_embed_model,
+                            input=texts,
+                            dimensions=self.openai_embed_dim,
+                        )
+                        embeddings = [item.embedding for item in resp.data]
+                    else:
+                        # Poly legacy path
+                        resp = requests.post(
+                            f"{self.poly_embed_url}/embed",
+                            json={"texts": texts, "is_query": False},
+                            timeout=60,
+                        )
+                        resp.raise_for_status()
+                        embeddings = resp.json()["embeddings"]
+
                     for j, emb in enumerate(embeddings):
                         batch[j].embedding = emb
                     break
                 except Exception as e:
                     last_err = e
                     logger.warning(
-                        f"Embed attempt {attempt + 1}/3 failed: {e}"
+                        f"Embed attempt {attempt + 1}/3 failed ({self.embed_provider}): {e}"
                     )
                     if attempt < 2:
                         await asyncio.sleep(delays[attempt])
             else:
                 raise EmbeddingTimeout(
-                    f"poly embed failed after 3 attempts: {last_err}"
+                    f"{self.embed_provider} embed failed after 3 attempts: {last_err}"
                 )
 
         return chunks
