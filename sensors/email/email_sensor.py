@@ -373,8 +373,8 @@ class EmailSensor:
         ON CONFLICT (rid) DO UPDATE SET
             content = EXCLUDED.content,
             metadata = EXCLUDED.metadata,
-            is_private = EXCLUDED.is_private,
-            access_source = EXCLUDED.access_source,
+            is_private = (koi_memories.is_private OR EXCLUDED.is_private),
+            access_source = COALESCE(koi_memories.access_source, EXCLUDED.access_source),
             event_type = 'UPDATE',
             updated_at = NOW()
         WHERE COALESCE(koi_memories.metadata->>'content_hash', '') !=
