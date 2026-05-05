@@ -425,6 +425,16 @@ def document_to_bundle(document: Dict[str, Any], source_node: str = "regen-colle
     if "commit_date" in doc_metadata:
         bundle_metadata["commit_date"] = doc_metadata["commit_date"]
 
+    # CRITICAL: Pass through privacy metadata so the koi-event-bridge can promote
+    # is_private/access_source to dedicated columns on koi_memories (Phase 1 of
+    # tech-backlog #23). Without this passthrough, sensors that set
+    # metadata.is_private in their bundle (e.g., newsletters, notion) get the
+    # field stripped here and the column always lands FALSE.
+    if "is_private" in doc_metadata:
+        bundle_metadata["is_private"] = doc_metadata["is_private"]
+    if "access_source" in doc_metadata:
+        bundle_metadata["access_source"] = doc_metadata["access_source"]
+
     return Bundle.generate(
         rid=rid,
         contents=bundle_contents,
