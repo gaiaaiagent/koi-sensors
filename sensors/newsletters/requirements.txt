@@ -9,3 +9,6 @@ aiohttp>=3.8.0
 # Shared koi-sensors framework deps (run-sensor.sh preflight expects these)
 rid-lib==3.2.12
 cryptography>=42.0.0
+# Optional — only required for --scrape-substack-archive mode
+playwright>=1.40.0
+asyncpg>=0.28.0

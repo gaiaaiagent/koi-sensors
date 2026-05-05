@@ -38,6 +38,9 @@ pip-delete-this-directory.txt
 *.pem
 *.key
 *.cert
+# Playwright auth state (Substack scraper, etc.) — secret, treat like .env
+*storage*state*.json
+*storage_state*.json
 
 # IDE and Editor
 .vscode/

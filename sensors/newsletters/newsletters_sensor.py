@@ -25,6 +25,7 @@ import mailbox
 import os
 import re
 import ssl
+import urllib.parse
 from datetime import datetime, timezone, timedelta
 from email import policy
 from email.utils import parsedate_to_datetime, parseaddr
@@ -38,6 +39,21 @@ from koi_protocol.nodes.koi_node import KOIPartialNode
 from koi_protocol.core.rid_system import RID
 from koi_protocol.core.bundle_system import document_to_bundle
 from shared.persistent_state import PersistentSensorState
+
+# Optional deps — only required for --scrape-substack-archive mode.
+try:
+    from playwright.async_api import async_playwright  # type: ignore
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    async_playwright = None  # type: ignore
+    PLAYWRIGHT_AVAILABLE = False
+
+try:
+    import asyncpg  # type: ignore
+    ASYNCPG_AVAILABLE = True
+except ImportError:
+    asyncpg = None  # type: ignore
+    ASYNCPG_AVAILABLE = False
 
 
 _ENV_VAR_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")
@@ -131,6 +147,38 @@ def _match_sender(routes: List[Dict[str, Any]], from_addr: str, list_id: str) ->
 def _stable_digest(message_id: str, from_addr: str, subject: str, date: Optional[datetime]) -> str:
     parts = [message_id or "", from_addr or "", subject or "", date.isoformat() if date else ""]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
+
+
+def _match_route_by_slug(routes: List[Dict[str, Any]], slug: str) -> Optional[Dict[str, Any]]:
+    """Find a route entry by its ``slug`` field. Used by --scrape-substack-archive
+    where we don't have email headers to match against."""
+    for route in routes:
+        if route.get("slug") == slug:
+            return route
+    return None
+
+
+def _scrape_digest(post_url: str, title: str, published_at: Optional[datetime]) -> str:
+    """Stable digest for a scraped post. The post URL is the natural primary
+    key for Substack; title + date are tiebreakers if Substack ever rewrites
+    URLs (rare but documented)."""
+    parts = [post_url or "", title or "", published_at.isoformat() if published_at else ""]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    """Parse an ISO-8601 timestamp tolerantly. Substack uses UTC ``Z`` suffix."""
+    if not value:
+        return None
+    try:
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
 
 
 class NewslettersKOISensor:
@@ -587,6 +635,499 @@ class NewslettersKOISensor:
         )
         return stats
 
+    # ----- Substack archive scrape mode -----------------------------------
+
+    async def _get_scrape_cutoff(self, access_source: str) -> Optional[datetime]:
+        """Return the oldest ``published_at`` already ingested for this
+        route's access_source, or ``None`` if no rows exist. Caller scrapes
+        only posts strictly older than this — preventing overlap with the
+        email-ingested cohort.
+        """
+        if not ASYNCPG_AVAILABLE:
+            raise RuntimeError(
+                "asyncpg not installed — required for --scrape-substack-archive"
+            )
+        host = os.environ.get("KOI_DB_HOST", "localhost")
+        port = int(os.environ.get("KOI_DB_PORT", "5433"))
+        database = os.environ.get("KOI_DB_NAME", "eliza")
+        user = os.environ.get("KOI_DB_USER", "postgres")
+        password = os.environ.get("KOI_DB_PASSWORD", "postgres")
+        conn = await asyncpg.connect(
+            host=host, port=port, database=database, user=user, password=password
+        )
+        try:
+            row = await conn.fetchrow(
+                """
+                SELECT MIN((metadata->>'published_at')::timestamptz) AS oldest
+                FROM koi_memories
+                WHERE access_source = $1
+                  AND metadata->>'published_at' IS NOT NULL
+                """,
+                access_source,
+            )
+            return row["oldest"] if row and row["oldest"] else None
+        finally:
+            await conn.close()
+
+    async def _substack_collect_archive_posts(
+        self, page, archive_url: str
+    ) -> List[Dict[str, Any]]:
+        """Enumerate posts from a Substack publication's archive.
+
+        Strategy: prefer the publication's JSON API (``/api/v1/archive``)
+        because it returns clean post-metadata pages of size 12. Falls back
+        to scrolling the rendered ``/archive`` page if the JSON endpoint is
+        not reachable (some custom-domain publications proxy it differently).
+
+        Returns list of dicts with: ``url``, ``title``, ``published_at`` (datetime).
+        """
+        parsed = urllib.parse.urlparse(archive_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+
+        # --- Path 1: JSON API (preferred) -----------------------------------
+        posts: List[Dict[str, Any]] = []
+        seen_urls = set()
+        offset = 0
+        page_size = 12
+        while True:
+            api_url = (
+                f"{base}/api/v1/archive?sort=new&search=&offset={offset}"
+                f"&limit={page_size}"
+            )
+            try:
+                resp = await page.request.get(api_url)
+                if resp.status != 200:
+                    self.logger.warning(
+                        f"archive JSON API returned {resp.status} at offset={offset}"
+                    )
+                    break
+                data = await resp.json()
+            except Exception as e:
+                self.logger.warning(f"archive JSON API fetch failed: {e}")
+                break
+
+            if not isinstance(data, list) or not data:
+                break
+
+            new_in_batch = 0
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                url = item.get("canonical_url") or item.get("url")
+                if not url:
+                    slug = item.get("slug")
+                    if slug:
+                        url = f"{base}/p/{slug}"
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                title = item.get("title") or ""
+                published = _parse_iso_datetime(
+                    item.get("post_date") or item.get("published_at")
+                )
+                posts.append(
+                    {"url": url, "title": title, "published_at": published}
+                )
+                new_in_batch += 1
+
+            if new_in_batch == 0 or len(data) < page_size:
+                break
+            offset += page_size
+            if offset > 5000:  # safety bound
+                self.logger.warning("archive JSON API offset > 5000 — stopping")
+                break
+
+        if posts:
+            self.logger.info(
+                f"archive JSON API: collected {len(posts)} posts via paginated JSON"
+            )
+            return posts
+
+        # --- Path 2: DOM fallback (scroll the archive page) -----------------
+        self.logger.info(
+            "archive JSON API yielded 0 posts; falling back to DOM scroll"
+        )
+        sort_url = archive_url
+        if "sort=" not in sort_url:
+            sep = "&" if "?" in sort_url else "?"
+            sort_url = f"{sort_url}{sep}sort=new"
+        await page.goto(sort_url, wait_until="domcontentloaded", timeout=60000)
+        await asyncio.sleep(2)
+
+        last_height = 0
+        stable_iters = 0
+        for i in range(80):  # cap at ~80 scrolls
+            height = await page.evaluate("document.body.scrollHeight")
+            if height == last_height:
+                stable_iters += 1
+                if stable_iters >= 3:
+                    break
+            else:
+                stable_iters = 0
+                last_height = height
+            await page.evaluate(
+                "window.scrollTo(0, document.body.scrollHeight)"
+            )
+            await asyncio.sleep(1.2)
+
+        anchors = await page.evaluate(
+            """
+            () => {
+                const out = [];
+                const seen = new Set();
+                document.querySelectorAll('a[href*="/p/"]').forEach(a => {
+                    let href = a.href;
+                    if (!href || seen.has(href)) return;
+                    if (!/\\/p\\/[^\\/?#]+/.test(href)) return;
+                    seen.add(href);
+                    // Find a nearby <time> element for the date.
+                    let dt = null;
+                    let scope = a.closest('article, div, li') || a.parentElement;
+                    if (scope) {
+                        const t = scope.querySelector('time[datetime]');
+                        if (t) dt = t.getAttribute('datetime');
+                    }
+                    out.push({ url: href, title: (a.innerText || '').trim(), datetime: dt });
+                });
+                return out;
+            }
+            """
+        )
+        for a in anchors or []:
+            url = a.get("url")
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            posts.append(
+                {
+                    "url": url,
+                    "title": a.get("title") or "",
+                    "published_at": _parse_iso_datetime(a.get("datetime")),
+                }
+            )
+        self.logger.info(f"archive DOM scroll: collected {len(posts)} posts")
+        return posts
+
+    async def _substack_extract_post(
+        self, page, post_url: str
+    ) -> Optional[Tuple[str, Optional[datetime], str]]:
+        """Navigate to a Substack post URL and return (title, published_at, body_html).
+
+        Returns ``None`` if the post is paywalled (auth context did not unlock
+        the body) or if extraction fails.
+        """
+        try:
+            await page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(1.5)
+        except Exception as e:
+            self.logger.error(f"navigate {post_url} failed: {e}")
+            return None
+
+        extracted = await page.evaluate(
+            """
+            () => {
+                const titleEl = document.querySelector('h1') ||
+                                document.querySelector('h1.post-title') ||
+                                document.querySelector('article h1');
+                const timeEl = document.querySelector('time[datetime]');
+                const bodyEl = document.querySelector('div.available-content') ||
+                               document.querySelector('div.body.markup') ||
+                               document.querySelector('div.body') ||
+                               document.querySelector('article');
+                // Paywall heuristics — Substack uses ".paywall" container or a
+                // "Subscribe to read" upsell. If we see those AND no body
+                // markup, treat as locked.
+                const paywall = document.querySelector('.paywall, .subscribe-widget, [data-component-name="SubscribePrompt"]');
+                return {
+                    title: titleEl ? (titleEl.innerText || '').trim() : '',
+                    datetime: timeEl ? timeEl.getAttribute('datetime') : null,
+                    body: bodyEl ? bodyEl.innerHTML : '',
+                    body_text: bodyEl ? (bodyEl.innerText || '').trim() : '',
+                    paywall_visible: !!paywall
+                };
+            }
+            """
+        )
+        if not extracted:
+            return None
+        title = extracted.get("title") or ""
+        body_html = extracted.get("body") or ""
+        body_text = extracted.get("body_text") or ""
+        paywall_visible = extracted.get("paywall_visible")
+        published_at = _parse_iso_datetime(extracted.get("datetime"))
+
+        # If body looks empty AND a paywall is up, the auth context didn't
+        # unlock the post. Surface a clear error rather than emitting a
+        # truncated row.
+        if (not body_text or len(body_text) < 50) and paywall_visible:
+            self.logger.error(
+                f"post {post_url} appears paywalled — storage_state may be invalid/expired"
+            )
+            return None
+        if not body_html:
+            self.logger.warning(f"post {post_url} returned empty body")
+            return None
+        return title, published_at, body_html
+
+    def _build_scraped_document(
+        self,
+        route: Dict[str, Any],
+        post_url: str,
+        title: str,
+        published_at: Optional[datetime],
+        body_text: str,
+    ) -> Dict[str, Any]:
+        digest = _scrape_digest(post_url, title, published_at)
+        rid_str = NewsletterEntryRID(route["slug"], digest).to_string()
+        published_iso = published_at.isoformat() if published_at else None
+        full_text = f"{title}\n\n{body_text}".strip()
+        return {
+            "id": f"newsletter_{route['slug']}_{digest}",
+            "source": f"newsletters:{route['slug']}",
+            "source_type": "newsletter",
+            "rid": rid_str,
+            "url": post_url,
+            "title": title,
+            "content": full_text,
+            "metadata": {
+                "title": title,
+                "url": post_url,
+                "newsletter_slug": route["slug"],
+                "tags": list(route.get("tags") or []) + ["scraped-archive"],
+                "is_private": bool(route["is_private"]),
+                "access_source": route["access_source"],
+                "published_at": published_iso,
+                "published_date": published_iso,
+                "published_confidence": 1.0 if published_iso else 0.0,
+                "word_count": len(full_text.split()),
+                "ingest_method": "substack_archive_scrape",
+                "collection_method": "newsletters_sensor",
+                "koi_sensor": self.cfg["name"],
+            },
+            "collected_at": datetime.now(timezone.utc).isoformat(),
+            "last_modified": published_iso,
+            "tags": list(route.get("tags") or []) + ["scraped-archive"],
+        }
+
+    async def scrape_substack_archive(
+        self,
+        archive_url: str,
+        route_slug: str,
+        storage_state_path: Path,
+        max_posts: Optional[int] = None,
+        dry_run: bool = False,
+        max_age_days: Optional[int] = None,
+    ) -> Dict[str, int]:
+        """Scrape a paid Substack publication's archive using an authenticated
+        Playwright browser context. Idempotent — only emits posts dated
+        strictly older than the oldest existing email-ingested post for the
+        same access_source. Re-running skips already-emitted RIDs via the
+        existing ``state.is_processed`` gate.
+        """
+        if not PLAYWRIGHT_AVAILABLE:
+            raise RuntimeError(
+                "playwright not installed — `pip install playwright && playwright install chromium`"
+            )
+        storage_state_path = Path(storage_state_path)
+        if not storage_state_path.exists():
+            raise FileNotFoundError(
+                f"storage_state not found: {storage_state_path}"
+            )
+        route = _match_route_by_slug(self.routes, route_slug)
+        if route is None:
+            raise ValueError(
+                f"no route in config.yaml matches slug={route_slug!r}; "
+                f"known slugs: {[r.get('slug') for r in self.routes]}"
+            )
+
+        # Cutoff: oldest already-ingested post for this access_source. Posts
+        # at-or-after this cutoff are presumed already covered by the email
+        # path. If no prior rows exist, fall back to max_age_days window.
+        max_age = int(
+            max_age_days
+            if max_age_days is not None
+            else self.filtering["max_age_days"]
+        )
+        age_cutoff = datetime.now(timezone.utc) - timedelta(days=max_age)
+        oldest_ingested = await self._get_scrape_cutoff(route["access_source"])
+        if oldest_ingested is not None:
+            self.logger.info(
+                f"scrape: oldest existing post for {route['access_source']} = "
+                f"{oldest_ingested.isoformat()}; will only scrape strictly older posts"
+            )
+        else:
+            self.logger.info(
+                f"scrape: no existing posts for {route['access_source']} — "
+                f"scraping anything within {max_age} days"
+            )
+
+        self._main_loop = asyncio.get_running_loop()
+        if not dry_run:
+            await self.koi_node.start()
+            await self.send_heartbeat_event()
+
+        stats = {
+            "discovered": 0,
+            "in_window": 0,
+            "emitted": 0,
+            "already_processed": 0,
+            "skipped_too_old": 0,
+            "skipped_in_email_window": 0,
+            "skipped_too_short": 0,
+            "errors": 0,
+        }
+
+        request_delay = float(self.filtering.get("request_delay", 1.0))
+        min_body = int(self.filtering["min_body_length"])
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox"],
+            )
+            context = await browser.new_context(
+                storage_state=str(storage_state_path),
+                viewport={"width": 1440, "height": 900},
+            )
+            page = await context.new_page()
+
+            try:
+                all_posts = await self._substack_collect_archive_posts(
+                    page, archive_url
+                )
+                stats["discovered"] = len(all_posts)
+                self.logger.info(
+                    f"scrape: discovered {len(all_posts)} posts in archive"
+                )
+
+                # Filter by date window before any per-post fetches.
+                candidates: List[Dict[str, Any]] = []
+                for post in all_posts:
+                    pub = post.get("published_at")
+                    if pub is not None:
+                        if pub < age_cutoff:
+                            stats["skipped_too_old"] += 1
+                            continue
+                        if oldest_ingested is not None and pub >= oldest_ingested:
+                            stats["skipped_in_email_window"] += 1
+                            continue
+                    # If pub is None, we'll re-check after extraction (post
+                    # page reliably has <time>).
+                    candidates.append(post)
+
+                stats["in_window"] = len(candidates)
+                self.logger.info(
+                    f"scrape: {len(candidates)} posts in target window "
+                    f"(too_old={stats['skipped_too_old']}, "
+                    f"in_email_window={stats['skipped_in_email_window']})"
+                )
+
+                if max_posts:
+                    candidates = candidates[: int(max_posts)]
+                    self.logger.info(
+                        f"scrape: --max-posts={max_posts} → processing {len(candidates)}"
+                    )
+
+                if dry_run:
+                    for c in candidates:
+                        pub = c.get("published_at")
+                        pub_s = pub.isoformat() if pub else "?"
+                        self.logger.info(
+                            f"[dry-run] would scrape: {pub_s}  {c.get('url')}  {c.get('title','')[:80]}"
+                        )
+                    return stats
+
+                for i, c in enumerate(candidates, 1):
+                    post_url = c["url"]
+                    self.logger.info(
+                        f"scrape: [{i}/{len(candidates)}] {post_url}"
+                    )
+                    try:
+                        result = await self._substack_extract_post(page, post_url)
+                    except Exception as e:
+                        self.logger.error(f"extract {post_url} failed: {e}")
+                        stats["errors"] += 1
+                        continue
+                    if result is None:
+                        stats["errors"] += 1
+                        continue
+                    title, post_published, body_html = result
+                    title = title or c.get("title") or ""
+                    if post_published is None:
+                        post_published = c.get("published_at")
+
+                    # Re-check date cutoffs in case archive listing lacked dates.
+                    if post_published is not None:
+                        if post_published < age_cutoff:
+                            stats["skipped_too_old"] += 1
+                            continue
+                        if (
+                            oldest_ingested is not None
+                            and post_published >= oldest_ingested
+                        ):
+                            stats["skipped_in_email_window"] += 1
+                            continue
+
+                    body_text = _strip_html_to_text(body_html)
+                    if not body_text or len(body_text) < min_body:
+                        stats["skipped_too_short"] += 1
+                        self.logger.debug(
+                            f"scrape: {post_url} body too short ({len(body_text)}b) — skip"
+                        )
+                        continue
+
+                    document = self._build_scraped_document(
+                        route, post_url, title, post_published, body_text
+                    )
+                    rid_str = document["rid"]
+                    if self.state.is_processed(rid_str):
+                        stats["already_processed"] += 1
+                        continue
+
+                    self.state.mark_pending(route["slug"], rid_str)
+                    try:
+                        bundle = document_to_bundle(document, self.koi_node.node_id)
+                        success = await self.koi_node.emit_new_event(bundle)
+                    except Exception as e:
+                        self.state.clear_pending(route["slug"], rid_str)
+                        self.logger.error(f"emit {post_url} failed: {e}")
+                        stats["errors"] += 1
+                        continue
+                    if success:
+                        self.state.mark_processed(route["slug"], rid_str)
+                        stats["emitted"] += 1
+                        privacy = "🔒" if route["is_private"] else "🌐"
+                        self.logger.info(
+                            f"{privacy} {route['slug']} SCRAPED: {title[:80]}"
+                        )
+                    else:
+                        self.state.clear_pending(route["slug"], rid_str)
+                        stats["errors"] += 1
+
+                    if stats["emitted"] and stats["emitted"] % 25 == 0:
+                        self.state.save()
+                        self.logger.info(
+                            f"scrape: progress emitted={stats['emitted']} "
+                            f"already={stats['already_processed']} "
+                            f"errors={stats['errors']}"
+                        )
+
+                    await asyncio.sleep(request_delay)
+            finally:
+                await context.close()
+                await browser.close()
+
+        if not dry_run:
+            self.state.save()
+            await self.send_heartbeat_event()
+        self.logger.info(
+            f"scrape: done — discovered={stats['discovered']}, in_window={stats['in_window']}, "
+            f"emitted={stats['emitted']}, already_processed={stats['already_processed']}, "
+            f"too_old={stats['skipped_too_old']}, in_email_window={stats['skipped_in_email_window']}, "
+            f"too_short={stats['skipped_too_short']}, errors={stats['errors']}"
+        )
+        return stats
+
     def _emit_blocking(self, bundle) -> bool:
         """Bridge sync IMAP polling into the asyncio loop running koi_node.
 
@@ -628,6 +1169,52 @@ async def main():
             "processed set are skipped. Does not connect to IMAP."
         ),
     )
+    parser.add_argument(
+        "--scrape-substack-archive",
+        type=str,
+        metavar="URL",
+        help=(
+            "One-shot mode: scrape a paid Substack publication's archive "
+            "with an authenticated Playwright browser context, fetching "
+            "post bodies for any post older than the oldest existing "
+            "email-ingested post for the same access_source. Requires "
+            "--route-slug and --storage-state."
+        ),
+    )
+    parser.add_argument(
+        "--route-slug",
+        type=str,
+        metavar="SLUG",
+        help="config.yaml newsletters[].slug to use for the scrape",
+    )
+    parser.add_argument(
+        "--storage-state",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Path to a Playwright storage_state JSON exported from a "
+            "logged-in Substack session. Treat as a secret (chmod 600)."
+        ),
+    )
+    parser.add_argument(
+        "--max-posts",
+        type=int,
+        metavar="N",
+        default=None,
+        help="Cap the number of posts fetched (smoke-test convenience)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List posts that would be scraped without fetching/emitting",
+    )
+    parser.add_argument(
+        "--max-age-days",
+        type=int,
+        metavar="N",
+        default=None,
+        help="Override filtering.max_age_days for the scrape (default from config)",
+    )
     args = parser.parse_args()
 
     config_path = _resolve_config_path()
@@ -638,6 +1225,27 @@ async def main():
             stats = await sensor.ingest_mbox(args.ingest_mbox)
         finally:
             await sensor.stop()
+        if stats["errors"]:
+            raise SystemExit(2)
+        return
+
+    if args.scrape_substack_archive:
+        if not args.route_slug:
+            parser.error("--scrape-substack-archive requires --route-slug")
+        if not args.storage_state:
+            parser.error("--scrape-substack-archive requires --storage-state")
+        try:
+            stats = await sensor.scrape_substack_archive(
+                archive_url=args.scrape_substack_archive,
+                route_slug=args.route_slug,
+                storage_state_path=args.storage_state,
+                max_posts=args.max_posts,
+                dry_run=args.dry_run,
+                max_age_days=args.max_age_days,
+            )
+        finally:
+            if not args.dry_run:
+                await sensor.stop()
         if stats["errors"]:
             raise SystemExit(2)
         return
