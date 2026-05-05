@@ -62,6 +62,8 @@ async def main():
         node_id="koi-notion-regentokenomics",
         notion_token=notion_token,
         workspace_id="regentokenomics",
+        is_private=False,
+        access_source="notion-regentokenomics",
         pii_filter_enabled=True,
         pii_filter_types=['email', 'telegram', 'phone', 'discord'],
         # Enable video transcription for meeting recordings

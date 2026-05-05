@@ -1422,7 +1422,15 @@ async def main():
     # Get polling interval (default 30 minutes)
     poll_interval = int(os.getenv('NOTION_POLL_INTERVAL', 1800))
 
-    async with NotionKOISensor(notion_token=notion_token) as sensor:
+    # Privacy settings for regen_main workspace per config.yaml — must be
+    # threaded explicitly because this bootstrap path doesn't load the YAML.
+    # Defaults (is_private=False) would leak private docs to unauth queries.
+    async with NotionKOISensor(
+        notion_token=notion_token,
+        workspace_id="regen",
+        is_private=True,
+        access_source="notion-main-workspace",
+    ) as sensor:
         print("\n🔍 Searching Notion workspace...")
 
         # Search for all content
