@@ -1,0 +1,35 @@
+# RSS / Atom Sensor Configuration
+#
+# Each feed gets its own privacy gate: is_private=true documents are only
+# visible to authenticated @regen.network users (matches the Notion sensor
+# pattern; enforced by koi_memories.is_private + node_private filters in
+# koi-processor).
+#
+# URLs may reference environment variables via ${VAR_NAME}; values come
+# from /opt/projects/koi-sensors/.env at runtime (sourced by run-sensor.sh).
+# Keep paid-feed tokens out of this file.
+
+sensor:
+  name: rss-sensor
+  type: rss
+  node_id: koi-sensor-rss-001
+  coordinator_url: http://localhost:8005
+
+feeds:
+  - slug: nate-jones-substack
+    url: "https://natesnewsletter.substack.com/feed/private/${RSS_NATE_SUBSTACK_TOKEN}"
+    domain: ai
+    tags: [substack, ai, newsletter, paid]
+    is_private: true
+    access_source: substack-nate-jones-paid
+    check_interval: 3600
+    enabled: true
+
+collection:
+  max_items_per_check: 50
+  min_content_length: 100
+
+http:
+  request_delay: 1.0
+  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  timeout_seconds: 30

@@ -83,6 +83,12 @@ case $SENSOR in
     podcast)
         SCRIPT="podcast_sensor.py"
         ;;
+    rss)
+        SCRIPT="rss_sensor.py"
+        ;;
+    newsletters)
+        SCRIPT="newsletters_sensor.py"
+        ;;
     discord)
         SCRIPT="discord_sensor.py"
         ;;

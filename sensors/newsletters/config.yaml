@@ -1,0 +1,58 @@
+# Newsletter Email Sensor Configuration
+#
+# Polls a Gmail-IMAP account, watches one or more labels populated by Gmail
+# filters (e.g. From substack.com → label "KOI/Substack"), and emits a KOI
+# bundle for each new email. Per-sender routing maps senders to slug,
+# access_source, tags, and is_private.
+#
+# Privacy: koi_memories.is_private = true means the document is only
+# visible to authenticated @regen.network users via regen-koi-mcp; the
+# Notion sensor uses the same plumbing. See migration 015 for details.
+#
+# Credentials:
+#   The Gmail app password is read from the env var named in
+#   ``imap.password_env``. The actual value lives in
+#   /opt/projects/koi-sensors/.env (loaded by run-sensor.sh) — never in
+#   this file or in git.
+
+sensor:
+  name: newsletters-sensor
+  type: newsletters
+  node_id: koi-sensor-newsletters-001
+  coordinator_url: http://localhost:8005
+  poll_interval: 600  # 10 min — newsletters are not high-frequency
+
+imap:
+  host: imap.gmail.com
+  port: 993
+  ssl: true
+  username: darrenainews@gmail.com
+  password_env: GMAIL_NEWSLETTERS_APP_PASSWORD
+  folders:
+    - "KOI/Substack"
+
+# Per-sender routing.
+# ``match`` is a case-insensitive substring matched against the From
+# email-address and List-Id header. First match wins; add more specific
+# rules above more general ones. Add new newsletters by appending entries.
+newsletters:
+  - match: natesnewsletter
+    slug: nate-jones-substack
+    access_source: substack-nate-jones-paid
+    tags: [substack, ai, newsletter, paid, nate-jones]
+    is_private: true
+
+  # Generic Substack fallback — matches any other Substack publication
+  # forwarded to this label. Stays private because we don't auto-classify
+  # arbitrary newsletters as public team content.
+  - match: substack.com
+    slug: substack-other
+    access_source: substack-other
+    tags: [substack, newsletter]
+    is_private: true
+
+filtering:
+  max_age_days: 365         # ignore email older than this on first run
+  min_body_length: 200      # skip newsletter "ping" emails / footer-only
+  max_email_size: 10485760  # 10 MB
+  default_route: null       # set to a slug to route unmatched senders

@@ -1,0 +1,11 @@
+# Newsletters Sensor Dependencies
+PyYAML>=6.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+# HTML→markdown conversion that preserves link URLs + image refs
+html2text>=2020.1.16
+# Used by koi_protocol.nodes.koi_node (transitive dep of the framework)
+aiohttp>=3.8.0
+# Shared koi-sensors framework deps (run-sensor.sh preflight expects these)
+rid-lib==3.2.12
+cryptography>=42.0.0
