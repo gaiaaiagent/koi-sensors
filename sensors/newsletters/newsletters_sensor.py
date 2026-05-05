@@ -808,58 +808,79 @@ class NewslettersKOISensor:
         self.logger.info(f"archive DOM scroll: collected {len(posts)} posts")
         return posts
 
+    BODY_SELECTOR = (
+        "div.available-content, div.body.markup, div.body, article"
+    )
+
     async def _substack_extract_post(
         self, page, post_url: str
-    ) -> Optional[Tuple[str, Optional[datetime], str]]:
-        """Navigate to a Substack post URL and return (title, published_at, body_html).
+    ) -> Optional[Tuple[str, str]]:
+        """Navigate to a Substack post URL and return (document_title, body_html).
+
+        Date is intentionally NOT extracted from the post page — the
+        ``<time datetime>`` element on Substack post pages is a render-time
+        timestamp, not the original publish date. Caller uses the JSON
+        listing's ``post_date`` as authoritative.
 
         Returns ``None`` if the post is paywalled (auth context did not unlock
         the body) or if extraction fails.
         """
         try:
             await page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(1.5)
+            # Deterministic body wait — beats sleep-and-pray. The body
+            # element appears once Substack's React app mounts, regardless
+            # of whether networkidle has fired.
+            await page.wait_for_selector(self.BODY_SELECTOR, timeout=20000)
         except Exception as e:
-            self.logger.error(f"navigate {post_url} failed: {e}")
+            self.logger.error(f"navigate/wait {post_url} failed: {e}")
             return None
 
         extracted = await page.evaluate(
             """
-            () => {
-                const titleEl = document.querySelector('h1') ||
-                                document.querySelector('h1.post-title') ||
-                                document.querySelector('article h1');
-                const timeEl = document.querySelector('time[datetime]');
-                const bodyEl = document.querySelector('div.available-content') ||
-                               document.querySelector('div.body.markup') ||
-                               document.querySelector('div.body') ||
-                               document.querySelector('article');
-                // Paywall heuristics — Substack uses ".paywall" container or a
-                // "Subscribe to read" upsell. If we see those AND no body
-                // markup, treat as locked.
-                const paywall = document.querySelector('.paywall, .subscribe-widget, [data-component-name="SubscribePrompt"]');
+            (sel) => {
+                const bodyEl = document.querySelector(sel);
+                // Paywall: real lock containers, not "Subscribed" badges.
+                // The .subscribe-widget class is reused by Substack as both
+                // an authenticated "Subscribed" pill AND a locked-content
+                // upsell, so it's not a reliable signal — drop it.
+                const paywall = document.querySelector(
+                    '.paywall, [data-component-name="SubscribePrompt"]'
+                );
                 return {
-                    title: titleEl ? (titleEl.innerText || '').trim() : '',
-                    datetime: timeEl ? timeEl.getAttribute('datetime') : null,
+                    doc_title: document.title || '',
                     body: bodyEl ? bodyEl.innerHTML : '',
                     body_text: bodyEl ? (bodyEl.innerText || '').trim() : '',
                     paywall_visible: !!paywall
                 };
             }
-            """
+            """,
+            self.BODY_SELECTOR,
         )
         if not extracted:
             return None
-        title = extracted.get("title") or ""
+        doc_title = (extracted.get("doc_title") or "").strip()
         body_html = extracted.get("body") or ""
         body_text = extracted.get("body_text") or ""
-        paywall_visible = extracted.get("paywall_visible")
-        published_at = _parse_iso_datetime(extracted.get("datetime"))
+        paywall_visible = bool(extracted.get("paywall_visible"))
 
-        # If body looks empty AND a paywall is up, the auth context didn't
-        # unlock the post. Surface a clear error rather than emitting a
-        # truncated row.
-        if (not body_text or len(body_text) < 50) and paywall_visible:
+        # Length-aware paywall content check. A real unlocked paid post is
+        # tens of thousands of chars; a paywalled stub is short AND contains
+        # a "subscribe to read" prompt. Combining the two rules out false
+        # positives for posts that happen to discuss subscriptions.
+        body_text_lower = body_text.lower()
+        paywall_phrases = (
+            "subscribe to read",
+            "subscribe to keep reading",
+            "continue reading",
+            "this post is for paid subscribers",
+            "this post is for subscribers",
+        )
+        is_paywall_stub = (
+            len(body_text) < 300
+            and any(p in body_text_lower for p in paywall_phrases)
+        )
+
+        if paywall_visible and is_paywall_stub:
             self.logger.error(
                 f"post {post_url} appears paywalled — storage_state may be invalid/expired"
             )
@@ -867,7 +888,7 @@ class NewslettersKOISensor:
         if not body_html:
             self.logger.warning(f"post {post_url} returned empty body")
             return None
-        return title, published_at, body_html
+        return doc_title, body_html
 
     def _build_scraped_document(
         self,
@@ -1051,22 +1072,18 @@ class NewslettersKOISensor:
                     if result is None:
                         stats["errors"] += 1
                         continue
-                    title, post_published, body_html = result
-                    title = title or c.get("title") or ""
-                    if post_published is None:
-                        post_published = c.get("published_at")
-
-                    # Re-check date cutoffs in case archive listing lacked dates.
-                    if post_published is not None:
-                        if post_published < age_cutoff:
-                            stats["skipped_too_old"] += 1
-                            continue
-                        if (
-                            oldest_ingested is not None
-                            and post_published >= oldest_ingested
-                        ):
-                            stats["skipped_in_email_window"] += 1
-                            continue
+                    doc_title, body_html = result
+                    # Title preference: JSON API listing → document.title → empty.
+                    # Listing-time data is the source of truth; <h1> on Substack
+                    # post pages is empty for many templates.
+                    title = (c.get("title") or doc_title or "").strip()
+                    # Date: trust the JSON API listing's post_date. The
+                    # post-page <time datetime> attribute is a render-time
+                    # timestamp on Substack, not the original publish (proven
+                    # via diagnostic 2026-05-05 — it returned today's date for
+                    # a post listed Apr 3). Listing already gated by date
+                    # window above, so no per-post recheck.
+                    post_published = c.get("published_at")
 
                     body_text = _strip_html_to_text(body_html)
                     if not body_text or len(body_text) < min_body:
