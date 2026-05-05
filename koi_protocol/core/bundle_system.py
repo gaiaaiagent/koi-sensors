@@ -435,6 +435,14 @@ def document_to_bundle(document: Dict[str, Any], source_node: str = "regen-colle
     if "access_source" in doc_metadata:
         bundle_metadata["access_source"] = doc_metadata["access_source"]
 
+    # Pass through provenance fields useful for cohort-isolation queries (#30).
+    # tags: list of strings from sensor route config (e.g. ["substack", "ai"])
+    # ingest_method: string identifier for the path that produced this row
+    if "tags" in doc_metadata and doc_metadata["tags"]:
+        bundle_metadata["tags"] = doc_metadata["tags"]
+    if "ingest_method" in doc_metadata:
+        bundle_metadata["ingest_method"] = doc_metadata["ingest_method"]
+
     return Bundle.generate(
         rid=rid,
         contents=bundle_contents,
