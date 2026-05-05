@@ -1072,12 +1072,27 @@ class NewslettersKOISensor:
                     self.logger.info(
                         f"scrape: [{i}/{len(candidates)}] {post_url}"
                     )
+                    # Fresh page per post — reusing the same page across
+                    # navigations leaves stale React state / event listeners
+                    # / pending fetches that intermittently corrupt
+                    # subsequent gotos (15-20s wait_for_selector timeouts on
+                    # bodies that are visibly present in single-shot probes).
+                    post_page = None
                     try:
-                        result = await self._substack_extract_post(page, post_url)
+                        post_page = await context.new_page()
+                        result = await self._substack_extract_post(
+                            post_page, post_url
+                        )
                     except Exception as e:
                         self.logger.error(f"extract {post_url} failed: {e}")
                         stats["errors"] += 1
                         continue
+                    finally:
+                        if post_page is not None:
+                            try:
+                                await post_page.close()
+                            except Exception:
+                                pass
                     if result is None:
                         stats["errors"] += 1
                         continue
