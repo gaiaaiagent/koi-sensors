@@ -689,21 +689,82 @@ class NewslettersKOISensor:
         seen_urls = set()
         offset = 0
         page_size = 12
+        # 429 retry/backoff state: per-offset, up to MAX_RETRIES.
+        # Backoff schedule (seconds) honors Retry-After header if present;
+        # falls back to exponential 30 / 60 / 120 / 240 capped at 300.
+        MAX_RETRIES = 4
+        BACKOFF_SCHEDULE = [30, 60, 120, 240]
+        consecutive_429s = 0
+        backoff_events = 0
+
         while True:
             api_url = (
                 f"{base}/api/v1/archive?sort=new&search=&offset={offset}"
                 f"&limit={page_size}"
             )
-            try:
-                resp = await page.request.get(api_url)
-                if resp.status != 200:
+            attempt = 0
+            data = None
+            while attempt <= MAX_RETRIES:
+                try:
+                    resp = await page.request.get(api_url)
+                except Exception as e:
                     self.logger.warning(
-                        f"archive JSON API returned {resp.status} at offset={offset}"
+                        f"archive JSON API fetch failed at offset={offset} "
+                        f"attempt={attempt}: {e}"
                     )
                     break
-                data = await resp.json()
-            except Exception as e:
-                self.logger.warning(f"archive JSON API fetch failed: {e}")
+                if resp.status == 200:
+                    try:
+                        data = await resp.json()
+                    except Exception as e:
+                        self.logger.warning(
+                            f"archive JSON parse failed offset={offset}: {e}"
+                        )
+                        data = None
+                    consecutive_429s = 0
+                    break
+                if resp.status == 429:
+                    if attempt >= MAX_RETRIES:
+                        self.logger.warning(
+                            f"archive JSON API: still 429 after {MAX_RETRIES} retries "
+                            f"at offset={offset} — giving up on JSON path"
+                        )
+                        break
+                    # Honor Retry-After if parseable, else exponential.
+                    retry_after_hdr = (
+                        resp.headers.get("retry-after")
+                        if hasattr(resp, "headers")
+                        else None
+                    )
+                    backoff_s: float = float(BACKOFF_SCHEDULE[attempt])
+                    if retry_after_hdr:
+                        try:
+                            ra = float(retry_after_hdr)
+                            backoff_s = min(max(ra, 5.0), 300.0)
+                        except (TypeError, ValueError):
+                            pass
+                    backoff_events += 1
+                    consecutive_429s += 1
+                    self.logger.info(
+                        f"archive JSON API 429 at offset={offset} "
+                        f"attempt={attempt + 1}/{MAX_RETRIES} — "
+                        f"backing off {backoff_s:.0f}s "
+                        f"(retry_after_hdr={retry_after_hdr})"
+                    )
+                    await asyncio.sleep(backoff_s)
+                    attempt += 1
+                    continue
+                # Non-200, non-429: terminal.
+                self.logger.warning(
+                    f"archive JSON API returned {resp.status} at offset={offset}"
+                )
+                break
+
+            if data is None:
+                # Either retries exhausted, parse failed, or non-200/429.
+                # Exit the pagination loop. We do NOT auto-fall-through to
+                # DOM scroll on 429 — operator wants explicit decision per
+                # 2026-05-05 Gate 3 prep guidance.
                 break
 
             if not isinstance(data, list) or not data:
@@ -736,6 +797,11 @@ class NewslettersKOISensor:
             if offset > 5000:  # safety bound
                 self.logger.warning("archive JSON API offset > 5000 — stopping")
                 break
+
+        if backoff_events:
+            self.logger.info(
+                f"archive JSON API: {backoff_events} 429-backoff events during pagination"
+            )
 
         if posts:
             self.logger.info(
@@ -1077,23 +1143,44 @@ class NewslettersKOISensor:
                     # / pending fetches that intermittently corrupt
                     # subsequent gotos (15-20s wait_for_selector timeouts on
                     # bodies that are visibly present in single-shot probes).
-                    post_page = None
-                    try:
-                        post_page = await context.new_page()
-                        result = await self._substack_extract_post(
-                            post_page, post_url
-                        )
-                    except Exception as e:
-                        self.logger.error(f"extract {post_url} failed: {e}")
-                        stats["errors"] += 1
-                        continue
-                    finally:
-                        if post_page is not None:
-                            try:
-                                await post_page.close()
-                            except Exception:
-                                pass
+                    # Retry once on failure (close page, reopen, retry) —
+                    # observed Gate 2 failure rate: ~20% one-shot, target
+                    # <5% with single retry.
+                    result = None
+                    last_err: Optional[str] = None
+                    for attempt in range(2):
+                        post_page = None
+                        try:
+                            post_page = await context.new_page()
+                            result = await self._substack_extract_post(
+                                post_page, post_url
+                            )
+                            if result is not None:
+                                if attempt > 0:
+                                    self.logger.info(
+                                        f"scrape: [{i}/{len(candidates)}] succeeded on retry"
+                                    )
+                                break
+                            last_err = "extract returned None"
+                        except Exception as e:
+                            last_err = repr(e)
+                            self.logger.warning(
+                                f"extract {post_url} attempt {attempt + 1} failed: {e}"
+                            )
+                        finally:
+                            if post_page is not None:
+                                try:
+                                    await post_page.close()
+                                except Exception:
+                                    pass
+                        if attempt == 0 and result is None:
+                            # Brief pause before retry to let any
+                            # transient server-side rate-limit clear.
+                            await asyncio.sleep(2.0)
                     if result is None:
+                        self.logger.error(
+                            f"extract {post_url} failed after retry: {last_err}"
+                        )
                         stats["errors"] += 1
                         continue
                     doc_title, body_html = result
