@@ -826,15 +826,19 @@ class NewslettersKOISensor:
         the body) or if extraction fails.
         """
         try:
-            # ``networkidle`` is deterministic on Substack — the diagnostic
-            # showed it returns within ~3s with the body fully populated.
-            await page.goto(post_url, wait_until="networkidle", timeout=60000)
-            # Belt + suspenders: wait for the body element to be attached
-            # to the DOM (not "visible" — visibility-state polling stalls
-            # on podcast-post pages where Substack remounts the body and
-            # leaves it briefly visibility:hidden during hydration).
+            # ``domcontentloaded`` returns reliably (~2.6s in probes).
+            # ``networkidle`` is unreliable on Substack — analytics/polling
+            # keeps the network busy past the 500ms quiet threshold
+            # indefinitely on some posts (60s timeouts observed in smoke).
+            await page.goto(post_url, wait_until="domcontentloaded", timeout=60000)
+            # Wait for the body element to be ATTACHED to the DOM (not the
+            # default ``visible`` — visibility-state polling stalls 20s on
+            # podcast-post pages where React remounts the body and leaves
+            # it briefly visibility:hidden during hydration). The body is
+            # already present at domcontentloaded in both diagnostic
+            # probes, so this is a defensive short wait.
             await page.wait_for_selector(
-                self.BODY_SELECTOR, state="attached", timeout=10000
+                self.BODY_SELECTOR, state="attached", timeout=15000
             )
         except Exception as e:
             self.logger.error(f"navigate/wait {post_url} failed: {e}")
