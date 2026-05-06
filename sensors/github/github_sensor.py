@@ -42,42 +42,16 @@ class GitHubConfig:
 
     def __post_init__(self):
         if self.file_extensions is None:
+            # STRICT DOCS-ONLY ALLOW-LIST (2026-05-06).
+            # Code goes to load_to_staging.py / Apache AGE (regen_graph), NOT to RAG.
+            # See feedback_github_sensor_doc_only_filter.md.
             self.file_extensions = [
                 # Documentation
                 '*.md', '*.MD', '*.mdx',
-                '*.rst', '*.txt', '*.asciidoc',
+                '*.rst', '*.txt', '*.adoc', '*.asciidoc',
                 'README*', 'CHANGELOG*', 'CONTRIBUTING*',
                 'LICENSE*', 'COPYRIGHT*', 'NOTICE*',
-
-                # Source Code - Go (CRITICAL for Cosmos SDK)
-                '*.go',
-
-                # Source Code - Web/Frontend
-                '*.ts', '*.tsx',
-                '*.js', '*.jsx',
-
-                # Source Code - Other
-                '*.py',
-                '*.rs',
-                '*.sol',
-
-                # Protocol Buffers (CRITICAL for Cosmos SDK)
-                '*.proto',
-
-                # Configuration & Dependencies
-                '*.json', '*.yaml', '*.yml',
-                '*.toml', '*.ini', '*.cfg',
-                'go.mod', 'go.sum',
-
-                # Build & Infrastructure
-                'Makefile', 'makefile',
-                'Dockerfile*',
-                'docker-compose*.yml', 'docker-compose*.yaml',
-
-                # Schemas & Scripts
-                '*.sql',
-                '*.graphql', '*.gql',
-                '*.sh',
+                'AUTHORS*', 'CODE_OF_CONDUCT*', 'SECURITY*',
             ]
         
         if self.excluded_dirs is None:
@@ -274,21 +248,46 @@ class GitHubSensor:
             '.pdf', '.zip', '.tar', '.gz', '.bz2', '.exe',
             '.dll', '.so', '.dylib', '.woff', '.ttf', '.eot'
         ]
-        
+
+        # STRICT DOCS-ONLY allow-list (2026-05-06).
+        # Belt-and-suspenders gate: even if file_extensions is overridden, this
+        # final filter blocks code/config/build-artifacts from RAG ingest.
+        # See feedback_github_sensor_doc_only_filter.md.
+        ALLOWED_DOC_EXTENSIONS = {'.md', '.mdx', '.rst', '.txt', '.adoc', '.asciidoc'}
+        ALLOWED_DOC_STEMS = {
+            'README', 'LICENSE', 'CHANGELOG', 'CONTRIBUTING', 'AUTHORS',
+            'NOTICE', 'COPYRIGHT', 'CODE_OF_CONDUCT', 'SECURITY',
+        }
+
+        def is_doc_file(p):
+            suffix = p.suffix.lower()
+            if suffix in ALLOWED_DOC_EXTENSIONS:
+                return True
+            stem_upper = p.stem.upper()
+            if stem_upper in ALLOWED_DOC_STEMS:
+                return True
+            # Handle README.md style which is already covered, plus things like
+            # README.txt, LICENSE.md (caught by suffix above) — both pass.
+            return False
+
         for f in files:
             # Skip excluded directories
             parts = f.parts
             if any(p.startswith('.') or p in self.config.excluded_dirs for p in parts):
                 continue
-            
+
             # Skip binary files
             if f.suffix.lower() in excluded_extensions:
                 continue
-            
+
             # Skip test fixtures and mocks
             if 'fixtures' in str(f) or 'mocks' in str(f) or '__mocks__' in str(f):
                 continue
-            
+
+            # Strict docs-only filter
+            if not is_doc_file(f):
+                continue
+
             filtered_files.append(f)
 
         self.logger.info(f"Filtering stats for pattern '{pattern}': {len(files)} -> {len(filtered_files)} after exclusions")
