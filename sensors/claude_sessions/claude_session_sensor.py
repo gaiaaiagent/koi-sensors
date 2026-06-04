@@ -1415,6 +1415,13 @@ Session text:
         Returns (True, None) on success or (False, error_reason) on failure.
         """
         api_url = self.config.get('koi_backend', {}).get('api_url', 'http://localhost:8351')
+        # /knowledge/episodes is auth-gated server-side (require_service_auth checks
+        # KOI_CLAIMS_SERVICE_TOKEN), provisioned to this sensor via its launchd plist
+        # EnvironmentVariables. Sending it is a harmless no-op until the :8351 gate lands.
+        _episode_headers = {'Content-Type': 'application/json'}
+        _claims_token = os.environ.get('KOI_CLAIMS_SERVICE_TOKEN', '')
+        if _claims_token:
+            _episode_headers['Authorization'] = f'Bearer {_claims_token}'
         entities = extracted.get('entities', [])
         facts = extracted.get('facts', [])
 
@@ -1436,7 +1443,7 @@ Session text:
             req = Request(
                 f'{api_url}/knowledge/episodes',
                 data=json.dumps(episode_payload).encode('utf-8'),
-                headers={'Content-Type': 'application/json'},
+                headers=_episode_headers,
                 method='POST',
             )
             with urlopen(req, timeout=60) as resp:
