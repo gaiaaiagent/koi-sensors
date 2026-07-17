@@ -2,11 +2,14 @@
 
 This file provides guidance to Claude Code when working specifically in the koi-sensors project.
 
-## 🚨 Current System State (Dec 23, 2025)
+## 🚨 Current System State (verified against prod 2026-07-16)
 
-- **8 Active Sensors**: Website, GitHub, GitHub Activity, Discourse, Telegram, Twitter, Notion, YouTube
-- **Disabled Sensors**: GitLab, Medium, Podcast (no longer needed)
+- **9 Active Sensors** (systemctl on `darren@202.61.196.119`, verified running): Discourse, GitHub, GitHub Activity, **GitLab**, **Ledger**, **Newsletters**, Notion, Telegram, Websites
+- **Inactive / not running**: **Twitter** (paused — anti-scraping), **YouTube** (`inactive/dead`), Medium, Podcast
 - **All sensors run via systemd** with automatic restart on failure
+- Repo on `main` (prod HEAD `6606319` as of 2026-07-16)
+
+> _(Prior "Dec 23, 2025" state claimed 8 active with GitLab disabled and Twitter/YouTube active — corrected above from live systemd. GitLab is now active; Twitter/YouTube are not; Ledger + Newsletters were added since.)_
 - **Health Monitoring**: Smart Hybrid system with 30-min heartbeats and on-demand ping
 - **Coordinator**: Running on port 8005 with event routing and sensor tracking
 - **Dashboard**: Live at https://regen.gaiaai.xyz/koi showing real-time sensor status
@@ -31,22 +34,24 @@ sudo systemctl enable koi-sensor@notion
 sudo systemctl disable koi-sensor@gitlab
 ```
 
-### Currently Enabled Sensors (systemd)
+### Currently Enabled Sensors (systemd) — verified on prod 2026-07-16
 | Sensor | Service Name | Status |
 |--------|--------------|--------|
 | Discourse | koi-sensor@discourse | ✅ Active |
 | GitHub | koi-sensor@github | ✅ Active |
 | GitHub Activity | koi-sensor@github_activity | ✅ Active |
+| GitLab | koi-sensor@gitlab | ✅ Active |
+| Ledger | koi-sensor@ledger | ✅ Active |
+| Newsletters | koi-sensor@newsletters | ✅ Active |
 | Notion | koi-sensor@notion | ✅ Active |
 | Telegram | koi-sensor@telegram | ✅ Active |
-| Twitter | koi-sensor@twitter | ✅ Active |
 | Websites | koi-sensor@websites | ✅ Active |
-| YouTube | koi-sensor@youtube | ✅ Active |
 
-### Disabled Sensors
-- **GitLab**: Disabled Dec 23, 2025 - not needed
-- **Medium**: Disabled Dec 23, 2025 - HTTP 403 blocks + code bug
-- **Podcast**: Disabled Dec 23, 2025 - no new podcasts being published
+### Inactive / Disabled Sensors
+- **Twitter**: paused / not running (anti-scraping blocks; only `@regen_network` ever worked). Config below retained for reference.
+- **YouTube**: `koi-sensor@youtube` present but `inactive/dead` on prod (2026-07-16).
+- **Medium**: Disabled — HTTP 403 blocks + code bug.
+- **Podcast**: Disabled — no new podcasts being published.
 
 ### Twitter Sensor Configuration
 The Twitter sensor monitors these accounts (configurable via `TWITTER_ACCOUNTS` env var):
