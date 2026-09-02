@@ -1158,6 +1158,28 @@ Session text:
                         assistant_text = self._extract_text(messages[i + 1])
                         i += 1
 
+                    # Skip turn-pairs with no content on either side.
+                    #
+                    # _extract_text() returns "" for tool-result and meta
+                    # messages, and nothing here checked for that -- so the
+                    # chunk became literally "User: \n\nAssistant: ", 18
+                    # characters after trimming, carrying no content at all.
+                    # Each one was still embedded at 3072 dimensions and
+                    # indexed into the HNSW index the sessions retrieval
+                    # surface queries, forming a large near-duplicate cluster
+                    # that wins ANN on unspecific queries.
+                    #
+                    # Measured 2026-09-02 before this fix: 322,662 of 481,846
+                    # session_chunks (67%) were under 100 characters, and the
+                    # sensor was still producing them at 79-91% of daily
+                    # writes -- this is a live producer, not historical debt.
+                    # personal_koi migration 116 adds a CHECK for >=100 chars
+                    # and is BLOCKED ON THIS FIX: applied first, it would have
+                    # failed most session-ingest batches in production.
+                    if not user_text.strip() and not assistant_text.strip():
+                        i += 1
+                        continue
+
                     # Create chunk
                     chunk_text = f"User: {user_text}\n\nAssistant: {assistant_text}"
 
@@ -1329,7 +1351,14 @@ Session text:
                 if i + 1 < len(messages) and messages[i + 1].get('type') == 'assistant':
                     asst_text = self._extract_text(messages[i + 1])
                     i += 1
-                pairs.append(f"User: {user_text}\n\nAssistant: {asst_text}")
+                # Same empty-turn-pair skip as the chunking path above. The
+                # consequence differs -- these are joined into one text blob
+                # rather than written as rows -- so an empty pair here adds
+                # "User: \n\nAssistant:" plus a '---' separator as padding to
+                # whatever consumes full_text, rather than creating a junk
+                # chunk. Still noise, and still worth not emitting.
+                if user_text.strip() or asst_text.strip():
+                    pairs.append(f"User: {user_text}\n\nAssistant: {asst_text}")
             i += 1
 
         full_text = '\n\n---\n\n'.join(pairs)
