@@ -38,6 +38,48 @@ DOMAIN_TO_ORG = {
 }
 
 
+def is_valid_person_name(name: str) -> bool:
+    """Check if name is a valid person name (not just email prefix).
+
+    Shared guard for From-header Person extraction — used by
+    EmailEntityExtractor._is_valid_name() and by
+    EmailSensor._extract_entities() (sensors/email/email_sensor.py) so both
+    extraction paths apply the same validation instead of the sensor
+    re-implementing a second, weaker check.
+    """
+    if not name:
+        return False
+
+    # Skip if it looks like an email address
+    if '@' in name:
+        return False
+
+    # Skip if too short
+    if len(name) < 3:
+        return False
+
+    # Skip if all lowercase with no spaces (likely username)
+    if name.islower() and ' ' not in name:
+        return False
+
+    # Skip common non-names
+    skip_patterns = [
+        r'^no[-_]?reply',
+        r'^support',
+        r'^info',
+        r'^admin',
+        r'^sales',
+        r'^team',
+        r'^hello',
+        r'^contact',
+    ]
+    for pattern in skip_patterns:
+        if re.match(pattern, name.lower()):
+            return False
+
+    return True
+
+
 class EmailEntityExtractor:
     """
     Extract entities from email headers and body.
@@ -142,38 +184,13 @@ class EmailEntityExtractor:
         return entities
 
     def _is_valid_name(self, name: str) -> bool:
-        """Check if name is a valid person name (not just email prefix)."""
-        if not name:
-            return False
+        """Check if name is a valid person name (not just email prefix).
 
-        # Skip if it looks like an email address
-        if '@' in name:
-            return False
-
-        # Skip if too short
-        if len(name) < 3:
-            return False
-
-        # Skip if all lowercase with no spaces (likely username)
-        if name.islower() and ' ' not in name:
-            return False
-
-        # Skip common non-names
-        skip_patterns = [
-            r'^no[-_]?reply',
-            r'^support',
-            r'^info',
-            r'^admin',
-            r'^sales',
-            r'^team',
-            r'^hello',
-            r'^contact',
-        ]
-        for pattern in skip_patterns:
-            if re.match(pattern, name.lower()):
-                return False
-
-        return True
+        Delegates to the module-level is_valid_person_name() so this guard
+        and the one used by EmailSensor (sensors/email/email_sensor.py)
+        can never drift apart.
+        """
+        return is_valid_person_name(name)
 
     def _extract_org_from_domain(self, email: str) -> Optional[Dict[str, Any]]:
         """

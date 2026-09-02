@@ -36,6 +36,7 @@ from maildir_parser import MaildirParser
 from chunker import SentenceAwareChunker
 from embedder import EmailEmbedder
 from ics_writer import process_ics_attachments
+from email_entity_extractor import is_valid_person_name
 
 # Configure logging
 logging.basicConfig(
@@ -545,7 +546,13 @@ class EmailSensor:
         # Extract sender as Person entity
         from_name = email_data.get('from_name', '')
         from_address = email_data.get('from_address', '')
-        if from_name and from_name != from_address:
+        # is_valid_person_name() is the real guard from EmailEntityExtractor
+        # (sensors/email/email_entity_extractor.py) — it used to be defined
+        # there but unreachable, since this sensor (the one actually wired
+        # into the /ingest pipeline) never imported it and only checked
+        # from_name != from_address. Route through the real guard instead of
+        # the weaker duplicate.
+        if from_name and from_name != from_address and is_valid_person_name(from_name):
             entities.append({
                 'name': from_name,
                 'type': 'Person',
