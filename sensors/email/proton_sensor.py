@@ -33,6 +33,7 @@ from proton_imap_fetcher import ProtonIMAPFetcher
 from chunker import SentenceAwareChunker
 from embedder import EmailEmbedder
 from ics_writer import process_ics_attachments
+from email_entity_extractor import is_valid_person_name
 
 logging.basicConfig(
     level=logging.INFO,
@@ -404,7 +405,17 @@ class ProtonEmailSensor:
             entities = []
             from_name = email_data.get('from_name', '')
             from_addr = email_data.get('from_address', '')
-            if from_name and from_name != from_addr.split('@')[0]:
+            # is_valid_person_name() is the shared guard hoisted in 368e759
+            # (sensors/email/email_entity_extractor.py). That commit wired
+            # email_sensor.py and its message says "BOTH call sites" -- there
+            # are THREE Person-construction sites, and this one was missed, so
+            # the proton path kept minting a Person from any display name that
+            # merely differed from the address local-part.
+            if (
+                from_name
+                and from_name != from_addr.split('@')[0]
+                and is_valid_person_name(from_name)
+            ):
                 entities.append({
                     'name': from_name,
                     'type': 'Person',
