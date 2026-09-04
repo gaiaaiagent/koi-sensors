@@ -1,3 +1,6 @@
 asyncpg>=0.29.0
 pyyaml>=6.0
 openai>=1.0.0
+# imported directly at claude_session_sensor.py:34 -- was undeclared, so a venv
+# built from this file alone crashed the sensor at import time.
+requests>=2.32.0
