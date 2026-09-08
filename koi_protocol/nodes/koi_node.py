@@ -415,6 +415,7 @@ class KOINodeBase(ABC):
                 "orn:discourse.post",
                 "orn:web.page",
                 "orn:notion.page",
+                "orn:notion.comment",
                 "orn:github.file",
                 "orn:youtube.video",
                 "orn:gmail.message",

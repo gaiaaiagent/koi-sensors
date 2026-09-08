@@ -1,16 +1,19 @@
 # KOI Notion Sensor
 
-Real-time monitoring of Notion databases and pages for the KOI (Knowledge Organization Infrastructure) system.
+Polling of Notion databases, pages and unresolved comments for the KOI (Knowledge Organization Infrastructure) system.
 
 ## Features
 
-- 🔍 **Workspace Discovery**: Automatically discovers all databases and pages
+- 🔍 **Workspace Discovery**: Automatically discovers accessible databases and pages
 - 📊 **Database Monitoring**: Tracks changes in Notion databases
 - 📄 **Content Extraction**: Extracts full page content including nested blocks
-- 🔄 **Change Detection**: Identifies NEW and UPDATE events using content hashing
-- 🏷️ **Property Extraction**: Captures all Notion properties (text, numbers, selects, dates, etc.)
+- 🔄 **Change Detection**: Identifies NEW and UPDATE events from filtered content and metadata
+- 💬 **Discussion Records**: Separate comment RIDs with authorship, thread identity and explicit coverage
+- 🏷️ **Property Extraction**: Captures supported properties, including status, people and relation IDs
 - 🆔 **RID Generation**: Creates KOI-compliant Resource Identifiers
 - 📡 **Event Emission**: Sends changes to KOI Coordinator/Event Bridge
+
+See [polling behavior, access requirements and limitations](POLLING.md) for comment capability, unresolved-only coverage, bounded reconciliation and delivery semantics.
 
 ## Setup
 
@@ -125,12 +128,13 @@ The sensor generates KOI events with the following structure:
 - ✅ Title
 - ✅ Rich Text
 - ✅ Number
-- ✅ Select / Multi-select
+- ✅ Select / Multi-select / Status
+- ✅ People (IDs and filtered display names)
+- ✅ Relation (page IDs)
 - ✅ Date
 - ✅ Checkbox
 - ✅ URL
-- ✅ Email
-- ✅ Phone
+- Contact properties (email/phone) are omitted
 
 ### Blocks
 - ✅ Paragraphs
@@ -168,13 +172,14 @@ Notion API → Notion Sensor → KOI Coordinator → Event Bridge → BGE Embedd
 
 ### Rate Limiting
 - Notion API has rate limits (3 requests/second)
-- The sensor includes automatic retry logic
+- Failed sources are revisited on later polling cycles; there is no immediate retry loop
 - Adjust `check_interval` in config if needed
 
 ## Performance
 
-- **Initial Scan**: Processes all pages in monitored databases
-- **Incremental Updates**: Only processes changed content
+- **Discovery**: Enumerates database page IDs at the configured interval
+- **Reconciliation**: Rotates through known pages with a persisted per-cycle budget
+- **Emission**: Emits only changed filtered content or metadata
 - **Check Interval**: Configurable per database (default: 1 hour)
 - **Content Hashing**: SHA-256 for change detection
 
@@ -204,17 +209,12 @@ async with NotionKOISensor(notion_token=token) as sensor:
     properties = sensor.extract_properties(page["properties"])
 ```
 
-## Session 2 Completion
+## Validation scope
 
-This Notion sensor completes Session 2 of the Milestone B implementation:
-
-- ✅ Full Notion API integration
-- ✅ Database and page monitoring
-- ✅ Content extraction with properties
-- ✅ Change detection (NEW/UPDATE events)
-- ✅ KOI Event Bridge integration
-- ✅ RID generation for all content
-- ✅ Production-ready with error handling
+Synthetic polling tests cover pagination, change detection, privacy filtering,
+access failures and coordinator retries. Live comment ingestion additionally
+requires the integration capability and accessible source pages; downstream
+indexing must be verified after an authorized rollout. See [POLLING.md](POLLING.md).
 
 ---
 

@@ -228,6 +228,9 @@ def document_to_rid(document: Dict[str, Any]) -> Optional[RID]:
         metadata = document.get('metadata', {})
         page_id = metadata.get('id') or metadata.get('page_id')
         workspace_id = metadata.get('workspace_id', 'regen')  # Default workspace
+        comment_id = metadata.get('comment_id')
+        if comment_id:
+            return GenericRID("orn:notion.comment", f"{workspace_id}/{comment_id}")
 
         if page_id:
             return NotionPageRID(workspace_id, page_id)
