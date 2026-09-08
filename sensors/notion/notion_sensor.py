@@ -18,7 +18,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import os
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 print("[STARTUP] standard libs imported")
 
 # KOI Protocol imports
@@ -390,6 +390,17 @@ class VideoTranscriber:
                     pass
 
 
+class NotionFetchError(RuntimeError):
+    """A failed/incomplete API read, never equivalent to an empty result."""
+
+    def __init__(self, resource: str, status=None, code="incomplete_read"):
+        self.resource, self.status, self.code = resource, status, code
+        super().__init__(f"Notion read failed: {resource} ({status or code})")
+
+    def coverage(self):
+        return {"resource": self.resource, "status": self.status, "code": self.code}
+
+
 class NotionKOISensor:
     """KOI-compliant Notion monitoring sensor"""
     
@@ -408,7 +419,9 @@ class NotionKOISensor:
                  skip_sections: List[str] = None,
                  skip_pages: List[str] = None,
                  is_private: bool = False,
-                 access_source: str = None):
+                 access_source: str = None,
+                 max_pages_per_poll: int = 25,
+                 max_comment_targets: int = 100):
         """
         Initialize Notion sensor.
 
@@ -426,6 +439,8 @@ class NotionKOISensor:
             skip_pages: List of page IDs to skip entirely (e.g., archive pages with many videos)
             is_private: If True, data from this workspace requires OAuth authentication
             access_source: Identifier for which configuration determined privacy level
+            max_pages_per_poll: Round-robin page snapshot budget per polling cycle
+            max_comment_targets: Page plus block comment targets per page visit
         """
         self.node_id = node_id
         self.coordinator_url = coordinator_url
@@ -453,6 +468,12 @@ class NotionKOISensor:
 
         # Workspace identifier (extracted from pages/databases)
         self.workspace_id = workspace_id
+        self.max_pages_per_poll = max(1, max_pages_per_poll)
+        self.max_comment_targets = max(2, max_comment_targets)
+        self.max_block_requests = 100
+        self.max_api_pages = 100
+        self.request_interval = 0.35  # Notion's average three requests/second
+        self._last_api_request = 0
 
         # Privacy settings for access control
         self.is_private = is_private
@@ -497,7 +518,7 @@ class NotionKOISensor:
             "Notion-Version": self.NOTION_API_VERSION,
             "Content-Type": "application/json"
         }
-        self.session = aiohttp.ClientSession(headers=headers)
+        self.session = aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(total=30))
 
         # Start the KOI node to initialize its session
         await self.koi_node.start()
@@ -601,52 +622,28 @@ class NotionKOISensor:
         if sorts:
             query_params["sorts"] = sorts
         
-        all_results = []
-        has_more = True
-        next_cursor = None
-        
-        while has_more:
-            if next_cursor:
-                query_params["start_cursor"] = next_cursor
-            
-            try:
-                async with self.session.post(
-                    f"{self.NOTION_API_BASE}/databases/{database_id}/query",
-                    json=query_params
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        all_results.extend(data.get("results", []))
-                        has_more = data.get("has_more", False)
-                        next_cursor = data.get("next_cursor")
-                    else:
-                        error = await response.text()
-                        print(f"❌ Failed to query database: {error}")
-                        break
-            except Exception as e:
-                print(f"❌ Error querying database: {e}")
-                break
-        
-        return all_results
-    
-    async def get_page(self, page_id: str) -> Optional[Dict]:
-        """Get page metadata and properties"""
-        if not self.session:
-            raise RuntimeError("Session not initialized. Use async context manager.")
+        return await self._get_list(f"databases/{database_id}/query", query_params, method="post")
 
+    async def get_page(self, page_id: str, strict: bool = False) -> Optional[Dict]:
+        """Get page metadata; reconciliation needs explicit failure, not an empty page."""
+        path = f"pages/{page_id}"
         try:
-            async with self.session.get(
-                f"{self.NOTION_API_BASE}/pages/{page_id}"
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    error = await response.text()
-                    print(f"❌ Failed to get page {page_id}: {error}")
-                    return None
-        except Exception as e:
-            print(f"❌ Error getting page: {e}")
-            return None
+            await self._pace_request()
+            async with self.session.get(f"{self.NOTION_API_BASE}/{path}") as response:
+                if response.status != 200:
+                    raise NotionFetchError(path, response.status, "http_error")
+                page = await response.json()
+                if (not isinstance(page, dict)
+                        or page.get("id", "").replace('-', '') != page_id.replace('-', '')):
+                    raise NotionFetchError(path, code="malformed_page")
+                return page
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
+            if strict:
+                raise NotionFetchError(path, code="transport_or_json_error") from exc
+        except NotionFetchError:
+            if strict:
+                raise
+        return None
 
     async def get_user(self, user_id: str) -> Optional[Dict]:
         """Get user details to retrieve name (not included in page responses)"""
@@ -683,7 +680,7 @@ class NotionKOISensor:
             print(f"❌ Error getting block: {e}")
             return None
 
-    async def get_page_content(self, page_id: str) -> str:
+    async def get_page_content(self, page_id: str, blocks: Optional[List[Dict]] = None) -> str:
         """
         Get the full content of a page as text, with PII filtering applied.
         Also handles:
@@ -697,7 +694,8 @@ class NotionKOISensor:
             raise RuntimeError("Session not initialized. Use async context manager.")
 
         # Get blocks from the page
-        blocks = await self.get_blocks(page_id)
+        if blocks is None:
+            blocks = await self.get_blocks(page_id)
 
         # First pass: check if page already has a transcript section
         # This avoids expensive video transcription when a human transcript exists
@@ -753,6 +751,25 @@ class NotionKOISensor:
         return self.pii_filter.filter_content(content)
 
     async def _extract_video_with_transcription(self, block: Dict) -> Optional[str]:
+        """Avoid retranscribing unchanged recordings during comment reconciliation."""
+        cache = self._poll_state("notion_video_cache_v1")
+        block_id, edited = block.get("id"), block.get("last_edited_time")
+        video = block.get("video", {})
+        version = hashlib.sha256(json.dumps({"edited": edited, "type": video.get("type"),
+            "caption": video.get("caption"), "external": video.get("external")}, sort_keys=True).encode()).hexdigest()
+        cached = cache.get(block_id, {})
+        if edited and cached.get("version") == version:
+            # Respect a subsequently tightened PII policy on locally cached text.
+            cached["content"] = self.pii_filter.filter_content(cached["content"])
+            return cached["content"]
+        content = self.pii_filter.filter_content(await self._render_video_with_transcription(block) or "")
+        if block_id and edited and "**Transcript:**" in content:
+            cache[block_id] = {"version": version, "content": content}
+            while len(cache) > 256:
+                cache.pop(next(iter(cache)))
+        return content
+
+    async def _render_video_with_transcription(self, block: Dict) -> Optional[str]:
         """
         Extract video block with optional transcription.
 
@@ -807,50 +824,222 @@ class NotionKOISensor:
 
         return base_text
     
+    async def _pace_request(self):
+        now = asyncio.get_running_loop().time()
+        await asyncio.sleep(max(0, self.request_interval - (now - self._last_api_request)))
+        self._last_api_request = asyncio.get_running_loop().time()
+
+    async def _get_list(self, path: str, params: Optional[Dict] = None, method: str = "get") -> List[Dict]:
+        """Read all API result pages or raise; partial lists are not snapshots."""
+        values, cursors = [], set()
+        query = {"page_size": 100, **(params or {})}
+        for _ in range(self.max_api_pages):
+            await self._pace_request()
+            try:
+                request = getattr(self.session, method)
+                args = {"json" if method == "post" else "params": query}
+                async with request(f"{self.NOTION_API_BASE}/{path}", **args) as response:
+                    if response.status != 200:
+                        # Do not log raw response bodies (may contain private content).
+                        raise NotionFetchError(path, response.status, "http_error")
+                    data = await response.json()
+            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
+                raise NotionFetchError(path, code="transport_or_json_error") from exc
+            if (not isinstance(data, dict) or not isinstance(data.get("results"), list)
+                    or any(not isinstance(item, dict) for item in data["results"])):
+                raise NotionFetchError(path, code="malformed_list")
+            if data.get("request_status", {}).get("type") == "incomplete":
+                raise NotionFetchError(path, code="incomplete_list")
+            values.extend(data["results"])
+            if data.get("has_more") is False:
+                return values
+            cursor = data.get("next_cursor")
+            if data.get("has_more") is not True or not cursor or cursor in cursors:
+                raise NotionFetchError(path, code="invalid_cursor")
+            cursors.add(cursor)
+            query["start_cursor"] = cursor
+        raise NotionFetchError(path, code="pagination_budget_exhausted")
+
     async def get_blocks(self, block_id: str, page_size: int = 100) -> List[Dict]:
-        """Get all blocks (content) from a page or block"""
+        """Paginated depth-first discovery with a bounded request/depth budget."""
         if not self.session:
             raise RuntimeError("Session not initialized. Use async context manager.")
-        
-        all_blocks = []
-        has_more = True
-        next_cursor = None
-        
-        while has_more:
-            params = {"page_size": page_size}
-            if next_cursor:
-                params["start_cursor"] = next_cursor
-            
+        blocks, visited = [], set()
+
+        async def visit(parent, depth=0):
+            if parent in visited or depth > 50 or len(visited) >= self.max_block_requests:
+                raise NotionFetchError(f"blocks/{parent}/children", code="block_scan_budget_or_cycle")
+            visited.add(parent)
+            children = await self._get_list(f"blocks/{parent}/children", {"page_size": min(page_size, 100)})
+            skipping = False
+            for block in children:
+                child_id = block.get("id")
+                if not child_id:
+                    raise NotionFetchError(f"blocks/{parent}/children", code="missing_block_id")
+                if child_id in self.skip_pages or child_id.replace('-', '') in self.skip_pages:
+                    continue
+                kind = block.get("type", "")
+                if kind in {"heading_1", "heading_2", "heading_3"}:
+                    heading = self.extract_text_from_rich_text(block.get(kind, {}).get("rich_text", []))
+                    skipping = heading.lower() in self.skip_sections
+                if skipping:
+                    # A heading inside an excluded subtree must not reopen it.
+                    # Section boundaries are siblings in their original block tree.
+                    continue
+                blocks.append(block)
+                if block.get("has_children") and kind not in {"child_page", "child_database"}:
+                    await visit(child_id, depth + 1)
+        await visit(block_id)
+        return blocks
+
+    def _visible_blocks(self, blocks: List[Dict]) -> List[Dict]:
+        """Apply the same configured section exclusions to discussion discovery."""
+        visible, skipping = [], False
+        for block in blocks:
+            kind = block.get("type", "")
+            if kind in {"heading_1", "heading_2", "heading_3"}:
+                title = self.extract_text_from_rich_text(block.get(kind, {}).get("rich_text", []))
+                skipping = title.lower() in self.skip_sections
+            if not skipping:
+                visible.append(block)
+        return visible
+
+    async def _complete_properties(self, page: Dict) -> Dict:
+        """Expand truncated people/relation values before replacing a snapshot."""
+        properties = dict(page.get("properties", {}))
+        for name, prop in properties.items():
+            kind = prop.get("type")
+            if kind not in {"people", "relation"}:
+                continue
+            values = prop.get(kind, [])
+            if prop.get("has_more") or len(values) >= 25:
+                prop_id = prop.get("id")
+                if not prop_id:
+                    raise NotionFetchError("page_properties", code="missing_property_id")
+                # Property IDs returned by Notion are already URL-encoded.
+                path = f"pages/{page['id']}/properties/{quote(prop_id, safe='%')}"
+                items = await self._get_list(path)
+                if any(item.get("type") != kind or not isinstance(item.get(kind), dict) for item in items):
+                    raise NotionFetchError(path, code="malformed_property_item")
+                properties[name] = {**prop, kind: [item[kind] for item in items], "has_more": False}
+        return properties
+
+    def _safe_person(self, person: Dict) -> Dict:
+        """Retain useful attribution, never raw person/email/avatar objects."""
+        result = {"id": person["id"]} if person.get("id") else {}
+        if person.get("name"):
+            result["name"] = self.pii_filter.filter_content(person["name"])
+        return result
+
+    async def _author(self, person: Dict) -> Dict:
+        if person.get("id") and not person.get("name"):
+            person = {**person, **(await self.get_user(person["id"]) or {})}
+        return self._safe_person(person)
+
+    def _poll_state(self, key: str) -> Dict:
+        return self.state.metadata.setdefault(key, {}).setdefault(self.workspace_id, {})
+
+    def _queue_document(self, document: Dict):
+        """Queue only filtered, stable source data; checkpoint only after delivery."""
+        key = document["state_key"]
+        digest = hashlib.sha256(json.dumps({"title": document["title"],
+            "content": document["content"], "metadata": document["metadata"]},
+            sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        hashes = self._poll_state("notion_document_hashes_v1")
+        if hashes.get(key) == digest:
+            # A failed B update can be superseded by a return to acknowledged A.
+            self._poll_state("notion_outbox_v1").pop(key, None)
+            return
+        # Legacy page hashes keep an existing page an UPDATE during migration.
+        old = hashes.get(key) or (self.state.metadata.get(f"hash_{key}") if not document["metadata"].get("comment_id") else None)
+        document.update(event_type="UPDATE" if old else "NEW", content_hash=digest,
+                        state_source=self.workspace_id)
+        self._poll_state("notion_outbox_v1")[key] = document
+
+    async def _comment_snapshot(self, page: Dict, blocks: List[Dict], base_metadata: Dict):
+        """Observe unresolved comments; never infer deletion/resolution from absence."""
+        page_id = page["id"]
+        visible = self._visible_blocks(blocks)
+        # A child-page block references another page. Querying its ID here would
+        # attribute that page's discussion to this ancestor and oscillate its RID
+        # metadata when the child is independently monitored.
+        references = {"child_page", "child_database"}
+        block_ids = list(dict.fromkeys(b["id"] for b in visible if b.get("type") not in references))
+        offsets = self._poll_state("notion_comment_offsets_v1")
+        limit = getattr(self, "max_comment_targets", 100) - 1
+        offset = offsets.get(page_id, 0) % max(1, len(block_ids))
+        selected = (block_ids[offset:] + block_ids[:offset])[:limit]
+        offsets[page_id] = (offset + len(selected)) % max(1, len(block_ids))
+        targets = [page_id] + selected
+        comments, errors, successful = {}, [], 0
+        for target in targets:
             try:
-                async with self.session.get(
-                    f"{self.NOTION_API_BASE}/blocks/{block_id}/children",
-                    params=params
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        blocks = data.get("results", [])
-                        
-                        # Recursively get children for certain block types
-                        for block in blocks:
-                            all_blocks.append(block)
-                            
-                            # If block has children, recursively get them
-                            if block.get("has_children", False):
-                                child_blocks = await self.get_blocks(block["id"])
-                                all_blocks.extend(child_blocks)
-                        
-                        has_more = data.get("has_more", False)
-                        next_cursor = data.get("next_cursor")
-                    else:
-                        error = await response.text()
-                        print(f"❌ Failed to get blocks: {error}")
-                        break
-            except Exception as e:
-                print(f"❌ Error getting blocks: {e}")
-                break
-        
-        return all_blocks
-    
+                items = await self._get_list("comments", {"block_id": target})
+                if any(not item.get("id") or not item.get("discussion_id") for item in items):
+                    raise NotionFetchError("comments", code="malformed_comment")
+                for item in items:
+                    previous = comments.get(item["id"])
+                    if not previous or item.get("last_edited_time", "") >= previous.get("last_edited_time", ""):
+                        comments[item["id"]] = item
+                successful += 1
+            except NotionFetchError as exc:
+                errors.append({**exc.coverage(), "block_id": target})
+                if target == page_id and exc.status in {401, 403}:
+                    # Missing Read comments commonly affects the whole integration.
+                    break
+        for item in sorted(comments.values(), key=lambda c: c["id"]):
+            author = await self._author(item.get("created_by", {}))
+            parent = item.get("parent", {})
+            parent_kind = parent.get("type")
+            parent_id = parent.get(parent_kind) if parent_kind in {"page_id", "block_id"} else None
+            url = base_metadata["page_url"]
+            if parent_kind == "block_id" and parent_id:
+                url += "#" + parent_id.replace('-', '')
+            text = self.pii_filter.filter_content(self.extract_text_from_rich_text(item.get("rich_text", [])))
+            metadata = {k: base_metadata[k] for k in ("page_id", "page_url", "workspace_id", "is_private", "access_source")}
+            metadata.update(record_kind="comment", comment_id=item["id"], discussion_id=item["discussion_id"],
+                            parent={"type": parent_kind, parent_kind: parent_id} if parent_id else {},
+                            author_id=author.get("id"), author=author.get("name"),
+                            created_time=item.get("created_time"), published_at=item.get("created_time"),
+                            last_edited_time=item.get("last_edited_time"), last_modified=item.get("last_edited_time"),
+                            url=url, source_url=url, observation_scope="unresolved_comments_only")
+            self._queue_document({"source": "notion", "source_type": "notion", "id": item["id"],
+                                  "title": "Comment on " + base_metadata["page_title"],
+                                  "content": "Notion discussion comment (separate from page content):\n" + text,
+                                  "url": url, "metadata": metadata,
+                                  "rid": f"orn:notion.comment:{self.workspace_id}/{item['id']}",
+                                  "state_key": "comment:" + item["id"]})
+        return {"scope": "unresolved_comments_only", "resolved_history_available": False,
+                "status": "complete" if not errors and len(selected) == len(block_ids) else "partial",
+                "child_references_excluded": sum(b.get("type") in references for b in visible),
+                "targets_total": len(block_ids) + 1, "targets_checked": successful, "errors": errors}, {"comment:" + cid for cid in comments}
+
+    async def _page_snapshot(self, page: Dict, db_id=None, db_title=None):
+        page_id = page["id"]
+        blocks = await self.get_blocks(page_id)
+        content = await self.get_page_content(page_id, blocks=blocks)
+        properties = self.extract_properties(await self._complete_properties(page))
+        title = next((self.extract_text_from_rich_text(p.get("title", []))
+                      for p in page.get("properties", {}).values() if p.get("type") == "title"), "")
+        title = self.pii_filter.filter_content(title) or f"Page {page_id[:8]}"
+        author = await self._author(page.get("created_by", {}))
+        editor = await self._author(page.get("last_edited_by", {}))
+        page_url = page.get("url") or f"https://www.notion.so/{page_id.replace('-', '')}"
+        metadata = {"page_id": page_id, "page_title": title, "author": author.get("name"),
+                    "author_id": author.get("id"), "last_edited_by": editor.get("name"),
+                    "published_at": page.get("created_time"), "published_confidence": 0.85,
+                    "last_modified": page.get("last_edited_time"), "created_time": page.get("created_time"),
+                    "last_edited_time": page.get("last_edited_time"), "record_kind": "page",
+                    "is_private": self.is_private, "access_source": self.access_source,
+                    "workspace_id": self.workspace_id, "database_id": db_id,
+                    "database_title": self.pii_filter.filter_content(db_title) if db_title else None,
+                    "page_url": page_url, "url": page_url, "source_url": page_url, "properties": properties}
+        metadata["comment_coverage"], observed_comments = await self._comment_snapshot(page, blocks, metadata)
+        self._queue_document({"source": "notion", "source_type": "notion", "title": title,
+                              "content": content, "url": page_url, "metadata": metadata,
+                              "rid": str(NotionPageRID(self.workspace_id, page_id)), "state_key": page_id})
+        return metadata["comment_coverage"], observed_comments
+
     def extract_text_from_block(self, block: Dict) -> Optional[str]:
         """Extract text content from a Notion block"""
         block_type = block.get("type")
@@ -963,7 +1152,9 @@ class NotionKOISensor:
         """Extract plain text from Notion rich text array"""
         text_parts = []
         for text_obj in rich_text:
-            if text_obj.get("type") == "text":
+            if "plain_text" in text_obj:
+                text_parts.append(text_obj["plain_text"])
+            elif text_obj.get("type") == "text":
                 text_parts.append(text_obj.get("text", {}).get("content", ""))
         return "".join(text_parts)
     
@@ -1001,6 +1192,16 @@ class NotionKOISensor:
                 if select:
                     extracted[prop_name] = select.get("name")
 
+            elif prop_type == "status":
+                extracted[prop_name] = (prop_data.get("status") or {}).get("name")
+
+            elif prop_type == "people":
+                people = [self._safe_person(user) for user in prop_data.get("people", [])]
+                extracted[prop_name] = sorted(people, key=lambda user: user.get("id", ""))
+
+            elif prop_type == "relation":
+                extracted[prop_name] = sorted({item["id"] for item in prop_data.get("relation", []) if item.get("id")})
+
             elif prop_type == "multi_select":
                 options = prop_data.get("multi_select", [])
                 if options:
@@ -1025,8 +1226,18 @@ class NotionKOISensor:
                 # PII: Skip phone properties (handled by should_skip_property)
                 pass
 
-        return extracted
-    
+        # Property titles/names/selects/URLs can also contain contact information.
+        def redact(value):
+            if isinstance(value, str):
+                return self.pii_filter.filter_content(value)
+            if isinstance(value, list):
+                return [redact(v) for v in value]
+            if isinstance(value, dict):
+                return {k: (v if k == "id" else redact(v)) for k, v in value.items()}
+            return value
+        return {self.pii_filter.filter_content(k): (v if properties[k].get("type") == "relation" else redact(v))
+                for k, v in extracted.items()}
+
     async def monitor_database(self, database_id: str, 
                               check_interval: int = 3600,
                               priority: str = "medium"):
@@ -1052,152 +1263,66 @@ class NotionKOISensor:
         print(f"✅ Monitoring database: {title}")
     
     async def check_for_changes(self) -> List[Dict]:
-        """Check all monitored items for changes"""
-        changes = []
+        """Reconcile a durable fair queue, independent of page edit timestamps."""
         now = datetime.now(timezone.utc)
-        
-        # Check databases
-        for db_id, db_info in self.monitored_databases.items():
-            last_checked = db_info.get("last_checked")
-            check_interval = timedelta(seconds=db_info["check_interval"])
-            
-            if not last_checked or (now - last_checked) > check_interval:
-                print(f"🔍 Checking database: {db_info['title']}")
-                
-                # Query for recently modified pages
-                filter_obj = None
-                if last_checked:
-                    # Get pages modified since last check
-                    filter_obj = {
-                        "timestamp": "last_edited_time",
-                        "last_edited_time": {
-                            "after": last_checked.isoformat()
-                        }
-                    }
-                
-                pages = await self.query_database(db_id, filter_obj=filter_obj)
-                print(f"   Retrieved {len(pages)} pages from database")
-                
-                for page in pages:
-                    page_id = page["id"]
+        candidates = {}
+        database_pages = self._poll_state("notion_database_pages_v1")
+        coverage = self._poll_state("notion_poll_coverage_v1")
+        for db_id, info in self.monitored_databases.items():
+            last = info.get("last_checked")
+            if not last or now - last >= timedelta(seconds=info["check_interval"]):
+                try:
+                    # Full discovery: comments need not update page last_edited_time.
+                    pages = await self.query_database(db_id)
+                    if any(not p.get("id") for p in pages):
+                        raise NotionFetchError(f"databases/{db_id}/query", code="missing_page_id")
+                    database_pages[db_id] = sorted({p["id"] for p in pages})
+                    for page in pages:
+                        candidates[page["id"]] = (page, db_id, info["title"])
+                    info["last_checked"] = now
+                    coverage["database:" + db_id] = {"status": "observed"}
+                except NotionFetchError as exc:
+                    coverage["database:" + db_id] = {"status": "incomplete", "error": exc.coverage(), "deletion_inferred": False}
+            # Persist IDs only, not raw page/property/user objects. Between discovery
+            # passes, fetch fresh metadata for the next pages in the scan queue.
+            for page_id in database_pages.get(db_id, []):
+                candidates.setdefault(page_id, (None, db_id, info["title"]))
+        for page_id in self.monitored_pages:
+            candidates.setdefault(page_id, (None, None, None))
+        ids = {pid for pid in candidates if pid not in self.skip_pages and pid.replace('-', '') not in self.skip_pages}
+        cursor = self._poll_state("notion_page_cursor_v1")
+        queue = [pid for pid in cursor.get("queue", []) if pid in ids]
+        queued = set(queue)
+        queue.extend(sorted(ids - queued))
+        selected = queue[:self.max_pages_per_poll]
+        cursor["queue"] = queue[len(selected):] + selected
+        eligible = set()
+        for page_id in selected:
+            page, db_id, title = candidates[page_id]
+            try:
+                if page is None:
+                    page = await self.get_page(page_id, strict=True)
+                if not page or page.get("archived") or page.get("in_trash"):
+                    coverage[page_id] = {"status": "unavailable", "deletion_inferred": False}
+                    continue
+                comment_coverage, observed_comments = await self._page_snapshot(page, db_id, title)
+                coverage[page_id] = {"status": "observed", "comments": comment_coverage}
+                eligible.add(page["id"])
+                # Retry only comments positively re-observed. A skipped, denied or
+                # absent target keeps its pending record without publishing stale text.
+                eligible.update(observed_comments)
+            except NotionFetchError as exc:
+                coverage[page_id] = {"status": "incomplete", "error": exc.coverage(), "deletion_inferred": False}
+                print(f"⚠️ {exc}")
+        self.state.save()  # Outbox and scan queue survive coordinator failures/restarts.
+        return [doc for key, doc in self._poll_state("notion_outbox_v1").items() if key in eligible]
 
-                    # Check if page should be skipped
-                    if page_id in self.skip_pages or page_id.replace('-', '') in self.skip_pages:
-                        print(f"      ⏭️ Skipping page {page_id[:8]}... (in skip list)")
-                        continue
-
-                    print(f"      Fetching content for page {page_id[:8]}...")
-                    content = await self.get_page_content(page_id)
-                    print(f"      Retrieved {len(content)} chars of content")
-                    
-                    # Generate content hash
-                    content_hash = hashlib.sha256(content.encode()).hexdigest()
-                    
-                    # Check if content changed
-                    old_hash = self.state.metadata.get(f"hash_{page_id}")
-                    
-                    if old_hash != content_hash:
-                        event_type = "UPDATE" if old_hash else "NEW"
-                        
-                        # Extract properties
-                        properties = self.extract_properties(page.get("properties", {}))
-                        
-                        # Get title from properties
-                        title = None
-                        for prop_name, prop_value in properties.items():
-                            if prop_name.lower() in ["title", "name"]:
-                                title = prop_value
-                                break
-                        
-                        if not title:
-                            title = f"Page {page_id[:8]}"
-                        
-                        # Extract Notion timestamps for publication date
-                        created_time = page.get("created_time")
-                        last_edited_time = page.get("last_edited_time")
-
-                        # Extract author information from created_by user object
-                        created_by = page.get("created_by", {})
-                        author_name = created_by.get("name") if created_by else None
-                        author_id = created_by.get("id") if created_by else None
-
-                        # Notion API may not include name in page response - fetch user details if needed
-                        if not author_name and author_id:
-                            user_data = await self.get_user(author_id)
-                            if user_data:
-                                author_name = user_data.get("name")
-
-                        # Also get last_edited_by for reference
-                        last_edited_by = page.get("last_edited_by", {})
-                        last_editor_name = last_edited_by.get("name") if last_edited_by else None
-                        last_editor_id = last_edited_by.get("id") if last_edited_by else None
-
-                        # Fetch editor name if not in response
-                        if not last_editor_name and last_editor_id:
-                            editor_data = await self.get_user(last_editor_id)
-                            if editor_data:
-                                last_editor_name = editor_data.get("name")
-
-                        # Create change document
-                        page_url = page.get("url", "")
-                        change = {
-                            "event_type": event_type,
-                            "source": "notion",
-                            "source_type": "notion",  # Required for document_to_rid to work properly
-                            "rid": str(NotionPageRID(self.workspace_id, page_id)),
-                            "title": title,
-                            "content": content,
-                            "metadata": {
-                                # Required for document_to_rid
-                                "page_id": page_id,
-
-                                # Author metadata for author-based search
-                                "author": author_name,  # Maps to metadata->>'author' in performAuthorSearch
-                                "author_id": author_id,
-                                "last_edited_by": last_editor_name,
-
-                                # Publication date metadata for Daily Curator
-                                "published_at": created_time,  # Notion provides ISO format timestamps
-                                "published_confidence": 0.85,  # Good confidence for API data
-                                "last_modified": last_edited_time,
-
-                                # Privacy/access control metadata
-                                "is_private": self.is_private,
-                                "access_source": self.access_source,
-                                "workspace_id": self.workspace_id,
-
-                                # Original metadata
-                                "database_id": db_id,
-                                "database_title": db_info["title"],
-                                "page_url": page_url,
-                                "url": page_url,  # For compatibility
-                                "source_url": page_url,  # Required for KG extraction
-                                "created_time": created_time,
-                                "last_edited_time": last_edited_time,
-                                "properties": properties
-                            }
-                        }
-                        
-                        change["state_key"] = page_id
-                        change["state_source"] = self.workspace_id
-                        change["content_hash"] = content_hash
-                        changes.append(change)
-                        
-                        print(f"   {'🆕' if event_type == 'NEW' else '🔄'} {title}")
-                
-                # Update last checked time
-                self.monitored_databases[db_id]["last_checked"] = now
-
-        # Save persistent state after checking all databases
-        self.state.save()
-
-        return changes
-    
     async def send_to_coordinator(self, changes: List[Dict]):
         """Send changes to KOI coordinator"""
         print(f"📤 Sending {len(changes)} changes to coordinator...")
         
         for i, change in enumerate(changes, 1):
+            state_key = None
             try:
                 print(f"   [{i}/{len(changes)}] Processing {change.get('title', 'Unknown')}...")
                 state_key = change.get("state_key") or change.get("metadata", {}).get("page_id") or change.get("rid")
@@ -1227,7 +1352,11 @@ class NotionKOISensor:
                         self.state.mark_processed(state_source, state_key)
                     content_hash = change.get("content_hash")
                     if content_hash:
-                        self.state.metadata[f"hash_{state_key}"] = content_hash
+                        self._poll_state("notion_document_hashes_v1")[state_key] = content_hash
+                    outbox = self._poll_state("notion_outbox_v1")
+                    if outbox.get(state_key, {}).get("content_hash") == content_hash:
+                        outbox.pop(state_key, None)
+                    self.state.save()
                     print(f"   ✅ Sent to coordinator: {change['rid']}")
                 else:
                     if state_key:
@@ -1240,7 +1369,9 @@ class NotionKOISensor:
                     self.state.clear_pending(state_source, state_key)
                 print(f"   ❌ Failed to send event: {e}")
                 print(f"   Traceback: {traceback.format_exc()}")
-    
+            finally:
+                self.state.save()
+
     async def send_heartbeat_event(self, response_to: Optional[str] = None):
         """Send a heartbeat event to register with coordinator
 
