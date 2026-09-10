@@ -104,8 +104,11 @@ pages:
 # Content extraction settings
 extraction:
   include_properties: true
-  include_comments: false
   max_depth: 10  # Maximum nesting depth for blocks
+  # NOTE: this file is not loaded by notion_sensor.py (unlike the rss/newsletters
+  # sensors, which read their own config.yaml). Comment observation is controlled
+  # by the NOTION_INCLUDE_COMMENTS environment variable; an `include_comments`
+  # key here had no effect and was removed rather than left misleading.
 
 # Tags to auto-apply based on content
 auto_tags:
