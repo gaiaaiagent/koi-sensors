@@ -89,6 +89,7 @@ def sensor(tmp_path):
     s.koi_node = type('Node', (), {'emit_new_event': AsyncMock(return_value=True),
                                  'emit_update_event': AsyncMock(return_value=True)})()
     s.max_pages_per_poll = 25
+    s.include_comments = True
     s.max_block_requests = 100
     s.max_api_pages = 100
     s.request_interval = 0
@@ -176,6 +177,32 @@ def test_new_comment_without_page_or_body_edit(sensor):
     assert changes[0]['event_type'] == 'NEW'
     assert changes[0]['metadata']['comment_id'] == COMMENT
     assert sensor.query_database.call_args.kwargs == {}  # No last_edited filter.
+
+
+def test_comment_kill_switch_off_emits_pages_and_never_calls_the_comments_api(sensor):
+    """include_comments=False must suppress the endpoint, not merely the output."""
+    sensor.include_comments = False
+    sensor.session.routes[('comments', None)] = listing([comment()])
+    changes = run(sensor.check_for_changes())
+    assert [c for c in changes if c['metadata']['record_kind'] == 'page'], 'page ingestion must be unaffected'
+    assert not [c for c in changes if c['metadata'].get('comment_id')]
+    assert not [k for k, _ in sensor.session.calls if k[0] == 'comments'], 'no comments request may be issued'
+    coverage = next(c for c in changes if c['metadata']['record_kind'] == 'page')['metadata']['comment_coverage']
+    # "disabled" must be distinguishable from "looked and found none", or a
+    # downstream reader would treat the empty set as a resolution.
+    assert coverage['status'] == 'disabled' and coverage['scope'] == 'disabled'
+    assert coverage['targets_checked'] == 0
+
+
+def test_comment_kill_switch_on_is_the_default_and_does_call_the_comments_api(sensor):
+    """Positive control for the test above: same fixture, switch on."""
+    sensor.include_comments = True
+    sensor.session.routes[('comments', None)] = listing([comment()])
+    changes = run(sensor.check_for_changes())
+    assert [c for c in changes if c['metadata'].get('comment_id')], 'comments must flow when enabled'
+    assert [k for k, _ in sensor.session.calls if k[0] == 'comments'], 'the endpoint must be queried'
+    coverage = next(c for c in changes if c['metadata']['record_kind'] == 'page')['metadata']['comment_coverage']
+    assert coverage['status'] != 'disabled'
 
 
 @pytest.mark.parametrize('status', [401, 403, 404, 429, 500])

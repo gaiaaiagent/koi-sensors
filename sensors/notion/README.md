@@ -40,7 +40,11 @@ For each database/page you want to monitor:
 
 ```bash
 # Set your Notion integration secret
-export NOTION_INTEGRATION_SECRET="ntn_your_secret_here"
+export NOTION_API_KEY="ntn_your_secret_here"
+# (NOTION_INTEGRATION_SECRET still works as a legacy alias)
+
+# Optional: disable comment observation (default: enabled)
+export NOTION_INCLUDE_COMMENTS=false
 
 # Optional: Set coordinator URL (default: http://localhost:8200)
 export KOI_COORDINATOR_URL="http://localhost:8200"

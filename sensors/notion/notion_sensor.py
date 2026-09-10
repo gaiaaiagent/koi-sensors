@@ -421,7 +421,8 @@ class NotionKOISensor:
                  is_private: bool = False,
                  access_source: str = None,
                  max_pages_per_poll: int = 25,
-                 max_comment_targets: int = 100):
+                 max_comment_targets: int = 100,
+                 include_comments: bool = True):
         """
         Initialize Notion sensor.
 
@@ -441,14 +442,21 @@ class NotionKOISensor:
             access_source: Identifier for which configuration determined privacy level
             max_pages_per_poll: Round-robin page snapshot budget per polling cycle
             max_comment_targets: Page plus block comment targets per page visit
+            include_comments: Kill-switch for comment observation. When False the
+                sensor emits page/property records only and never calls the
+                comments endpoint. Page ingestion is unaffected either way.
         """
         self.node_id = node_id
         self.coordinator_url = coordinator_url
 
         # Use provided token or get from environment
-        self.notion_token = notion_token or os.getenv('NOTION_INTEGRATION_SECRET')
+        self.notion_token = (notion_token
+                             or os.getenv('NOTION_API_KEY')
+                             or os.getenv('NOTION_INTEGRATION_SECRET'))
         if not self.notion_token:
-            raise ValueError("Notion integration secret required. Set NOTION_INTEGRATION_SECRET env var.")
+            raise ValueError(
+                "Notion integration secret required. Set NOTION_API_KEY "
+                "(NOTION_INTEGRATION_SECRET is accepted as a legacy alias).")
 
         # Initialize KOI node
         self.koi_node = KOIPartialNode(
@@ -470,6 +478,7 @@ class NotionKOISensor:
         self.workspace_id = workspace_id
         self.max_pages_per_poll = max(1, max_pages_per_poll)
         self.max_comment_targets = max(2, max_comment_targets)
+        self.include_comments = include_comments
         self.max_block_requests = 100
         self.max_api_pages = 100
         self.request_interval = 0.35  # Notion's average three requests/second
@@ -958,6 +967,12 @@ class NotionKOISensor:
 
     async def _comment_snapshot(self, page: Dict, blocks: List[Dict], base_metadata: Dict):
         """Observe unresolved comments; never infer deletion/resolution from absence."""
+        if not getattr(self, "include_comments", True):
+            # Disabled is not the same as "none found": report it as its own
+            # status so downstream never reads an empty set as a resolution.
+            return {"scope": "disabled", "resolved_history_available": False,
+                    "status": "disabled", "child_references_excluded": 0,
+                    "targets_total": 0, "targets_checked": 0, "errors": []}, set()
         page_id = page["id"]
         visible = self._visible_blocks(blocks)
         # A child-page block references another page. Querying its ID here would
@@ -1553,6 +1568,14 @@ async def main():
     # Get polling interval (default 30 minutes)
     poll_interval = int(os.getenv('NOTION_POLL_INTERVAL', 1800))
 
+    # Comment observation kill-switch. Default on; set NOTION_INCLUDE_COMMENTS to
+    # 0/false/no to emit page and property records only. sensors/notion/config.yaml
+    # is NOT read by this sensor, so runtime configuration lives here.
+    include_comments = os.getenv('NOTION_INCLUDE_COMMENTS', 'true').strip().lower() \
+        not in ('0', 'false', 'no', 'off')
+    if not include_comments:
+        print("⚠️  NOTION_INCLUDE_COMMENTS is off — comment observation disabled")
+
     # Privacy settings for regen_main workspace per config.yaml — must be
     # threaded explicitly because this bootstrap path doesn't load the YAML.
     # Defaults (is_private=False) would leak private docs to unauth queries.
@@ -1561,6 +1584,7 @@ async def main():
         workspace_id="regen",
         is_private=True,
         access_source="notion-main-workspace",
+        include_comments=include_comments,
     ) as sensor:
         print("\n🔍 Searching Notion workspace...")
 
