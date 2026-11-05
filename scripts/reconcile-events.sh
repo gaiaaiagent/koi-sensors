@@ -18,8 +18,9 @@ fi
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S UTC')
 echo "[$TIMESTAMP] Starting reconciliation check..." >> "$LOG_FILE"
 
-# Database connection
-DB_URL="postgresql://postgres:postgres@localhost:5433/eliza"
+# Database connection. No password here: psql reads it from ~/.pgpass
+# (localhost:5433:eliza:postgres); systemd sets HOME for User=darren.
+DB_URL="postgresql://postgres@localhost:5433/eliza"
 
 # Function to check a sensor
 check_sensor() {
@@ -93,8 +94,10 @@ for t in sorted(topics):
     local state_count=$(echo "$state_topics" | wc -l)
     echo "  State file has $state_count unique topics"
     
-    # Get topics from database
-    local db_topics=$(psql "$DB_URL" -t -c "
+    # Get topics from database. A failed query is an error, not "0 topics":
+    # psql's own message goes to stderr (the journal) and the run exits 2.
+    local db_out
+    if ! db_out=$(psql "$DB_URL" -X -w -t -c "
         SELECT DISTINCT 
             CASE 
                 WHEN url ~ '/t/[^/]+/([0-9]+)' THEN (regexp_match(url, '/t/[^/]+/([0-9]+)'))[1]::int
@@ -104,9 +107,14 @@ for t in sorted(topics):
         WHERE url LIKE '%forum.regen.network%'
         AND url ~ '/t/[^/]+/[0-9]+'
         ORDER BY topic_num;
-    " 2>/dev/null | grep -v '^$' | tr -d ' ')
+    "); then
+        echo "  ERROR: database query failed; no comparison made" >&2
+        echo "[$TIMESTAMP] ERROR: Discourse database query failed" >> "$LOG_FILE"
+        return 2
+    fi
+    local db_topics=$(echo "$db_out" | grep -v '^$' | tr -d ' ')
     
-    local db_count=$(echo "$db_topics" | grep -c '[0-9]' 2>/dev/null || echo 0)
+    local db_count=$(echo "$db_topics" | grep -c '[0-9]' || true)
     echo "  Database has $db_count unique topics"
     
     # Find gaps
@@ -167,9 +175,15 @@ for sensor_dir in "$SENSORS_DIR"/*/; do
     fi
 done
 
-# Detailed discourse check
+# Detailed discourse check (exit 2 if the database could not be read)
 GAPS_FOUND=0
-if ! check_discourse_gaps; then
+rc=0
+check_discourse_gaps || rc=$?
+if [ "$rc" -eq 2 ]; then
+    echo "ERROR: reconciliation failed: database query failed" >&2
+    echo "[$TIMESTAMP] Reconciliation FAILED (database query failed)" >> "$LOG_FILE"
+    exit 2
+elif [ "$rc" -ne 0 ]; then
     GAPS_FOUND=1
 fi
 
