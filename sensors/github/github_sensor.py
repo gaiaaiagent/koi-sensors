@@ -141,6 +141,7 @@ class GitHubSensor:
         repo_url = repo_config['url']
         branch = repo_config.get('branch', 'main')
         paths = repo_config.get('paths', ['.'])
+        repo_private = bool(repo_config.get('private', False))  # repo visibility -> per-doc is_private
         
         # Clone repository
         repo_path = self.temp_dir / repo_name
@@ -196,7 +197,7 @@ class GitHubSensor:
                 self.logger.info(f"Extension breakdown for '{repo_name}/{path_pattern}': {dict(ext_counts)}")
 
             for file_path in files:
-                doc = self.process_file(file_path, repo_name, repo_url, branch, repo_path)
+                doc = self.process_file(file_path, repo_name, repo_url, branch, repo_path, repo_private=repo_private)
                 if doc:
                     documents.append(doc)
                 else:
@@ -294,7 +295,7 @@ class GitHubSensor:
         
         return filtered_files
     
-    def process_file(self, file_path: Path, repo_name: str, repo_url: str, branch: str, repo_path: Path) -> Optional[Dict[str, Any]]:
+    def process_file(self, file_path: Path, repo_name: str, repo_url: str, branch: str, repo_path: Path, repo_private: bool = False) -> Optional[Dict[str, Any]]:
         """
         Process a single file into a document
 
@@ -445,7 +446,14 @@ class GitHubSensor:
                     # File metadata
                     "file_type": file_path.suffix or "no_extension",
                     "file_size": len(content),
-                    "lines": content.count('\n') + 1
+                    "lines": content.count('\n') + 1,
+
+                    # Repository visibility. Private-repo content must not be
+                    # served to anonymous callers; is_private flows through
+                    # document_to_bundle into contents.metadata, which the event
+                    # bridge's bundle_is_private (3-location) reads.
+                    "is_private": repo_private,
+                    "access_source": "github_private_repo" if repo_private else None,
                 }
             }
             
@@ -701,6 +709,7 @@ async def main():
             },
             {
                 "name": "koi-processor",
+                "private": True,
                 "url": "https://github.com/gaiaaiagent/koi-processor",
                 "branch": "main",
                 "paths": ["."]
@@ -732,12 +741,14 @@ async def main():
             },
             {
                 "name": "revenue-hunter-cec",
+                "private": True,
                 "url": "https://github.com/regen-network/revenue-hunter-cec",
                 "branch": "main",
                 "paths": ["."]
             },
             {
                 "name": "regen-ai-core",
+                "private": True,
                 "url": "https://github.com/regen-network/regen-ai-core",
                 "branch": "main",
                 "paths": ["."]
@@ -763,12 +774,14 @@ async def main():
             },
             {
                 "name": "protocol-politicians",
+                "private": True,
                 "url": "https://github.com/regen-network/protocol-politicians",
                 "branch": "main",
                 "paths": ["."]
             },
             {
                 "name": "regen-claude-config",
+                "private": True,
                 "url": "https://github.com/regen-network/regen-claude-config",
                 "branch": "main",
                 "paths": ["."]
@@ -799,6 +812,7 @@ async def main():
             },
             {
                 "name": "regen-demos",
+                "private": True,
                 "url": "https://github.com/regen-network/regen-demos",
                 "branch": "main",
                 "paths": ["."]
