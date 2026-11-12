@@ -300,10 +300,13 @@ def test_account_mail_is_skipped_and_the_watermark_advances(sensor) -> None:
         2: raw_email(2, subject="Want to make someone's day? (3 free gifts inside)"),
         3: raw_email(3, subject="Welcome to Nate's Newsletter"),
         4: raw_email(4, subject="Correction: Download Links for My Apps from Today’s Post"),
+        5: raw_email(5, subject="Thanks for subscribing to Nate’s Newsletter"),
+        6: raw_email(6, subject="Here’s $100 to give a friend"),
+        7: raw_email(7, subject="💬 New thread from Nate"),
     })
     poll(sensor, conn)
-    assert watermark(sensor) == 4
-    assert len(sensor.emitted) == 1          # only the correction notice
+    assert watermark(sensor) == 7
+    assert len(sensor.emitted) == 2          # the correction notice and the thread
 
 
 def test_unrouted_mail_is_skipped(sensor) -> None:

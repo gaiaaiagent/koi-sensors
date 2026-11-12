@@ -62,6 +62,9 @@ filtering:
   skip_subjects:
     - '^Your payment receipt from '
     - '^Welcome to Nate.s Newsletter$'
+    - '^Thanks for subscribing'
+    - '^Podcast app setup$'
+    - 'to give a friend$'
     - 'free gifts inside'
     - 'forget to send your gifts'
     - 'Newsletter Member Benefit:'
