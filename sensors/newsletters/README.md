@@ -11,9 +11,9 @@ Per-sender routing maps email senders to a slug + `is_private` flag +
 
 ## Adding a new newsletter
 
-1. **Subscribe** to the newsletter using `darrenainews@gmail.com` (or
-   forward from another address).
-2. **Add a Gmail filter** in `darrenainews@gmail.com`: `From contains
+1. **Subscribe** to the newsletter using the sensor's mailbox (the
+   `GMAIL_NEWSLETTERS_USERNAME` account), or forward from another address.
+2. **Add a Gmail filter** in that mailbox: `From contains
    <senderdomain>` → apply label `KOI/Substack` (or another label that
    the sensor watches per `imap.folders` in `config.yaml`).
 3. **Add a route** in `config.yaml`:
@@ -32,14 +32,17 @@ combined `From` address and `List-Id` headers. First match wins.
 
 ## Credentials
 
-Gmail app password lives in `/opt/projects/koi-sensors/.env`:
+The mailbox address and the Gmail app password live in
+`/opt/projects/koi-sensors/.env`:
 
 ```
+GMAIL_NEWSLETTERS_USERNAME=<mailbox address>
 GMAIL_NEWSLETTERS_APP_PASSWORD=<16-char-app-password>
 ```
 
-Generate at https://myaccount.google.com/apppasswords (requires 2FA on
-the account). `config.yaml` references it via `imap.password_env`.
+Generate the app password at https://myaccount.google.com/apppasswords
+(requires 2FA on the account). `config.yaml` references them via
+`imap.username_env` and `imap.password_env`.
 
 ## Logs and state
 
@@ -48,11 +51,23 @@ the account). `config.yaml` references it via `imap.password_env`.
   (keyed by `UIDVALIDITY`) and the set of RIDs already emitted.
   Delete to re-emit from scratch (will refetch all messages newer than
   `filtering.max_age_days`).
+- The watermark only advances past a UID once it is emitted or deliberately
+  skipped. A FETCH or emit failure stops the poll and is retried on the next
+  one, up to `filtering.max_fetch_attempts` times. Skips are logged at INFO
+  with the reason.
+
+## Repairing documents from an older sensor version
+
+`--reprocess-since YYYY-MM-DD [--reprocess-before YYYY-MM-DD] [--dry-run]`
+re-emits every message received in that window through the current parsing
+path, with the same RIDs. The KOI processor skips a RID that already has
+rows, so remove the old rows for those RIDs first. Run it with `--dry-run`
+first: it logs each RID, its URL and word count without emitting.
 
 ## Why the IMAP-on-prod approach
 
 - Gmail IMAP is direct (no Bridge), prod-class reliability.
-- App password is scoped to the dedicated `darrenainews@gmail.com`
+- App password is scoped to a dedicated Gmail
   account, which is purpose-built for newsletter ingestion. Blast radius
   if leaked: someone reads AI newsletters. No personal mail exposure.
 - `is_private: true` means the content is only visible to authenticated
