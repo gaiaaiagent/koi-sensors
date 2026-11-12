@@ -10,10 +10,10 @@
 # Notion sensor uses the same plumbing. See migration 015 for details.
 #
 # Credentials:
-#   The Gmail app password is read from the env var named in
-#   ``imap.password_env``. The actual value lives in
-#   /opt/projects/koi-sensors/.env (loaded by run-sensor.sh) — never in
-#   this file or in git.
+#   The mailbox address and the Gmail app password are read from the env
+#   vars named in ``imap.username_env`` and ``imap.password_env``. The
+#   values live in /opt/projects/koi-sensors/.env (loaded by
+#   run-sensor.sh), never in this file or in git.
 
 sensor:
   name: newsletters-sensor
@@ -26,7 +26,7 @@ imap:
   host: imap.gmail.com
   port: 993
   ssl: true
-  username: darrenainews@gmail.com
+  username_env: GMAIL_NEWSLETTERS_USERNAME
   password_env: GMAIL_NEWSLETTERS_APP_PASSWORD
   folders:
     - "KOI/Substack"
@@ -56,3 +56,15 @@ filtering:
   min_body_length: 200      # skip newsletter "ping" emails / footer-only
   max_email_size: 10485760  # 10 MB
   default_route: null       # set to a slug to route unmatched senders
+  max_fetch_attempts: 5     # polls before a UID that keeps failing is given up
+  # Account mail that arrives from the same sender as posts. Regexes,
+  # matched case-insensitively anywhere in the subject.
+  skip_subjects:
+    - '^Your payment receipt from '
+    - '^Welcome to Nate.s Newsletter$'
+    - '^Thanks for subscribing'
+    - '^Podcast app setup$'
+    - 'to give a friend$'
+    - 'free gifts inside'
+    - 'forget to send your gifts'
+    - 'Newsletter Member Benefit:'

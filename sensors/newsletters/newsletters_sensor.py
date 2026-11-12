@@ -100,6 +100,143 @@ def _strip_html_to_text(html_body: str) -> str:
     return text.strip()
 
 
+# --- Post URLs and tracking links (koi-sensors#13) --------------------------
+#
+# Substack emails link the post in two forms: the publication form
+# https://<pub>.substack.com/p/<slug> and the app form
+# https://open.substack.com/pub/<pub>/p/<slug>. Every other Substack link in
+# an email is tracking: the open pixel (eotrx.substackcdn.com), click
+# redirects (substack.com/redirect/...), app links (substack.com/app-link/...)
+# and account links. Many carry a subscriber-specific ``token`` or ``r``
+# query parameter, so none of them belong in indexed text or metadata.
+
+_SUBSTACK_POST_RE = re.compile(
+    r"https?://(?:open\.substack\.com/pub/(?P<pub>[a-z0-9-]+)|(?P<sub>[a-z0-9-]+)\.substack\.com)"
+    r"/p/(?P<slug>[a-z0-9][a-z0-9-]*)",
+    re.IGNORECASE,
+)
+_NOT_A_PUBLICATION = {"open", "www", "email", "substack", "on", "support", "api", "cdn"}
+
+# Links dropped outright. The link text is kept, the URL is removed.
+_TRACKING_URL_RE = re.compile(
+    r"^https?://(?:"
+    r"eotrx\.substackcdn\.com/"                  # open-tracking pixel
+    r"|(?:[a-z0-9-]+\.)?substack\.com/redirect/"   # click redirect
+    r"|(?:[a-z0-9-]+\.)?substack\.com/app-link/"   # app deep link
+    r"|(?:[a-z0-9-]+\.)?substack\.com/action/"     # unsubscribe and account actions
+    r"|(?:[a-z0-9-]+\.)?substack\.com/account"     # account settings
+    r")",
+    re.IGNORECASE,
+)
+# Query parameters removed from links that are kept.
+_TRACKING_PARAMS = {"token", "fbclid", "gclid", "mc_cid", "mc_eid", "_hsenc", "_hsmi"}
+_SUBSTACK_HOST_RE = re.compile(r"(?:^|\.)substack(?:cdn)?\.com$", re.IGNORECASE)
+_IMAGE_FETCH_RE = re.compile(r"^https?://substackcdn\.com/image/fetch/(?:[^/]*/)*?(https?(?:%3A%2F%2F|://).+)$", re.IGNORECASE)
+
+_MD_LINK_RE = re.compile(r"(!?)\[([^\]\n]*)\]\(<?(https?://[^)\s>]+)>?\)")
+_BARE_URL_RE = re.compile(r"https?://[^\s<>()\[\]\"']+")
+
+
+def _publication_hint(from_addr: str) -> str:
+    """Substack sends from <publication>@substack.com."""
+    local, _, domain = (from_addr or "").lower().partition("@")
+    return local if domain == "substack.com" else ""
+
+
+def _post_url_from_match(m: re.Match) -> str:
+    pub = (m.group("pub") or m.group("sub") or "").lower()
+    if not pub or pub in _NOT_A_PUBLICATION:
+        return ""
+    return f"https://{pub}.substack.com/p/{m.group('slug').lower()}"
+
+
+def _canonical_post_url(*bodies: str, publication: str = "") -> str:
+    """Return the post's public URL, or "" when the email has none.
+
+    Prefers a link to the sending publication, then any Substack post link.
+    Never returns a tracking pixel, redirect or app link: a document with no
+    post link gets an empty URL rather than a wrong one.
+    """
+    fallback = ""
+    for body in bodies:
+        if not body:
+            continue
+        for m in _SUBSTACK_POST_RE.finditer(body):
+            url = _post_url_from_match(m)
+            if not url:
+                continue
+            if not publication or url.startswith(f"https://{publication}.substack.com/"):
+                return url
+            fallback = fallback or url
+    return fallback
+
+
+def _clean_url(url: str) -> Optional[str]:
+    """Return a link safe to index, or None to drop it.
+
+    Substack post links become their canonical form, Substack image-proxy
+    links become the image they wrap, other Substack links lose their query
+    string, and links elsewhere lose only known tracking parameters.
+    """
+    if _TRACKING_URL_RE.match(url):
+        return None
+    post = _SUBSTACK_POST_RE.match(url)
+    if post:
+        return _post_url_from_match(post) or None
+    wrapped = _IMAGE_FETCH_RE.match(url)
+    if wrapped:
+        inner = urllib.parse.unquote(wrapped.group(1))
+        return _clean_url(inner) if not inner.startswith("https://substackcdn.com/image/fetch/") else None
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return None
+    host = parts.hostname or ""
+    if _SUBSTACK_HOST_RE.search(host):
+        return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    if not parts.query:
+        return url
+    kept = [
+        (k, v) for k, v in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+        if k.lower() not in _TRACKING_PARAMS and not k.lower().startswith("utm_")
+    ]
+    query = urllib.parse.urlencode(kept)
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
+def _strip_tracking(text: str) -> str:
+    """Remove tracking links from html2text output or a plain-text body.
+
+    Markdown links keep their text and lose a tracking URL. Tracking images
+    (pixels) are removed. Bare URLs are cleaned the same way.
+    """
+    if not text:
+        return text
+
+    def md(m: re.Match) -> str:
+        bang, label, url = m.groups()
+        cleaned = _clean_url(url)
+        if cleaned is None:
+            return "" if bang else label
+        return f"{bang}[{label}]({cleaned})"
+
+    def bare(m: re.Match) -> str:
+        url = m.group(0)
+        trail = ""
+        while url and url[-1] in ".,;:!?":
+            trail = url[-1] + trail
+            url = url[:-1]
+        cleaned = _clean_url(url)
+        return (cleaned or "") + trail
+
+    text = _MD_LINK_RE.sub(md, text)
+    text = _BARE_URL_RE.sub(bare, text)
+    text = re.sub(r"\(\s+\)", "", text)        # "Read more ( )" left by a dropped bare URL
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def _extract_body(msg: email.message.Message) -> Tuple[str, str]:
     """Extract (text, html) from a parsed RFC5322 message."""
     text_body = ""
@@ -203,7 +340,14 @@ class NewslettersKOISensor:
             data = yaml.safe_load(f) or {}
         sensor = data.get("sensor", {}) or {}
         imap = dict(data.get("imap", {}) or {})
-        # Resolve password from env-var indirection.
+        # Resolve the username and password from env-var indirection, so the
+        # mailbox address doesn't live in this public repo.
+        if "username_env" in imap:
+            imap["username"] = _expand_env(f"${{{imap['username_env']}}}")
+        elif "username" in imap and isinstance(imap["username"], str):
+            imap["username"] = _expand_env(imap["username"])
+        else:
+            raise ValueError("imap.username_env or imap.username is required")
         if "password_env" in imap:
             imap["password"] = _expand_env(f"${{{imap['password_env']}}}")
         elif "password" in imap and isinstance(imap["password"], str):
@@ -228,6 +372,13 @@ class NewslettersKOISensor:
         filtering.setdefault("min_body_length", 200)
         filtering.setdefault("max_email_size", 10 * 1024 * 1024)
         filtering.setdefault("default_route", None)
+        # Subjects of account mail (receipts, gift campaigns, welcome mail)
+        # that arrives under the same sender as posts. Regexes, matched
+        # case-insensitively anywhere in the subject.
+        filtering["skip_subjects"] = [
+            re.compile(p, re.IGNORECASE) for p in (filtering.get("skip_subjects") or [])
+        ]
+        filtering.setdefault("max_fetch_attempts", 5)
 
         cfg = {
             "name": sensor.get("name", "newsletters-sensor"),
@@ -400,39 +551,87 @@ class NewslettersKOISensor:
         self.logger.info(f"[{folder}] poll: {len(uids)} new UIDs (since {since_uid}, uidvalidity={uidvalidity})")
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=int(self.filtering["max_age_days"]))
-        max_size = int(self.filtering["max_email_size"])
+        max_attempts = int(self.filtering["max_fetch_attempts"])
+        failures_key = f"folder:{folder}:uidvalidity:{uidvalidity}:failed_attempts"
+        failures: Dict[str, int] = dict(self.state.metadata.get(failures_key) or {})
 
-        for uid_b in uids:
+        # The watermark only covers a contiguous run of UIDs that were emitted
+        # or deliberately skipped. At the first fetch or emit failure the poll
+        # stops, so the next poll retries that UID before anything after it.
+        # Later UIDs that were already emitted are recognised by RID and not
+        # emitted twice. A UID that keeps failing is given up after
+        # ``max_fetch_attempts`` polls so it can't block the folder.
+        for uid_b in sorted(uids, key=int):
             uid = int(uid_b)
             try:
-                status, msg_data = conn.uid("FETCH", uid_b, "(BODY.PEEK[] RFC822.SIZE)")
-                if status != "OK" or not msg_data or not msg_data[0]:
-                    continue
-                first = msg_data[0]
-                if not isinstance(first, tuple):
-                    continue
-                envelope, raw_bytes = first[0], first[1]
-                size_match = re.search(rb"RFC822\.SIZE (\d+)", envelope or b"")
-                size = int(size_match.group(1)) if size_match else len(raw_bytes)
-                if size > max_size:
-                    self.logger.debug(f"[{folder}] UID {uid} too large ({size}b) — skip")
-                    self._set_max_uid(folder, uidvalidity, uid)
-                    continue
-                if self._process_message(folder, uid, raw_bytes, cutoff):
-                    self._set_max_uid(folder, uidvalidity, uid)
-                else:
-                    # Even if we skipped (paywall, age, no match), advance the
-                    # watermark so we don't re-fetch the same UID forever.
-                    self._set_max_uid(folder, uidvalidity, uid)
+                status, reason = self._fetch_and_process(conn, folder, uid_b, cutoff)
             except Exception as e:
-                self.logger.error(f"[{folder}] UID {uid} fetch error: {e}")
+                status, reason = "failed", f"error: {e}"
+            if status != "failed":
+                failures.pop(str(uid), None)
+                self._set_max_uid(folder, uidvalidity, uid)
+                continue
+            attempts = failures.get(str(uid), 0) + 1
+            if attempts >= max_attempts:
+                self.logger.error(
+                    f"[{folder}] UID {uid} failed {attempts} times ({reason}); giving up on it"
+                )
+                failures.pop(str(uid), None)
+                self._set_max_uid(folder, uidvalidity, uid)
+                continue
+            failures[str(uid)] = attempts
+            self.logger.warning(
+                f"[{folder}] UID {uid} failed ({reason}); stopping this poll, "
+                f"will retry (attempt {attempts}/{max_attempts})"
+            )
+            break
 
-    def _process_message(self, folder: str, uid: int, raw: bytes, cutoff: datetime) -> bool:
+        if failures:
+            self.state.metadata[failures_key] = failures
+        else:
+            self.state.metadata.pop(failures_key, None)
+
+    def _fetch_and_process(
+        self, conn: imaplib.IMAP4, folder: str, uid_b: bytes, cutoff: datetime,
+        force: bool = False, dry_run: bool = False,
+    ) -> Tuple[str, str]:
+        """FETCH one UID and process it. Returns (status, reason) as in
+        ``_process_message``; a failed FETCH is ("failed", ...)."""
+        uid = int(uid_b)
+        status, msg_data = conn.uid("FETCH", uid_b, "(BODY.PEEK[] RFC822.SIZE)")
+        if status != "OK" or not msg_data or not msg_data[0]:
+            return "failed", f"FETCH status={status}"
+        first = msg_data[0]
+        if not isinstance(first, tuple):
+            return "failed", "FETCH returned no message body"
+        envelope, raw_bytes = first[0], first[1]
+        size_match = re.search(rb"RFC822\.SIZE (\d+)", envelope or b"")
+        size = int(size_match.group(1)) if size_match else len(raw_bytes)
+        if size > int(self.filtering["max_email_size"]):
+            self.logger.info(f"[{folder}] UID {uid} skipped: too large ({size} bytes)")
+            return "skipped", "too large"
+        return self._process_message(folder, uid, raw_bytes, cutoff, force=force, dry_run=dry_run)
+
+    def _process_message(
+        self, folder: str, uid: int, raw: bytes, cutoff: datetime,
+        force: bool = False, dry_run: bool = False,
+    ) -> Tuple[str, str]:
+        """Parse, route and emit one message.
+
+        Returns (status, reason). ``status`` is one of:
+          emitted  -- a new document was emitted
+          already  -- its RID was emitted before
+          skipped  -- deliberately not indexed (too old, no route, account
+                      mail, too short, unparseable); not retried
+          failed   -- the emit failed; the caller should retry
+        ``force`` re-emits a message whose RID was emitted before, and
+        ``dry_run`` stops before emitting (both used by --reprocess-since).
+        """
         try:
             msg = email.message_from_bytes(raw, policy=policy.default)
         except Exception as e:
-            self.logger.error(f"[{folder}] UID {uid} parse error: {e}")
-            return False
+            self.logger.error(f"[{folder}] UID {uid} skipped: parse error: {e}")
+            return "skipped", "parse error"
 
         # Header pulls
         from_raw = str(msg.get("From", ""))
@@ -450,8 +649,8 @@ class NewslettersKOISensor:
             date = None
 
         if date and date < cutoff:
-            self.logger.debug(f"[{folder}] UID {uid} too old ({date}) — skip")
-            return False
+            self.logger.info(f"[{folder}] UID {uid} skipped: older than max_age_days ({date})")
+            return "skipped", "too old"
 
         # Sender routing
         route = _match_sender(self.routes, from_addr, list_id)
@@ -460,40 +659,43 @@ class NewslettersKOISensor:
             if default_match:
                 route = next((r for r in self.routes if r["slug"] == default_match), None)
         if route is None:
-            self.logger.info(f"[{folder}] UID {uid} no route for from={from_addr} list-id={list_id} — skip")
-            return False
+            self.logger.info(f"[{folder}] UID {uid} skipped: no route for from={from_addr} list-id={list_id}")
+            return "skipped", "no route"
+
+        for pattern in self.filtering["skip_subjects"]:
+            if pattern.search(subject):
+                self.logger.info(f"[{folder}] UID {uid} skipped: account mail ({pattern.pattern!r})")
+                return "skipped", "account mail"
 
         # Body extraction.
         # Newsletters: prefer the HTML body via html2text — it retains
         # link URLs, image refs, lists, and blockquotes. The plain-text
         # part Substack ships alongside is a stripped fallback that often
-        # drops formatting cues we want indexed.
+        # drops formatting cues we want indexed. Tracking links are removed
+        # from either before indexing.
+        min_body = int(self.filtering["min_body_length"])
         text_part, html_part = _extract_body(msg)
         body_text = ""
         if html_part:
-            body_text = _strip_html_to_text(html_part)
-        if (not body_text or len(body_text) < int(self.filtering["min_body_length"])) and text_part:
-            body_text = text_part
-        if not body_text or len(body_text) < int(self.filtering["min_body_length"]):
-            self.logger.debug(f"[{folder}] UID {uid} body too short — skip")
-            return False
+            body_text = _strip_tracking(_strip_html_to_text(html_part))
+        if (not body_text or len(body_text) < min_body) and text_part:
+            body_text = _strip_tracking(text_part)
+        if not body_text or len(body_text) < min_body:
+            self.logger.info(f"[{folder}] UID {uid} skipped: body under {min_body} characters")
+            return "skipped", "too short"
         text_body = body_text
-        html_body = html_part
 
         digest = _stable_digest(message_id, from_addr, subject, date)
         rid_obj = NewsletterEntryRID(route["slug"], digest)
         rid_str = rid_obj.to_string()
 
-        if self.state.is_processed(rid_str):
-            return True  # already emitted; advance watermark below
+        if self.state.is_processed(rid_str) and not force:
+            return "already", "emitted before"
 
         published_iso = date.isoformat() if date else None
-        # Try to find a canonical post URL in the email body. Substack and
-        # most newsletter platforms include one near the top of the HTML.
-        url = ""
-        url_match = re.search(r'https?://[^\s"<>]+', html_body or text_body)
-        if url_match:
-            url = url_match.group(0)
+        # The post's public URL, from the post links in the email. Never the
+        # first URL in the HTML, which is Substack's tracking pixel.
+        url = _canonical_post_url(html_part, text_part, publication=_publication_hint(from_addr))
 
         full_text = f"{subject}\n\n{text_body}".strip()
 
@@ -533,6 +735,13 @@ class NewslettersKOISensor:
             "tags": list(route.get("tags") or []),
         }
 
+        if dry_run:
+            self.logger.info(
+                f"[{folder}] UID {uid} would emit {rid_str}: {subject[:60]!r} "
+                f"url={url or '(none)'} words={document['metadata']['word_count']}"
+            )
+            return "emitted", "dry run"
+
         self.state.mark_pending(route["slug"], rid_str)
         try:
             bundle = document_to_bundle(document, self.koi_node.node_id)
@@ -540,7 +749,7 @@ class NewslettersKOISensor:
         except Exception as e:
             self.state.clear_pending(route["slug"], rid_str)
             self.logger.error(f"[{folder}] UID {uid} emit failed: {e}")
-            return False
+            return "failed", f"emit error: {e}"
 
         if success:
             self.state.mark_processed(route["slug"], rid_str)
@@ -548,9 +757,9 @@ class NewslettersKOISensor:
             self.logger.info(
                 f"[{folder}] {privacy} {route['slug']} NEW: {subject[:80]}"
             )
-            return True
+            return "emitted", "new"
         self.state.clear_pending(route["slug"], rid_str)
-        return False
+        return "failed", "emit returned false"
 
     async def ingest_mbox(self, mbox_path: Path) -> Dict[str, int]:
         """One-shot import of a Google Takeout mbox file.
@@ -595,22 +804,22 @@ class NewslettersKOISensor:
                         )
                         stats["skipped"] += 1
                         continue
-                    before = len(self.state.processed)
                     try:
-                        ok = self._process_message("mbox", idx, raw, cutoff)
+                        status, _reason = self._process_message("mbox", idx, raw, cutoff)
                     except Exception as e:
                         self.logger.error(
                             f"[mbox] msg {idx} process error: {e}", exc_info=True
                         )
                         stats["errors"] += 1
                         continue
-                    if ok:
-                        if len(self.state.processed) > before:
-                            stats["emitted"] += 1
-                        else:
-                            stats["already_processed"] += 1
-                    else:
+                    if status == "emitted":
+                        stats["emitted"] += 1
+                    elif status == "already":
+                        stats["already_processed"] += 1
+                    elif status == "skipped":
                         stats["skipped"] += 1
+                    else:
+                        stats["errors"] += 1
 
                     total = sum(stats.values())
                     if total and total % SAVE_EVERY == 0:
@@ -633,6 +842,66 @@ class NewslettersKOISensor:
             f"already_processed={stats['already_processed']}, "
             f"skipped={stats['skipped']}, errors={stats['errors']}"
         )
+        return stats
+
+    async def reprocess_since(
+        self, since: datetime, before: Optional[datetime] = None, dry_run: bool = False
+    ) -> Dict[str, int]:
+        """One-shot: re-emit every message received in [since, before) through
+        the current parsing path, including messages emitted before.
+
+        For repairing documents written by an older version of this sensor.
+        It emits NEW events with the same RIDs, and the KOI processor skips a
+        RID that already has rows, so the old rows for these RIDs must be
+        removed first. Does not move the IMAP watermark.
+        """
+        self._main_loop = asyncio.get_running_loop()
+        if not dry_run:
+            await self.koi_node.start()
+        stats = {"emitted": 0, "already": 0, "skipped": 0, "errors": 0}
+
+        def imap_date(d: datetime) -> str:
+            return d.strftime("%d-%b-%Y")
+
+        def _do() -> None:
+            conn = self._imap_connect()
+            try:
+                for folder in self.imap_cfg["folders"]:
+                    if self._select_folder(conn, folder) is None:
+                        stats["errors"] += 1
+                        continue
+                    criteria = ["SINCE", imap_date(since)]
+                    if before:
+                        criteria += ["BEFORE", imap_date(before)]
+                    status, data = conn.uid("SEARCH", None, *criteria)
+                    if status != "OK":
+                        self.logger.error(f"[{folder}] reprocess: SEARCH failed: {status}")
+                        stats["errors"] += 1
+                        continue
+                    uids = sorted((data[0] or b"").split(), key=int) if data else []
+                    self.logger.info(f"[{folder}] reprocess: {len(uids)} messages {criteria}")
+                    for uid_b in uids:
+                        try:
+                            status, reason = self._fetch_and_process(
+                                conn, folder, uid_b, since, force=True, dry_run=dry_run
+                            )
+                        except Exception as e:
+                            status, reason = "failed", f"error: {e}"
+                        if status == "failed":
+                            self.logger.error(f"[{folder}] reprocess: UID {int(uid_b)} failed: {reason}")
+                            stats["errors"] += 1
+                        else:
+                            stats[status] += 1
+            finally:
+                try:
+                    conn.logout()
+                except Exception:
+                    pass
+
+        await asyncio.to_thread(_do)
+        if not dry_run:
+            self.state.save()
+        self.logger.info(f"reprocess: done {'(dry run) ' if dry_run else ''}{stats}")
         return stats
 
     # ----- Substack archive scrape mode -----------------------------------
@@ -1196,7 +1465,7 @@ class NewslettersKOISensor:
                     # window above, so no per-post recheck.
                     post_published = c.get("published_at")
 
-                    body_text = _strip_html_to_text(body_html)
+                    body_text = _strip_tracking(_strip_html_to_text(body_html))
                     if not body_text or len(body_text) < min_body:
                         stats["skipped_too_short"] += 1
                         self.logger.debug(
@@ -1343,10 +1612,42 @@ async def main():
         default=None,
         help="Override filtering.max_age_days for the scrape (default from config)",
     )
+    parser.add_argument(
+        "--reprocess-since",
+        type=str,
+        metavar="YYYY-MM-DD",
+        help=(
+            "One-shot mode: re-emit every message received on or after this "
+            "date through the current parsing path, including ones emitted "
+            "before. The KOI processor skips RIDs that already have rows, so "
+            "remove the old rows for these RIDs first. Use with --dry-run first."
+        ),
+    )
+    parser.add_argument(
+        "--reprocess-before",
+        type=str,
+        metavar="YYYY-MM-DD",
+        help="Upper bound (exclusive) for --reprocess-since",
+    )
     args = parser.parse_args()
 
     config_path = _resolve_config_path()
     sensor = NewslettersKOISensor(config_path)
+
+    if args.reprocess_since:
+        since = datetime.strptime(args.reprocess_since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        before = (
+            datetime.strptime(args.reprocess_before, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            if args.reprocess_before else None
+        )
+        try:
+            stats = await sensor.reprocess_since(since, before, dry_run=args.dry_run)
+        finally:
+            if not args.dry_run:
+                await sensor.stop()
+        if stats["errors"]:
+            raise SystemExit(2)
+        return
 
     if args.ingest_mbox is not None:
         try:
